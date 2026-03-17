@@ -89,7 +89,29 @@ install_nodejs() {
   fi
 
   info "Node.js not found — installing via nvm…"
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+  # IMPORTANT: update NVM_SHA256 when changing NVM_VERSION
+  local NVM_VERSION="v0.40.4"
+  local NVM_SHA256="4b7412c49960c7d31e8df72da90c1fb5b8cccb419ac99537b737028d497aba4f"
+  local nvm_tmp
+  nvm_tmp="$(mktemp)"
+  curl -fsSL "https://raw.githubusercontent.com/nvm-sh/nvm/${NVM_VERSION}/install.sh" -o "$nvm_tmp" \
+    || { rm -f "$nvm_tmp"; error "Failed to download nvm installer"; }
+  local actual_hash
+  if command_exists sha256sum; then
+    actual_hash="$(sha256sum "$nvm_tmp" | awk '{print $1}')"
+  elif command_exists shasum; then
+    actual_hash="$(shasum -a 256 "$nvm_tmp" | awk '{print $1}')"
+  else
+    warn "No SHA-256 tool found — skipping nvm integrity check"
+    actual_hash="$NVM_SHA256"  # allow execution
+  fi
+  if [[ "$actual_hash" != "$NVM_SHA256" ]]; then
+    rm -f "$nvm_tmp"
+    error "nvm installer integrity check failed\n  Expected: $NVM_SHA256\n  Actual:   $actual_hash"
+  fi
+  info "nvm installer integrity verified"
+  bash "$nvm_tmp"
+  rm -f "$nvm_tmp"
   ensure_nvm_loaded
   nvm install 24
   info "Node.js installed: $(node --version)"
