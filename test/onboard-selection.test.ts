@@ -128,9 +128,9 @@ credentials.prompt = async (message) => {
 credentials.ensureApiKey = async () => {};
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "/usr/bin/ollama";
-  if (command.includes("localhost:11434/api/tags")) return JSON.stringify({ models: [{ name: "nemotron-3-nano:30b" }] });
+  if (command.includes("127.0.0.1:11434/api/tags")) return JSON.stringify({ models: [{ name: "nemotron-3-nano:30b" }] });
   if (command.includes("ollama list")) return "nemotron-3-nano:30b  abc  24 GB  now\\nqwen3:32b  def  20 GB  now";
-  if (command.includes("localhost:8000/v1/models")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return "";
   return "";
 };
 registry.updateSandbox = (_name, update) => updates.push(update);
@@ -301,8 +301,8 @@ credentials.prompt = async (message) => {
 credentials.ensureApiKey = async () => { process.env.NVIDIA_API_KEY = "nvapi-test"; };
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "";
-  if (command.includes("localhost:11434/api/tags")) return "";
-  if (command.includes("localhost:8000/v1/models")) return "";
+  if (command.includes("127.0.0.1:11434/api/tags")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return "";
   return "";
 };
 
@@ -394,8 +394,8 @@ credentials.prompt = async (message) => {
 credentials.ensureApiKey = async () => { process.env.NVIDIA_API_KEY = "nvapi-test"; };
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "";
-  if (command.includes("localhost:11434/api/tags")) return "";
-  if (command.includes("localhost:8000/v1/models")) return "";
+  if (command.includes("127.0.0.1:11434/api/tags")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return "";
   return "";
 };
 
@@ -536,7 +536,7 @@ const { setupNim } = require(${onboardPath});
     assert.ok(payload.lines.some((line) => line.includes("Chat Completions API available")));
   });
 
-  it("warms and validates Ollama via localhost before moving on", () => {
+  it("warms and validates Ollama via 127.0.0.1 before moving on", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-ollama-validation-"));
     const fakeBin = path.join(tmpDir, "bin");
@@ -583,9 +583,9 @@ runner.run = (command, opts = {}) => {
 };
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "/usr/bin/ollama";
-  if (command.includes("localhost:11434/api/tags")) return JSON.stringify({ models: [{ name: "nemotron-3-nano:30b" }] });
+  if (command.includes("127.0.0.1:11434/api/tags")) return JSON.stringify({ models: [{ name: "nemotron-3-nano:30b" }] });
   if (command.includes("ollama list")) return "nemotron-3-nano:30b  abc  24 GB  now";
-  if (command.includes("localhost:8000/v1/models")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return "";
   if (command.includes("api/generate")) return '{"response":"hello"}';
   return "";
 };
@@ -630,7 +630,7 @@ const { setupNim } = require(${onboardPath});
       payload.lines.some((line) => line.includes("Loading Ollama model: nemotron-3-nano:30b")),
     );
     assert.ok(
-      payload.commands.some((command) => command.includes("http://localhost:11434/api/generate")),
+      payload.commands.some((command) => command.includes("http://127.0.0.1:11434/api/generate")),
     );
   });
 
@@ -777,9 +777,9 @@ credentials.prompt = async (message) => {
 };
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "/usr/bin/ollama";
-  if (command.includes("localhost:11434/api/tags")) return JSON.stringify({ models: [] });
+  if (command.includes("127.0.0.1:11434/api/tags")) return JSON.stringify({ models: [] });
   if (command.includes("ollama list")) return "";
-  if (command.includes("localhost:8000/v1/models")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return "";
   if (command.includes("api/generate")) return '{"response":"hello"}';
   return "";
 };
@@ -884,9 +884,9 @@ credentials.prompt = async (message) => {
 };
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "/usr/bin/ollama";
-  if (command.includes("localhost:11434/api/tags")) return JSON.stringify({ models: [] });
+  if (command.includes("127.0.0.1:11434/api/tags")) return JSON.stringify({ models: [] });
   if (command.includes("ollama list")) return "";
-  if (command.includes("localhost:8000/v1/models")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return "";
   if (command.includes("api/generate")) return '{"response":"hello"}';
   return "";
 };
@@ -2671,8 +2671,8 @@ credentials.prompt = async (message) => {
 credentials.ensureApiKey = async () => {};
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "";
-  if (command.includes("localhost:11434")) return "";
-  if (command.includes("localhost:8000/v1/models")) return JSON.stringify({ data: [{ id: "meta-llama/Llama-3.3-70B-Instruct" }] });
+  if (command.includes("127.0.0.1:11434")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return JSON.stringify({ data: [{ id: "meta-llama/Llama-3.3-70B-Instruct" }] });
   return "";
 };
 
@@ -2780,8 +2780,8 @@ credentials.prompt = async (message) => {
 credentials.ensureApiKey = async () => {};
 runner.runCapture = (command) => {
   if (command.includes("command -v ollama")) return "";
-  if (command.includes("localhost:11434")) return "";
-  if (command.includes("localhost:8000/v1/models")) return "";
+  if (command.includes("127.0.0.1:11434")) return "";
+  if (command.includes("127.0.0.1:8000/v1/models")) return "";
   return "";
 };
 
