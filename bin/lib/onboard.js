@@ -633,11 +633,9 @@ async function setupPolicies(sandboxName) {
     }
     console.log(`  [non-interactive] Applying policy presets: ${selectedPresets.join(", ")}`);
     for (const name of selectedPresets) {
-      let appliedOk = false;
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           policies.applyPreset(sandboxName, name);
-          appliedOk = true;
           break;
         } catch (err) {
           const message = err && err.message ? err.message : String(err);
@@ -646,10 +644,6 @@ async function setupPolicies(sandboxName) {
           }
           sleep(2);
         }
-      }
-      if (!appliedOk) {
-        console.error(`  Failed to apply policy preset '${name}' to sandbox '${sandboxName}'.`);
-        process.exit(1);
       }
     }
   } else {
