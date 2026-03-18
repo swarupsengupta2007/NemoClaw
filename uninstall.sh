@@ -33,6 +33,7 @@ PROVIDERS=("nvidia-nim" "vllm-local" "ollama-local" "nvidia-ncp" "nim-local")
 OPEN_SHELL_INSTALL_PATHS=("/usr/local/bin/openshell" "${XDG_BIN_HOME:-$HOME/.local/bin}/openshell")
 OLLAMA_MODELS=("nemotron-3-super:120b" "nemotron-3-nano:30b")
 TMP_ROOT="${TMPDIR:-/tmp}"
+NEMOCLAW_SHIM_DIR="${HOME}/.local/bin"
 
 ASSUME_YES=false
 KEEP_OPEN_SHELL=false
@@ -200,6 +201,10 @@ remove_nemoclaw_cli() {
     fi
   else
     warn "npm not found; skipping nemoclaw npm uninstall."
+  fi
+
+  if [ -L "${NEMOCLAW_SHIM_DIR}/nemoclaw" ] || [ -f "${NEMOCLAW_SHIM_DIR}/nemoclaw" ]; then
+    remove_path "${NEMOCLAW_SHIM_DIR}/nemoclaw"
   fi
 }
 

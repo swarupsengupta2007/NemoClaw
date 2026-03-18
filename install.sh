@@ -19,6 +19,8 @@ MIN_NODE_MAJOR=20
 MIN_NPM_MAJOR=10
 RECOMMENDED_NODE_MAJOR=22
 RUNTIME_REQUIREMENT_MSG="NemoClaw requires Node.js >=${MIN_NODE_MAJOR} and npm >=${MIN_NPM_MAJOR} (recommended Node.js ${RECOMMENDED_NODE_MAJOR})."
+NEMOCLAW_SHIM_DIR="${HOME}/.local/bin"
+ORIGINAL_PATH="${PATH:-}"
 
 # Compare two semver strings (major.minor.patch). Returns 0 if $1 >= $2.
 version_gte() {
@@ -53,6 +55,30 @@ refresh_path() {
   if [[ -n "$npm_bin" && -d "$npm_bin" && ":$PATH:" != *":$npm_bin:"* ]]; then
     export PATH="$npm_bin:$PATH"
   fi
+
+  if [[ -d "$NEMOCLAW_SHIM_DIR" && ":$PATH:" != *":$NEMOCLAW_SHIM_DIR:"* ]]; then
+    export PATH="$NEMOCLAW_SHIM_DIR:$PATH"
+  fi
+}
+
+ensure_nemoclaw_shim() {
+  local npm_bin shim_path
+  npm_bin="$(npm config get prefix 2>/dev/null)/bin" || true
+  shim_path="${NEMOCLAW_SHIM_DIR}/nemoclaw"
+
+  if [[ -z "$npm_bin" || ! -x "$npm_bin/nemoclaw" ]]; then
+    return 1
+  fi
+
+  if [[ ":$ORIGINAL_PATH:" == *":$npm_bin:"* ]] || [[ ":$ORIGINAL_PATH:" == *":$NEMOCLAW_SHIM_DIR:"* ]]; then
+    return 0
+  fi
+
+  mkdir -p "$NEMOCLAW_SHIM_DIR"
+  ln -sfn "$npm_bin/nemoclaw" "$shim_path"
+  refresh_path
+  info "Created user-local shim at $shim_path"
+  return 0
 }
 
 version_major() {
@@ -204,6 +230,7 @@ install_nemoclaw() {
   fi
 
   refresh_path
+  ensure_nemoclaw_shim || true
 }
 
 # ---------------------------------------------------------------------------
@@ -222,15 +249,17 @@ verify_nemoclaw() {
   npm_bin="$(npm config get prefix 2>/dev/null)/bin" || true
 
   if [[ -n "$npm_bin" && -x "$npm_bin/nemoclaw" ]]; then
-    warn "Found nemoclaw at $npm_bin/nemoclaw but that directory is not on PATH."
+    ensure_nemoclaw_shim || true
+    if command_exists nemoclaw; then
+      info "Verified: nemoclaw is available at $(command -v nemoclaw)"
+      return 0
+    fi
+
+    warn "Found nemoclaw at $npm_bin/nemoclaw but could not expose it on PATH."
     warn ""
-    warn "Add it to your shell profile:"
-    warn "  echo 'export PATH=\"$npm_bin:\$PATH\"' >> ~/.bashrc"
-    warn "  source ~/.bashrc"
-    warn ""
-    warn "Or for zsh:"
-    warn "  echo 'export PATH=\"$npm_bin:\$PATH\"' >> ~/.zshrc"
-    warn "  source ~/.zshrc"
+    warn "Add one of these directories to your shell profile:"
+    warn "  $NEMOCLAW_SHIM_DIR"
+    warn "  $npm_bin"
     warn ""
     warn "Continuing — nemoclaw is installed but requires a PATH update."
     return 0
