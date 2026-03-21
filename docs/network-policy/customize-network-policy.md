@@ -124,4 +124,4 @@ To include a preset in the baseline, merge its entries into `openclaw-sandbox.ya
 - [Approve or Deny Agent Network Requests](approve-network-requests.md) for real-time operator approval.
 - [Network Policies](../reference/network-policies.md) for the full baseline policy reference.
 - OpenShell [Policy Schema](https://docs.nvidia.com/openshell/latest/reference/policy-schema.html) for the full YAML policy schema reference.
-- OpenShell [Sandbox Policies](https://github.com/NVIDIA/OpenShell/blob/main/docs/sandboxes/policies.md) for applying, iterating, and debugging policies at the OpenShell layer.
+- OpenShell [Sandbox Policies](https://docs.nvidia.com/openshell/latest/sandboxes/policies.html) for applying, iterating, and debugging policies at the OpenShell layer.
