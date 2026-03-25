@@ -1,32 +1,12 @@
-diff --git a/crates/openshell-core/build.rs b/crates/openshell-core/build.rs
-index f44cdc7..89eee5a 100644
---- a/crates/openshell-core/build.rs
-+++ b/crates/openshell-core/build.rs
-@@ -23,9 +23,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
-     // include tree.
-     // SAFETY: This is run at build time in a single-threaded build script context.
-     // No other threads are reading environment variables concurrently.
--    #[allow(unsafe_code)]
--    unsafe {
--        env::set_var("PROTOC", protobuf_src::protoc());
-+    // NemoClaw POC: use system protoc if PROTOC is already set.
-+    if env::var("PROTOC").is_err() {
-+        #[allow(unsafe_code)]
-+        unsafe {
-+            env::set_var("PROTOC", protobuf_src::protoc());
-+        }
-     }
- 
-     let proto_files = [
 diff --git a/crates/openshell-sandbox/src/grpc_client.rs b/crates/openshell-sandbox/src/grpc_client.rs
-index 5503637..cd4dc90 100644
+index 5503637..f932e82 100644
 --- a/crates/openshell-sandbox/src/grpc_client.rs
 +++ b/crates/openshell-sandbox/src/grpc_client.rs
 @@ -286,6 +286,25 @@ impl CachedOpenShellClient {
          Ok(())
      }
  
-+    /// Fetch draft policy chunks (NemoClaw POC: used to find approved config: chunks).
++    /// Fetch draft policy chunks (used to find approved config: chunks).
 +    pub async fn get_draft_policy(
 +        &self,
 +        sandbox_name: &str,
@@ -49,19 +29,18 @@ index 5503637..cd4dc90 100644
      pub async fn report_policy_status(
          &self,
 diff --git a/crates/openshell-sandbox/src/lib.rs b/crates/openshell-sandbox/src/lib.rs
-index 493e4d2..54fda4c 100644
+index 493e4d2..0de9149 100644
 --- a/crates/openshell-sandbox/src/lib.rs
 +++ b/crates/openshell-sandbox/src/lib.rs
-@@ -617,6 +617,19 @@ pub async fn run_sandbox(
+@@ -617,6 +617,18 @@ pub async fn run_sandbox(
                      })
                      .await;
              });
 +
-+            // --- NemoClaw POC: scan for config-change request files ---
++            // Config-request scanner: poll for request files in the writable partition.
 +            let cfg_endpoint = endpoint.clone();
 +            let cfg_name = sandbox_name_for_agg.clone().unwrap_or_else(|| id.clone());
 +            tokio::spawn(async move {
-+                // Ensure the config-requests directory exists.
 +                let _ = std::fs::create_dir_all(CONFIG_REQUESTS_DIR);
 +                let interval = Duration::from_secs(5);
 +                loop {
@@ -72,18 +51,18 @@ index 493e4d2..54fda4c 100644
          }
      }
  
-@@ -1300,6 +1313,223 @@ async fn flush_proposals_to_gateway(
+@@ -1300,6 +1312,192 @@ async fn flush_proposals_to_gateway(
      Ok(())
  }
  
-+// --- NemoClaw POC: config-request scanner + approved-config applier ---
++// ---------------------------------------------------------------------------
++// NemoClaw POC: config-request scanner + approved-config applier
++// ---------------------------------------------------------------------------
 +
 +const CONFIG_REQUESTS_DIR: &str = "/sandbox/.openclaw-data/config-requests";
 +const CONFIG_OVERRIDES_PATH: &str = "/sandbox/.openclaw-data/config-overrides.json5";
 +
 +/// Scan for config-change request files and submit them as PolicyChunks.
-+/// Files are JSON: {"key": "dotted.path", "value": "new-value"}
-+/// Follows the same submission pattern as network denial → PolicyChunk.
 +async fn scan_config_requests(endpoint: &str, sandbox_name: &str) {
 +    use crate::grpc_client::CachedOpenShellClient;
 +    use openshell_core::proto::PolicyChunk;
@@ -92,7 +71,6 @@ index 493e4d2..54fda4c 100644
 +    if !dir.exists() {
 +        return;
 +    }
-+
 +    let entries = match std::fs::read_dir(dir) {
 +        Ok(e) => e,
 +        Err(_) => return,
@@ -106,7 +84,6 @@ index 493e4d2..54fda4c 100644
 +        if path.extension().and_then(|e| e.to_str()) != Some("json") {
 +            continue;
 +        }
-+
 +        let raw = match std::fs::read_to_string(&path) {
 +            Ok(r) => r,
 +            Err(e) => {
@@ -114,9 +91,6 @@ index 493e4d2..54fda4c 100644
 +                continue;
 +            }
 +        };
-+
-+        // Minimal JSON parsing — extract "key" and "value" fields.
-+        // For POC, use serde_json which is already a dependency.
 +        let parsed: serde_json::Value = match serde_json::from_str(&raw) {
 +            Ok(v) => v,
 +            Err(e) => {
@@ -125,7 +99,6 @@ index 493e4d2..54fda4c 100644
 +                continue;
 +            }
 +        };
-+
 +        let key = match parsed.get("key").and_then(|v| v.as_str()) {
 +            Some(k) => k,
 +            None => {
@@ -134,14 +107,11 @@ index 493e4d2..54fda4c 100644
 +                continue;
 +            }
 +        };
-+
-+        // Block gateway.* from the sandbox side too.
 +        if key.starts_with("gateway.") || key == "gateway" {
 +            warn!(key = %key, "Config request for gateway.* blocked");
 +            processed_files.push(path);
 +            continue;
 +        }
-+
 +        let value = match parsed.get("value") {
 +            Some(v) => v,
 +            None => {
@@ -150,15 +120,8 @@ index 493e4d2..54fda4c 100644
 +                continue;
 +            }
 +        };
-+
-+        // Build the full JSON override payload from the dotted key.
 +        let override_json = build_nested_json(key, value);
-+
-+        info!(
-+            key = %key,
-+            "Config change request detected, submitting as draft chunk"
-+        );
-+
++        info!(key = %key, "Config change request detected, submitting as draft chunk");
 +        chunks.push(PolicyChunk {
 +            id: String::new(),
 +            status: "pending".to_string(),
@@ -177,11 +140,9 @@ index 493e4d2..54fda4c 100644
 +            last_seen_ms: 0,
 +            binary: String::new(),
 +        });
-+
 +        processed_files.push(path);
 +    }
 +
-+    // Submit any config chunks to the gateway.
 +    if !chunks.is_empty() {
 +        match CachedOpenShellClient::connect(endpoint).await {
 +            Ok(client) => {
@@ -190,7 +151,7 @@ index 493e4d2..54fda4c 100644
 +                    .await
 +                {
 +                    warn!(error = %e, "Failed to submit config change requests");
-+                    return; // Don't delete files if submission failed
++                    return;
 +                }
 +            }
 +            Err(e) => {
@@ -200,13 +161,11 @@ index 493e4d2..54fda4c 100644
 +        }
 +    }
 +
-+    // Clean up processed request files.
 +    for path in processed_files {
 +        let _ = std::fs::remove_file(&path);
 +    }
 +}
 +
-+/// Build nested JSON from a dotted key path: "a.b.c" + value → {"a":{"b":{"c": value}}}
 +fn build_nested_json(key: &str, value: &serde_json::Value) -> String {
 +    let parts: Vec<&str> = key.split('.').collect();
 +    let mut obj = value.clone();
@@ -219,7 +178,6 @@ index 493e4d2..54fda4c 100644
 +}
 +
 +/// Check for approved config: chunks and write to overrides file.
-+/// Called from the policy poll loop when config revision changes.
 +async fn apply_approved_config_chunks(endpoint: &str, sandbox_name: &str) {
 +    use crate::grpc_client::CachedOpenShellClient;
 +
@@ -230,8 +188,6 @@ index 493e4d2..54fda4c 100644
 +            return;
 +        }
 +    };
-+
-+    // Fetch all draft chunks and filter for approved config: ones.
 +    let chunks = match client.get_draft_policy(sandbox_name, "approved").await {
 +        Ok(c) => c,
 +        Err(e) => {
@@ -239,18 +195,13 @@ index 493e4d2..54fda4c 100644
 +            return;
 +        }
 +    };
-+
 +    let config_chunks: Vec<_> = chunks
 +        .iter()
 +        .filter(|c| c.rule_name.starts_with("config:") && c.status == "approved")
 +        .collect();
-+
 +    if config_chunks.is_empty() {
 +        return;
 +    }
-+
-+    // Merge all approved config payloads (rationale field contains JSON).
-+    // Later approvals override earlier ones for the same key.
 +    let mut merged = serde_json::Map::new();
 +    for chunk in &config_chunks {
 +        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&chunk.rationale) {
@@ -259,26 +210,23 @@ index 493e4d2..54fda4c 100644
 +            }
 +        }
 +    }
-+
-+    // Strip gateway.* for safety.
 +    merged.remove("gateway");
-+
 +    let json = serde_json::to_string_pretty(&serde_json::Value::Object(merged))
 +        .unwrap_or_default();
-+
-+    // Write to overrides file.
 +    if let Err(e) = std::fs::write(CONFIG_OVERRIDES_PATH, &json) {
 +        warn!(error = %e, "Config apply: failed to write overrides file");
 +        return;
 +    }
-+
 +    info!(
 +        chunks = config_chunks.len(),
-+        "Config apply: wrote approved config overrides to {CONFIG_OVERRIDES_PATH}"
++        "Config apply: wrote approved config overrides"
 +    );
 +}
 +
-+fn deep_merge_json(target: &mut serde_json::Map<String, serde_json::Value>, source: &serde_json::Map<String, serde_json::Value>) {
++fn deep_merge_json(
++    target: &mut serde_json::Map<String, serde_json::Value>,
++    source: &serde_json::Map<String, serde_json::Value>,
++) {
 +    for (key, value) in source {
 +        match (target.get_mut(key), value) {
 +            (Some(serde_json::Value::Object(t)), serde_json::Value::Object(s)) => {
@@ -291,25 +239,22 @@ index 493e4d2..54fda4c 100644
 +    }
 +}
 +
-+// --- End NemoClaw POC ---
++// ---------------------------------------------------------------------------
 +
  /// `reload_from_proto()`. Reports load success/failure back to the server.
  /// On failure, the previous engine is untouched (LKG behavior).
  async fn run_policy_poll_loop(
-@@ -1348,6 +1578,11 @@ async fn run_policy_poll_loop(
+@@ -1348,6 +1546,8 @@ async fn run_policy_poll_loop(
          };
  
          if result.config_revision == current_config_revision {
-+            // Even if config revision hasn't changed, periodically check for
-+            // approved config chunks (they don't change the policy hash).
-+            // This is the apply side of the NemoClaw config approval flow.
-+            let sandbox_name = sandbox_id.to_string(); // TODO: use actual name
-+            apply_approved_config_chunks(endpoint, &sandbox_name).await;
++            // Check for approved config chunks even when policy hasn't changed.
++            apply_approved_config_chunks(endpoint, sandbox_id).await;
              continue;
          }
  
 diff --git a/crates/openshell-server/src/grpc.rs b/crates/openshell-server/src/grpc.rs
-index fd4bf58..cd486e0 100644
+index fd4bf58..323def7 100644
 --- a/crates/openshell-server/src/grpc.rs
 +++ b/crates/openshell-server/src/grpc.rs
 @@ -1795,7 +1795,7 @@ impl OpenShell for OpenShellService {
@@ -321,7 +266,7 @@ index fd4bf58..cd486e0 100644
                  rejected += 1;
                  rejection_reasons
                      .push(format!("chunk '{}' missing proposed_rule", chunk.rule_name));
-@@ -1990,9 +1990,31 @@ impl OpenShell for OpenShellService {
+@@ -1990,9 +1990,32 @@ impl OpenShell for OpenShellService {
              port = chunk.port,
              hit_count = chunk.hit_count,
              prev_status = %chunk.status,
@@ -329,7 +274,8 @@ index fd4bf58..cd486e0 100644
 +            "ApproveDraftChunk: processing"
          );
  
-+        // --- NemoClaw POC: config-change chunks skip network merge ---
++        // Config-change chunks (rule_name starts with "config:") skip network
++        // policy merge — they are handled by NemoClaw's config overrides system.
 +        if chunk.rule_name.starts_with("config:") {
 +            info!(
 +                sandbox_id = %sandbox_id,
@@ -355,7 +301,7 @@ index fd4bf58..cd486e0 100644
          let (version, hash) =
              merge_chunk_into_policy(self.state.store.as_ref(), &sandbox_id, &chunk).await?;
 diff --git a/crates/openshell-tui/src/ui/sandbox_draft.rs b/crates/openshell-tui/src/ui/sandbox_draft.rs
-index 528d1c6..acbe337 100644
+index 528d1c6..c912149 100644
 --- a/crates/openshell-tui/src/ui/sandbox_draft.rs
 +++ b/crates/openshell-tui/src/ui/sandbox_draft.rs
 @@ -22,12 +22,12 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
@@ -373,7 +319,7 @@ index 528d1c6..acbe337 100644
      };
  
      let mut block = Block::default()
-@@ -111,15 +111,28 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
+@@ -111,15 +111,27 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App, area: Rect) {
                  spans.push(Span::raw("  "));
              }
  
@@ -384,7 +330,6 @@ index 528d1c6..acbe337 100644
 -                .and_then(|r| r.endpoints.first())
 -                .map(|ep| format!("{}:{}", ep.host, ep.port))
 -                .unwrap_or_default();
-+            // NemoClaw POC: config chunks use "config:" prefix on rule_name.
 +            let is_config_chunk = chunk.rule_name.starts_with("config:");
  
 -            spans.push(Span::styled(&chunk.rule_name, name_style));

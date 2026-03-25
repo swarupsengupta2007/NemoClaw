@@ -461,13 +461,23 @@ async function startGateway(gpu) {
   // allocate GPUs. See: https://build.nvidia.com/spark/nemoclaw/instructions
   const gatewayEnv = {};
   const openshellVersion = getInstalledOpenshellVersion();
-  const stableGatewayImage = openshellVersion
-    ? `ghcr.io/nvidia/openshell/cluster:${openshellVersion}`
-    : null;
-  if (stableGatewayImage && openshellVersion) {
-    gatewayEnv.OPENSHELL_CLUSTER_IMAGE = stableGatewayImage;
-    gatewayEnv.IMAGE_TAG = openshellVersion;
-    console.log(`  Using pinned OpenShell gateway image: ${stableGatewayImage}`);
+  const versionOutput = String(runCapture("openshell -V", { ignoreError: true })).trim();
+  const isDevBuild = versionOutput.includes("-dev") || versionOutput.includes("+");
+  if (isDevBuild) {
+    // Dev/locally-built OpenShell — use the local image tag that
+    // `mise run cluster` / `docker-build-image.sh` produces.
+    // The bootstrap's ensure_image() will find it locally and skip GHCR pull.
+    gatewayEnv.OPENSHELL_CLUSTER_IMAGE = "openshell/cluster:dev";
+    console.log(`  Using dev-build OpenShell (${openshellVersion}) — gateway image: openshell/cluster:dev`);
+  } else {
+    const stableGatewayImage = openshellVersion
+      ? `ghcr.io/nvidia/openshell/cluster:${openshellVersion}`
+      : null;
+    if (stableGatewayImage && openshellVersion) {
+      gatewayEnv.OPENSHELL_CLUSTER_IMAGE = stableGatewayImage;
+      gatewayEnv.IMAGE_TAG = openshellVersion;
+      console.log(`  Using pinned OpenShell gateway image: ${stableGatewayImage}`);
+    }
   }
 
   run(`openshell gateway start ${gwArgs.join(" ")}`, {
