@@ -13,11 +13,11 @@ function run(args) {
   return runWithEnv(args);
 }
 
-function runWithEnv(args, env = {}) {
+function runWithEnv(args, env = {}, timeout = 10000) {
   try {
     const out = execSync(`node "${CLI}" ${args}`, {
       encoding: "utf-8",
-      timeout: 10000,
+      timeout,
       env: { ...process.env, HOME: "/tmp/nemoclaw-cli-test-" + Date.now(), ...env },
     });
     return { code: 0, out };
@@ -181,14 +181,14 @@ describe("CLI dispatch", () => {
     const r = runWithEnv("alpha status", {
       HOME: home,
       PATH: `${localBin}:${process.env.PATH || ""}`,
-    });
+    }, 25000);
 
     expect(r.code).toBe(0);
     expect(r.out.includes("Could not verify sandbox 'alpha'")).toBeTruthy();
     expect(r.out.includes("gateway identity drift after restart")).toBeTruthy();
     const saved = JSON.parse(fs.readFileSync(path.join(registryDir, "sandboxes.json"), "utf8"));
     expect(saved.sandboxes.alpha).toBeTruthy();
-  });
+  }, 25000);
 
   it("recovers status after gateway runtime is reattached", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-recover-status-"));
@@ -302,7 +302,7 @@ describe("CLI dispatch", () => {
     const statusResult = runWithEnv("alpha status", {
       HOME: home,
       PATH: `${localBin}:${process.env.PATH || ""}`,
-    });
+    }, 25000);
     expect(statusResult.code).toBe(0);
     expect(statusResult.out.includes("gateway trust material rotated after restart")).toBeTruthy();
     expect(statusResult.out.includes("cannot be reattached safely")).toBeTruthy();
@@ -375,7 +375,7 @@ describe("CLI dispatch", () => {
     const statusResult = runWithEnv("alpha status", {
       HOME: home,
       PATH: `${localBin}:${process.env.PATH || ""}`,
-    });
+    }, 25000);
     expect(statusResult.code).toBe(0);
     expect(statusResult.out.includes("gateway is still refusing connections after restart")).toBeTruthy();
     expect(statusResult.out.includes("Retry `openshell gateway start --name nemoclaw`")).toBeTruthy();
@@ -387,7 +387,7 @@ describe("CLI dispatch", () => {
     expect(connectResult.code).toBe(1);
     expect(connectResult.out.includes("gateway is still refusing connections after restart")).toBeTruthy();
     expect(connectResult.out.includes("If the gateway never becomes healthy")).toBeTruthy();
-  });
+  }, 25000);
 
   it("explains when the named gateway is no longer configured after restart or rebuild", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-gateway-missing-"));
@@ -446,5 +446,5 @@ describe("CLI dispatch", () => {
     expect(statusResult.code).toBe(0);
     expect(statusResult.out.includes("gateway is no longer configured after restart/rebuild")).toBeTruthy();
     expect(statusResult.out.includes("Start the gateway again")).toBeTruthy();
-  });
+  }, 25000);
 });

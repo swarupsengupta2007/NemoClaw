@@ -1313,7 +1313,7 @@ async function preflight() {
 
 // ── Step 2: Gateway ──────────────────────────────────────────────
 
-async function startGateway(_gpu) {
+async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
   step(3, 7, "Starting OpenShell gateway");
 
   const gatewayStatus = runCaptureOpenshell(["status"], { ignoreError: true });
@@ -1357,7 +1357,10 @@ async function startGateway(_gpu) {
     }
     if (i === 4) {
       console.error("  Gateway failed to start. Run: openshell gateway info");
-      process.exit(1);
+      if (exitOnFailure) {
+        process.exit(1);
+      }
+      throw new Error("Gateway failed to start");
     }
     sleep(2);
   }
@@ -1372,6 +1375,14 @@ async function startGateway(_gpu) {
   sleep(5);
   runOpenshell(["gateway", "select", GATEWAY_NAME], { ignoreError: true });
   process.env.OPENSHELL_GATEWAY = GATEWAY_NAME;
+}
+
+async function startGateway(_gpu) {
+  return startGatewayWithOptions(_gpu, { exitOnFailure: true });
+}
+
+async function startGatewayForRecovery(_gpu) {
+  return startGatewayWithOptions(_gpu, { exitOnFailure: false });
 }
 
 // ── Step 3: Sandbox ──────────────────────────────────────────────
@@ -2316,6 +2327,7 @@ module.exports = {
   setupInference,
   setupNim,
   startGateway,
+  startGatewayForRecovery,
   writeSandboxConfigSyncFile,
   patchStagedDockerfile,
 };

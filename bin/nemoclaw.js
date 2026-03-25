@@ -22,6 +22,7 @@ const YW = _useColor ? "\x1b[1;33m" : "";
 
 const { ROOT, SCRIPTS, run, runCapture: _runCapture, runInteractive, shellQuote, validateName } = require("./lib/runner");
 const { resolveOpenshell } = require("./lib/resolve-openshell");
+const { startGatewayForRecovery } = require("./lib/onboard");
 const {
   ensureApiKey,
   ensureGithubToken,
@@ -113,7 +114,7 @@ function getNamedGatewayLifecycleState() {
   return { state: "missing_named", status: status.output, gatewayInfo: gatewayInfo.output };
 }
 
-function recoverNamedGatewayRuntime() {
+async function recoverNamedGatewayRuntime() {
   const before = getNamedGatewayLifecycleState();
   if (before.state === "healthy_named") {
     return { recovered: true, before, after: before, attempted: false };
@@ -126,12 +127,23 @@ function recoverNamedGatewayRuntime() {
     return { recovered: true, before, after, attempted: true, via: "select" };
   }
 
-  runOpenshell(["gateway", "start", "--name", "nemoclaw"], { ignoreError: true });
-  runOpenshell(["gateway", "select", "nemoclaw"], { ignoreError: true });
-  after = getNamedGatewayLifecycleState();
-  if (after.state === "healthy_named") {
-    process.env.OPENSHELL_GATEWAY = "nemoclaw";
-    return { recovered: true, before, after, attempted: true, via: "start" };
+  const shouldStartGateway = [before.state, after.state].some((state) =>
+    ["named_unhealthy", "named_unreachable", "connected_other"].includes(state)
+  );
+
+  if (shouldStartGateway) {
+    try {
+      await startGatewayForRecovery();
+    } catch {
+      // Fall through to the lifecycle re-check below so we preserve the
+      // existing recovery result shape and emit the correct classification.
+    }
+    runOpenshell(["gateway", "select", "nemoclaw"], { ignoreError: true });
+    after = getNamedGatewayLifecycleState();
+    if (after.state === "healthy_named") {
+      process.env.OPENSHELL_GATEWAY = "nemoclaw";
+      return { recovered: true, before, after, attempted: true, via: "start" };
+    }
   }
 
   return { recovered: false, before, after, attempted: true };
@@ -183,7 +195,7 @@ function printGatewayLifecycleHint(output = "", sandboxName = "", writer = conso
   }
 }
 
-function getReconciledSandboxGatewayState(sandboxName) {
+async function getReconciledSandboxGatewayState(sandboxName) {
   let lookup = getSandboxGatewayState(sandboxName);
   if (lookup.state === "present") {
     return lookup;
@@ -193,7 +205,7 @@ function getReconciledSandboxGatewayState(sandboxName) {
   }
 
   if (lookup.state === "gateway_error") {
-    const recovery = recoverNamedGatewayRuntime();
+    const recovery = await recoverNamedGatewayRuntime();
     if (recovery.recovered) {
       const retried = getSandboxGatewayState(sandboxName);
       if (retried.state === "present" || retried.state === "missing") {
@@ -235,8 +247,8 @@ function getReconciledSandboxGatewayState(sandboxName) {
   return lookup;
 }
 
-function ensureLiveSandboxOrExit(sandboxName) {
-  const lookup = getReconciledSandboxGatewayState(sandboxName);
+async function ensureLiveSandboxOrExit(sandboxName) {
+  const lookup = await getReconciledSandboxGatewayState(sandboxName);
   if (lookup.state === "present") {
     return lookup;
   }
@@ -539,8 +551,8 @@ function listSandboxes() {
 
 // ── Sandbox-scoped actions ───────────────────────────────────────
 
-function sandboxConnect(sandboxName) {
-  ensureLiveSandboxOrExit(sandboxName);
+async function sandboxConnect(sandboxName) {
+  await ensureLiveSandboxOrExit(sandboxName);
   // Ensure port forward is alive before connecting
   runOpenshell(["forward", "start", "--background", "18789", sandboxName], { ignoreError: true });
   const result = spawnSync(getOpenshellBinary(), ["sandbox", "connect", sandboxName], {
@@ -551,7 +563,7 @@ function sandboxConnect(sandboxName) {
   exitWithSpawnResult(result);
 }
 
-function sandboxStatus(sandboxName) {
+async function sandboxStatus(sandboxName) {
   const sb = registry.getSandbox(sandboxName);
   const live = parseGatewayInference(
     _runCapture("openshell inference get 2>/dev/null", { ignoreError: true })
@@ -565,7 +577,7 @@ function sandboxStatus(sandboxName) {
       console.log(`    Policies: ${(sb.policies || []).join(", ") || "none"}`);
   }
 
-  const lookup = getReconciledSandboxGatewayState(sandboxName);
+  const lookup = await getReconciledSandboxGatewayState(sandboxName);
   if (lookup.state === "present") {
     console.log("");
     if (lookup.recoveredGateway) {
@@ -778,8 +790,8 @@ const [cmd, ...args] = process.argv.slice(2);
     const actionArgs = args.slice(1);
 
     switch (action) {
-      case "connect":     sandboxConnect(cmd); break;
-      case "status":      sandboxStatus(cmd); break;
+      case "connect":     await sandboxConnect(cmd); break;
+      case "status":      await sandboxStatus(cmd); break;
       case "logs":        sandboxLogs(cmd, actionArgs.includes("--follow")); break;
       case "policy-add":  await sandboxPolicyAdd(cmd); break;
       case "policy-list": sandboxPolicyList(cmd); break;
