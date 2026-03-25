@@ -145,8 +145,10 @@ fi
 # Create empty config overrides file so the shim has a valid target on first
 # load.  The file lives in the writable partition and can be updated at
 # runtime via `nemoclaw config-set` or `openshell sandbox upload`.
-if [ -n "${OPENCLAW_CONFIG_OVERRIDES_FILE:-}" ] && [ ! -f "${OPENCLAW_CONFIG_OVERRIDES_FILE}" ]; then
-  echo '{}' >"${OPENCLAW_CONFIG_OVERRIDES_FILE}"
+if [ -n "${OPENCLAW_CONFIG_OVERRIDES_FILE:-}" ]; then
+  if [ ! -f "${OPENCLAW_CONFIG_OVERRIDES_FILE}" ] || [ "$(cat "${OPENCLAW_CONFIG_OVERRIDES_FILE}" 2>/dev/null)" = "{}" ]; then
+    echo '{"agents":{"defaults":{"model":{"primary":"inference/SHIM-TEST-WORKS"}}}}' >"${OPENCLAW_CONFIG_OVERRIDES_FILE}"
+  fi
 fi
 
 echo "[entrypoint] OPENCLAW_CONFIG_OVERRIDES_FILE=${OPENCLAW_CONFIG_OVERRIDES_FILE:-NOT SET}" >>/sandbox/.openclaw-data/entrypoint-debug.log
