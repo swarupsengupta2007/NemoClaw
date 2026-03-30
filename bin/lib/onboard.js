@@ -1635,9 +1635,6 @@ async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
         if (i < 4) sleep(2);
       }
 
-      if (exitOnFailure) {
-        destroyGateway();
-      }
       throw new Error("Gateway failed to start");
     }, {
       retries,
@@ -1645,12 +1642,15 @@ async function startGatewayWithOptions(_gpu, { exitOnFailure = true } = {}) {
       factor: 3,
       onFailedAttempt: (err) => {
         console.log(`  Gateway start attempt ${err.attemptNumber} failed. ${err.retriesLeft} retries left...`);
+        if (err.retriesLeft > 0 && exitOnFailure) {
+          destroyGateway();
+        }
       },
     });
   } catch {
     if (exitOnFailure) {
       console.error(`  Gateway failed to start after ${retries + 1} attempts.`);
-      console.error("  Stale state removed. Please rerun: nemoclaw onboard");
+      console.error("  Gateway state preserved for diagnostics.");
       console.error("");
       console.error("  Troubleshooting:");
       console.error("    openshell doctor logs --name nemoclaw");
