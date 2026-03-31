@@ -44,16 +44,16 @@ import {
 describe("onboard helpers", () => {
   it("classifies sandbox create timeout failures and tracks upload progress", () => {
     expect(
-      classifySandboxCreateFailure("Error: failed to read image export stream\nTimeout error").kind
+      classifySandboxCreateFailure("Error: failed to read image export stream\nTimeout error").kind,
     ).toBe("image_transfer_timeout");
     expect(
       classifySandboxCreateFailure(
         [
-          "  Pushing image openshell/sandbox-from:123 into gateway \"nemoclaw\"",
+          '  Pushing image openshell/sandbox-from:123 into gateway "nemoclaw"',
           "  [progress] Uploaded to gateway",
           "Error: failed to read image export stream",
-        ].join("\n")
-      )
+        ].join("\n"),
+      ),
     ).toEqual({
       kind: "image_transfer_timeout",
       uploadedToGateway: true,
@@ -61,15 +61,17 @@ describe("onboard helpers", () => {
   });
 
   it("classifies sandbox create connection resets and incomplete create streams", () => {
-    expect(classifySandboxCreateFailure("Connection reset by peer").kind).toBe("image_transfer_reset");
+    expect(classifySandboxCreateFailure("Connection reset by peer").kind).toBe(
+      "image_transfer_reset",
+    );
     expect(
       classifySandboxCreateFailure(
         [
           "  Image openshell/sandbox-from:123 is available in the gateway.",
           "Created sandbox: my-assistant",
           "Error: stream closed unexpectedly",
-        ].join("\n")
-      )
+        ].join("\n"),
+      ),
     ).toEqual({
       kind: "sandbox_create_incomplete",
       uploadedToGateway: true,
@@ -107,11 +109,17 @@ describe("onboard helpers", () => {
         "ARG CHAT_UI_URL=http://127.0.0.1:18789",
         "ARG NEMOCLAW_INFERENCE_COMPAT_B64=e30=",
         "ARG NEMOCLAW_BUILD_ID=default",
-      ].join("\n")
+      ].join("\n"),
     );
 
     try {
-      patchStagedDockerfile(dockerfilePath, "gpt-5.4", "http://127.0.0.1:19999", "build-123", "openai-api");
+      patchStagedDockerfile(
+        dockerfilePath,
+        "gpt-5.4",
+        "http://127.0.0.1:19999",
+        "build-123",
+        "openai-api",
+      );
       const patched = fs.readFileSync(dockerfilePath, "utf8");
       assert.match(patched, /^ARG NEMOCLAW_MODEL=gpt-5\.4$/m);
       assert.match(patched, /^ARG NEMOCLAW_PROVIDER_KEY=openai$/m);
@@ -132,7 +140,7 @@ describe("onboard helpers", () => {
         inferenceBaseUrl: "https://inference.local/v1",
         inferenceApi: "openai-completions",
         inferenceCompat: null,
-      }
+      },
     );
   });
 
@@ -141,22 +149,22 @@ describe("onboard helpers", () => {
       classifyValidationFailure({
         httpStatus: 404,
         message: "HTTP 404: model not found",
-      })
+      }),
     ).toEqual({ kind: "model", retry: "model" });
     expect(
       classifyValidationFailure({
         httpStatus: 405,
         message: "HTTP 405: unsupported model",
-      })
+      }),
     ).toEqual({ kind: "model", retry: "model" });
   });
 
   it("normalizes anthropic-compatible base URLs with a trailing /v1", () => {
     expect(normalizeProviderBaseUrl("https://proxy.example.com/v1", "anthropic")).toBe(
-      "https://proxy.example.com"
+      "https://proxy.example.com",
     );
     expect(normalizeProviderBaseUrl("https://proxy.example.com/v1/messages", "anthropic")).toBe(
-      "https://proxy.example.com"
+      "https://proxy.example.com",
     );
   });
 
@@ -177,7 +185,9 @@ describe("onboard helpers", () => {
   it("prints platform-appropriate service hints for port conflicts", () => {
     expect(getPortConflictServiceHints("darwin").join("\n")).toMatch(/launchctl unload/);
     expect(getPortConflictServiceHints("darwin").join("\n")).not.toMatch(/systemctl --user/);
-    expect(getPortConflictServiceHints("linux").join("\n")).toMatch(/systemctl --user stop openclaw-gateway.service/);
+    expect(getPortConflictServiceHints("linux").join("\n")).toMatch(
+      /systemctl --user stop openclaw-gateway.service/,
+    );
   });
 
   it("patches the staged Dockerfile for Anthropic with anthropic-messages routing", () => {
@@ -194,7 +204,7 @@ describe("onboard helpers", () => {
         "ARG NEMOCLAW_INFERENCE_API=openai-completions",
         "ARG NEMOCLAW_INFERENCE_COMPAT_B64=e30=",
         "ARG NEMOCLAW_BUILD_ID=default",
-      ].join("\n")
+      ].join("\n"),
     );
 
     try {
@@ -203,7 +213,7 @@ describe("onboard helpers", () => {
         "claude-sonnet-4-5",
         "http://127.0.0.1:18789",
         "build-claude",
-        "anthropic-prod"
+        "anthropic-prod",
       );
       const patched = fs.readFileSync(dockerfilePath, "utf8");
       assert.match(patched, /^ARG NEMOCLAW_MODEL=claude-sonnet-4-5$/m);
@@ -217,39 +227,37 @@ describe("onboard helpers", () => {
   });
 
   it("maps Gemini to the routed inference provider with supportsStore disabled", () => {
-    assert.deepEqual(
-      getSandboxInferenceConfig("gemini-2.5-flash", "gemini-api"),
-      {
-        providerKey: "inference",
-        primaryModelRef: "inference/gemini-2.5-flash",
-        inferenceBaseUrl: "https://inference.local/v1",
-        inferenceApi: "openai-completions",
-        inferenceCompat: {
-          supportsStore: false,
-        },
-      }
-    );
+    assert.deepEqual(getSandboxInferenceConfig("gemini-2.5-flash", "gemini-api"), {
+      providerKey: "inference",
+      primaryModelRef: "inference/gemini-2.5-flash",
+      inferenceBaseUrl: "https://inference.local/v1",
+      inferenceApi: "openai-completions",
+      inferenceCompat: {
+        supportsStore: false,
+      },
+    });
   });
 
   it("uses a probed Responses API override when one is available", () => {
-    assert.deepEqual(
-      getSandboxInferenceConfig("gpt-5.4", "openai-api", "openai-responses"),
-      {
-        providerKey: "openai",
-        primaryModelRef: "openai/gpt-5.4",
-        inferenceBaseUrl: "https://inference.local/v1",
-        inferenceApi: "openai-responses",
-        inferenceCompat: null,
-      }
-    );
+    assert.deepEqual(getSandboxInferenceConfig("gpt-5.4", "openai-api", "openai-responses"), {
+      providerKey: "openai",
+      primaryModelRef: "openai/gpt-5.4",
+      inferenceBaseUrl: "https://inference.local/v1",
+      inferenceApi: "openai-responses",
+      inferenceCompat: null,
+    });
   });
 
   it("pins the gateway image to the installed OpenShell release version", () => {
     expect(getInstalledOpenshellVersion("openshell 0.0.12")).toBe("0.0.12");
     expect(getInstalledOpenshellVersion("openshell 0.0.13-dev.8+gbbcaed2ea")).toBe("0.0.13");
     expect(getInstalledOpenshellVersion("bogus")).toBe(null);
-    expect(getStableGatewayImageRef("openshell 0.0.12")).toBe("ghcr.io/nvidia/openshell/cluster:0.0.12");
-    expect(getStableGatewayImageRef("openshell 0.0.13-dev.8+gbbcaed2ea")).toBe("ghcr.io/nvidia/openshell/cluster:0.0.13");
+    expect(getStableGatewayImageRef("openshell 0.0.12")).toBe(
+      "ghcr.io/nvidia/openshell/cluster:0.0.12",
+    );
+    expect(getStableGatewayImageRef("openshell 0.0.13-dev.8+gbbcaed2ea")).toBe(
+      "ghcr.io/nvidia/openshell/cluster:0.0.13",
+    );
     expect(getStableGatewayImageRef("bogus")).toBe(null);
   });
 
@@ -258,22 +266,22 @@ describe("onboard helpers", () => {
       isGatewayHealthy(
         "Gateway status: Connected\nGateway: nemoclaw",
         "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe(true);
     expect(
       isGatewayHealthy(
         "\u001b[1mServer Status\u001b[0m\n\n  Gateway: openshell\n  Server: https://127.0.0.1:8080\n  Status: Connected",
         "Error:   × No gateway metadata found for 'nemoclaw'.",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe(false);
     expect(
       isGatewayHealthy(
         "Server Status\n\n  Gateway: openshell\n  Status: Connected",
         "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe(false);
     expect(isGatewayHealthy("Gateway status: Disconnected", "Gateway: nemoclaw")).toBe(false);
     expect(isGatewayHealthy("Gateway status: Connected", "Gateway: something-else")).toBe(false);
@@ -284,42 +292,42 @@ describe("onboard helpers", () => {
       getGatewayReuseState(
         "Gateway status: Connected\nGateway: nemoclaw",
         "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe("healthy");
     expect(
       getGatewayReuseState(
         "Gateway status: Connected",
         "Error:   × No gateway metadata found for 'nemoclaw'.",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe("foreign-active");
     expect(
       getGatewayReuseState(
         "Server Status\n\n  Gateway: openshell\n  Status: Connected",
         "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe("foreign-active");
     expect(
       getGatewayReuseState(
         "Gateway status: Disconnected",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe("stale");
     expect(
       getGatewayReuseState(
         "Gateway status: Connected\nGateway: nemoclaw",
         "",
-        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: nemoclaw\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe("active-unnamed");
     expect(
       getGatewayReuseState(
         "Gateway status: Connected",
         "",
-        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080"
-      )
+        "Gateway Info\n\n  Gateway: openshell\n  Gateway endpoint: https://127.0.0.1:8080",
+      ),
     ).toBe("foreign-active");
     expect(getGatewayReuseState("", "")).toBe("missing");
   });
@@ -329,15 +337,15 @@ describe("onboard helpers", () => {
       getSandboxStateFromOutputs(
         "my-assistant",
         "Name: my-assistant",
-        "my-assistant   Ready   2m ago"
-      )
+        "my-assistant   Ready   2m ago",
+      ),
     ).toBe("ready");
     expect(
       getSandboxStateFromOutputs(
         "my-assistant",
         "Name: my-assistant",
-        "my-assistant   NotReady   init failed"
-      )
+        "my-assistant   NotReady   init failed",
+      ),
     ).toBe("not_ready");
     expect(getSandboxStateFromOutputs("my-assistant", "", "")).toBe("missing");
   });
@@ -346,26 +354,26 @@ describe("onboard helpers", () => {
     expect(
       shouldIncludeBuildContextPath(
         "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/orchestrator/main.py"
-      )
+        "/repo/nemoclaw-blueprint/orchestrator/main.py",
+      ),
     ).toBe(true);
     expect(
       shouldIncludeBuildContextPath(
         "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/.venv/bin/python"
-      )
+        "/repo/nemoclaw-blueprint/.venv/bin/python",
+      ),
     ).toBe(false);
     expect(
       shouldIncludeBuildContextPath(
         "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/.ruff_cache/cache"
-      )
+        "/repo/nemoclaw-blueprint/.ruff_cache/cache",
+      ),
     ).toBe(false);
     expect(
       shouldIncludeBuildContextPath(
         "/repo/nemoclaw-blueprint",
-        "/repo/nemoclaw-blueprint/._pyvenv.cfg"
-      )
+        "/repo/nemoclaw-blueprint/._pyvenv.cfg",
+      ),
     ).toBe(false);
   });
 
@@ -441,8 +449,8 @@ describe("onboard helpers", () => {
             provider: "nvidia-nim",
             model: "nvidia/nemotron-3-super-120b-a12b",
           },
-          { nonInteractive: true }
-        )
+          { nonInteractive: true },
+        ),
       ).toEqual([
         {
           field: "provider",
@@ -471,13 +479,16 @@ describe("onboard helpers", () => {
 
   it("returns a future-shell PATH hint for user-local openshell installs", () => {
     expect(getFutureShellPathHint("/home/test/.local/bin", "/usr/local/bin:/usr/bin")).toBe(
-      'export PATH="/home/test/.local/bin:$PATH"'
+      'export PATH="/home/test/.local/bin:$PATH"',
     );
   });
 
   it("skips the future-shell PATH hint when the bin dir is already on PATH", () => {
     expect(
-      getFutureShellPathHint("/home/test/.local/bin", "/home/test/.local/bin:/usr/local/bin:/usr/bin")
+      getFutureShellPathHint(
+        "/home/test/.local/bin",
+        "/home/test/.local/bin:/usr/local/bin:/usr/bin",
+      ),
     ).toBe(null);
   });
 
@@ -497,8 +508,9 @@ describe("onboard helpers", () => {
   });
 
   it("formatEnvAssignment produces NAME=VALUE pairs for sandbox env", () => {
-    expect(formatEnvAssignment("CHAT_UI_URL", "http://127.0.0.1:18789"))
-      .toBe("CHAT_UI_URL=http://127.0.0.1:18789");
+    expect(formatEnvAssignment("CHAT_UI_URL", "http://127.0.0.1:18789")).toBe(
+      "CHAT_UI_URL=http://127.0.0.1:18789",
+    );
     expect(formatEnvAssignment("EMPTY", "")).toBe("EMPTY=");
   });
 
@@ -532,7 +544,7 @@ describe("onboard helpers", () => {
 
   it("summarizeCurlFailure formats curl errors with exit code and truncated detail", () => {
     expect(summarizeCurlFailure(7, "Connection refused", "")).toBe(
-      "curl failed (exit 7): Connection refused"
+      "curl failed (exit 7): Connection refused",
     );
     expect(summarizeCurlFailure(28, "", "")).toBe("curl failed (exit 28)");
     expect(summarizeCurlFailure(0, "", "")).toBe("curl failed (exit 0)");
@@ -541,53 +553,75 @@ describe("onboard helpers", () => {
   it("summarizeProbeFailure prioritizes curl failures then HTTP status then generic message", () => {
     // curl failure takes precedence
     expect(summarizeProbeFailure("body", 500, 7, "Connection refused")).toBe(
-      "curl failed (exit 7): Connection refused"
+      "curl failed (exit 7): Connection refused",
     );
     // HTTP error when no curl failure
-    expect(summarizeProbeFailure("Not Found", 404, 0, "")).toBe(
-      "HTTP 404: Not Found"
-    );
+    expect(summarizeProbeFailure("Not Found", 404, 0, "")).toBe("HTTP 404: Not Found");
     // Fallback: no curl failure and no body → HTTP status with no body message
     expect(summarizeProbeFailure("", 0, 0, "")).toBe("HTTP 0 with no response body");
     // Non-JSON body gets compacted and returned
     expect(summarizeProbeFailure("  Service  Unavailable  ", 503, 0, "")).toBe(
-      "HTTP 503: Service Unavailable"
+      "HTTP 503: Service Unavailable",
     );
   });
 
   it("buildProviderArgs produces correct create arguments for generic providers", () => {
-    const args = buildProviderArgs("create", "discord-bridge", "generic", "DISCORD_BOT_TOKEN", null);
+    const args = buildProviderArgs(
+      "create",
+      "discord-bridge",
+      "generic",
+      "DISCORD_BOT_TOKEN",
+      null,
+    );
     expect(args).toEqual([
-      "provider", "create",
-      "--name", "discord-bridge",
-      "--type", "generic",
-      "--credential", "DISCORD_BOT_TOKEN",
+      "provider",
+      "create",
+      "--name",
+      "discord-bridge",
+      "--type",
+      "generic",
+      "--credential",
+      "DISCORD_BOT_TOKEN",
     ]);
   });
 
   it("buildProviderArgs produces correct update arguments", () => {
     const args = buildProviderArgs("update", "inference", "openai", "NVIDIA_API_KEY", null);
-    expect(args).toEqual([
-      "provider", "update",
-      "inference",
-      "--credential", "NVIDIA_API_KEY",
-    ]);
+    expect(args).toEqual(["provider", "update", "inference", "--credential", "NVIDIA_API_KEY"]);
   });
 
   it("buildProviderArgs appends OPENAI_BASE_URL config for openai providers with a base URL", () => {
-    const args = buildProviderArgs("create", "inference", "openai", "NVIDIA_API_KEY", "https://api.example.com/v1");
+    const args = buildProviderArgs(
+      "create",
+      "inference",
+      "openai",
+      "NVIDIA_API_KEY",
+      "https://api.example.com/v1",
+    );
     expect(args).toContain("--config");
     expect(args).toContain("OPENAI_BASE_URL=https://api.example.com/v1");
   });
 
   it("buildProviderArgs appends ANTHROPIC_BASE_URL config for anthropic providers with a base URL", () => {
-    const args = buildProviderArgs("create", "inference", "anthropic", "ANTHROPIC_API_KEY", "https://api.anthropic.example.com");
+    const args = buildProviderArgs(
+      "create",
+      "inference",
+      "anthropic",
+      "ANTHROPIC_API_KEY",
+      "https://api.anthropic.example.com",
+    );
     expect(args).toContain("--config");
     expect(args).toContain("ANTHROPIC_BASE_URL=https://api.anthropic.example.com");
   });
 
   it("buildProviderArgs ignores base URL for generic providers", () => {
-    const args = buildProviderArgs("create", "slack-bridge", "generic", "SLACK_BOT_TOKEN", "https://ignored.example.com");
+    const args = buildProviderArgs(
+      "create",
+      "slack-bridge",
+      "generic",
+      "SLACK_BOT_TOKEN",
+      "https://ignored.example.com",
+    );
     expect(args).not.toContain("--config");
   });
 
@@ -601,7 +635,9 @@ describe("onboard helpers", () => {
     const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -684,7 +720,7 @@ EOF
 fi
 exit 1
 `,
-      { mode: 0o755 }
+      { mode: 0o755 },
     );
 
     fs.writeFileSync(
@@ -696,7 +732,7 @@ console.log(JSON.stringify({
   otherModel: isInferenceRouteReady("nvidia-prod", "nvidia/other-model"),
   otherProvider: isInferenceRouteReady("openai-api", "nvidia/nemotron-3-super-120b-a12b"),
 }));
-`
+`,
     );
 
     const result = spawnSync(process.execPath, [scriptPath], {
@@ -740,7 +776,7 @@ EOF
 fi
 exit 1
 `,
-      { mode: 0o755 }
+      { mode: 0o755 },
     );
 
     fs.writeFileSync(
@@ -750,7 +786,7 @@ const { isOpenclawReady } = require(${onboardPath});
 console.log(JSON.stringify({
   ready: isOpenclawReady("my-assistant"),
 }));
-`
+`,
     );
 
     const result = spawnSync(process.execPath, [scriptPath], {
@@ -792,8 +828,8 @@ console.log(JSON.stringify({
           defaultSandbox: "my-assistant",
         },
         null,
-        2
-      )
+        2,
+      ),
     );
 
     fs.writeFileSync(
@@ -805,7 +841,7 @@ console.log(JSON.stringify({
   missing: arePolicyPresetsApplied("my-assistant", ["pypi", "slack"]),
   empty: arePolicyPresetsApplied("my-assistant", []),
 }));
-`
+`,
     );
 
     const result = spawnSync(process.execPath, [scriptPath], {
@@ -840,7 +876,9 @@ console.log(JSON.stringify({
     const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -910,7 +948,9 @@ const { setupInference } = require(${onboardPath});
     const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -983,7 +1023,9 @@ const { setupInference } = require(${onboardPath});
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -1066,7 +1108,9 @@ const { setupInference } = require(${onboardPath});
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -1114,14 +1158,14 @@ const { setupInference } = require(${onboardPath});
     assert.deepEqual(payload.result, { retry: "selection" });
     assert.equal(
       payload.commands.filter((entry) => entry.command.includes("'inference' 'set'")).length,
-      1
+      1,
     );
   });
 
   it("uses split curl timeout args and does not mislabel curl usage errors as timeouts", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "bin", "lib", "onboard.js"),
-      "utf-8"
+      "utf-8",
     );
 
     assert.match(source, /return \["--connect-timeout", "10", "--max-time", "60"\];/);
@@ -1132,7 +1176,7 @@ const { setupInference } = require(${onboardPath});
   it("suppresses expected provider-create AlreadyExists noise when update succeeds", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "bin", "lib", "onboard.js"),
-      "utf-8"
+      "utf-8",
     );
 
     assert.match(source, /stdio: \["ignore", "pipe", "pipe"\]/);
@@ -1143,32 +1187,35 @@ const { setupInference } = require(${onboardPath});
   it("starts the sandbox step before prompting for the sandbox name", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "bin", "lib", "onboard.js"),
-      "utf-8"
+      "utf-8",
     );
 
     assert.match(
       source,
-      /startRecordedStep\("sandbox", \{ sandboxName, provider, model \}\);\s*sandboxName = await createSandbox\(gpu, model, provider, preferredInferenceApi, sandboxName\);/
+      /startRecordedStep\("sandbox", \{ sandboxName, provider, model \}\);\s*sandboxName = await createSandbox\(gpu, model, provider, preferredInferenceApi, sandboxName\);/,
     );
   });
 
   it("prints numbered step headers even when onboarding skips resumed steps", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "bin", "lib", "onboard.js"),
-      "utf-8"
+      "utf-8",
     );
 
     assert.match(source, /const ONBOARD_STEP_INDEX = \{/);
     assert.match(source, /function skippedStepMessage\(stepName, detail, reason = "resume"\)/);
     assert.match(source, /step\(stepInfo\.number, 7, stepInfo\.title\);/);
     assert.match(source, /skippedStepMessage\("openclaw", sandboxName\)/);
-    assert.match(source, /skippedStepMessage\("policies", \(recordedPolicyPresets \|\| \[\]\)\.join\(", "\)\)/);
+    assert.match(
+      source,
+      /skippedStepMessage\("policies", \(recordedPolicyPresets \|\| \[\]\)\.join\(", "\)\)/,
+    );
   });
 
   it("surfaces sandbox-create phases and silence heartbeats during long image operations", () => {
     const source = fs.readFileSync(
       path.join(import.meta.dirname, "..", "bin", "lib", "onboard.js"),
-      "utf-8"
+      "utf-8",
     );
 
     assert.match(source, /function setPhase\(nextPhase\)/);
@@ -1176,7 +1223,10 @@ const { setupInference } = require(${onboardPath});
     assert.match(source, /Uploading image into OpenShell gateway\.\.\./);
     assert.match(source, /Creating sandbox in gateway\.\.\./);
     assert.match(source, /Still building sandbox image\.\.\. \(\$\{elapsed\}s elapsed\)/);
-    assert.match(source, /Still uploading image into OpenShell gateway\.\.\. \(\$\{elapsed\}s elapsed\)/);
+    assert.match(
+      source,
+      /Still uploading image into OpenShell gateway\.\.\. \(\$\{elapsed\}s elapsed\)/,
+    );
   });
 
   it("hydrates stored provider credentials when setupInference runs without process env set", () => {
@@ -1190,7 +1240,9 @@ const { setupInference } = require(${onboardPath});
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -1259,7 +1311,9 @@ const { setupInference } = require(${onboardPath});
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const registry = require(${registryPath});
@@ -1310,7 +1364,9 @@ console.log(JSON.stringify({ liveExists, sandbox: registry.getSandbox("my-assist
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -1382,7 +1438,9 @@ const { createSandbox } = require(${onboardPath});
     assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
     const payload = JSON.parse(payloadLine);
     assert.equal(payload.sandboxName, "my-assistant");
-    const createCommand = payload.commands.find((entry) => entry.command.includes("'sandbox' 'create'"));
+    const createCommand = payload.commands.find((entry) =>
+      entry.command.includes("'sandbox' 'create'"),
+    );
     assert.ok(createCommand, "expected sandbox create command");
     assert.match(createCommand.command, /'nemoclaw-start'/);
     assert.doesNotMatch(createCommand.command, /'--upload'/);
@@ -1391,8 +1449,10 @@ const { createSandbox } = require(${onboardPath});
     assert.doesNotMatch(createCommand.command, /DISCORD_BOT_TOKEN=/);
     assert.doesNotMatch(createCommand.command, /SLACK_BOT_TOKEN=/);
     assert.ok(
-      payload.commands.some((entry) => entry.command.includes("'forward' 'start' '--background' '18789' 'my-assistant'")),
-      "expected default loopback dashboard forward"
+      payload.commands.some((entry) =>
+        entry.command.includes("'forward' 'start' '--background' '18789' 'my-assistant'"),
+      ),
+      "expected default loopback dashboard forward",
     );
   });
 
@@ -1408,7 +1468,9 @@ const { createSandbox } = require(${onboardPath});
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -1475,27 +1537,34 @@ const { createSandbox } = require(${onboardPath});
     const commands = JSON.parse(result.stdout.trim().split("\n").pop());
     assert.ok(
       commands.some((entry) =>
-        entry.command.includes("'forward' 'start' '--background' '0.0.0.0:18789' 'my-assistant'")
+        entry.command.includes("'forward' 'start' '--background' '0.0.0.0:18789' 'my-assistant'"),
       ),
-      "expected remote dashboard forward target"
+      "expected remote dashboard forward target",
     );
   });
 
-  it("creates providers for messaging tokens and attaches them to the sandbox", { timeout: 60_000 }, async () => {
-    const repoRoot = path.join(import.meta.dirname, "..");
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-messaging-providers-"));
-    const fakeBin = path.join(tmpDir, "bin");
-    const scriptPath = path.join(tmpDir, "messaging-provider-check.js");
-    const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
-    const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
-    const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
-    const preflightPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "preflight.js"));
-    const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
+  it(
+    "creates providers for messaging tokens and attaches them to the sandbox",
+    { timeout: 60_000 },
+    async () => {
+      const repoRoot = path.join(import.meta.dirname, "..");
+      const tmpDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "nemoclaw-onboard-messaging-providers-"),
+      );
+      const fakeBin = path.join(tmpDir, "bin");
+      const scriptPath = path.join(tmpDir, "messaging-provider-check.js");
+      const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
+      const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
+      const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
+      const preflightPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "preflight.js"));
+      const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
-    fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+      fs.mkdirSync(fakeBin, { recursive: true });
+      fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+        mode: 0o755,
+      });
 
-    const script = String.raw`
+      const script = String.raw`
 const runner = require(${runnerPath});
 const registry = require(${registryPath});
 const preflight = require(${preflightPath});
@@ -1545,75 +1614,96 @@ const { createSandbox } = require(${onboardPath});
   process.exit(1);
 });
 `;
-    fs.writeFileSync(scriptPath, script);
+      fs.writeFileSync(scriptPath, script);
 
-    const result = spawnSync(process.execPath, [scriptPath], {
-      cwd: repoRoot,
-      encoding: "utf-8",
-      env: {
-        ...process.env,
-        HOME: tmpDir,
-        PATH: `${fakeBin}:${process.env.PATH || ""}`,
-        NEMOCLAW_NON_INTERACTIVE: "1",
-      },
-    });
+      const result = spawnSync(process.execPath, [scriptPath], {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        env: {
+          ...process.env,
+          HOME: tmpDir,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          NEMOCLAW_NON_INTERACTIVE: "1",
+        },
+      });
 
-    assert.equal(result.status, 0, result.stderr);
-    const payloadLine = result.stdout
-      .trim()
-      .split("\n")
-      .slice()
-      .reverse()
-      .find((line) => line.startsWith("{") && line.endsWith("}"));
-    assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
-    const payload = JSON.parse(payloadLine);
+      assert.equal(result.status, 0, result.stderr);
+      const payloadLine = result.stdout
+        .trim()
+        .split("\n")
+        .slice()
+        .reverse()
+        .find((line) => line.startsWith("{") && line.endsWith("}"));
+      assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
+      const payload = JSON.parse(payloadLine);
 
-    // Verify providers were created with the right credential keys
-    const providerCommands = payload.commands.filter((e) => e.command.includes("'provider' 'create'"));
-    const discordProvider = providerCommands.find((e) => e.command.includes("discord-bridge"));
-    assert.ok(discordProvider, "expected discord-bridge provider create command");
-    assert.match(discordProvider.command, /'--credential' 'DISCORD_BOT_TOKEN'/);
+      // Verify providers were created with the right credential keys
+      const providerCommands = payload.commands.filter((e) =>
+        e.command.includes("'provider' 'create'"),
+      );
+      const discordProvider = providerCommands.find((e) => e.command.includes("discord-bridge"));
+      assert.ok(discordProvider, "expected discord-bridge provider create command");
+      assert.match(discordProvider.command, /'--credential' 'DISCORD_BOT_TOKEN'/);
 
-    const slackProvider = providerCommands.find((e) => e.command.includes("slack-bridge"));
-    assert.ok(slackProvider, "expected slack-bridge provider create command");
-    assert.match(slackProvider.command, /'--credential' 'SLACK_BOT_TOKEN'/);
+      const slackProvider = providerCommands.find((e) => e.command.includes("slack-bridge"));
+      assert.ok(slackProvider, "expected slack-bridge provider create command");
+      assert.match(slackProvider.command, /'--credential' 'SLACK_BOT_TOKEN'/);
 
-    const telegramProvider = providerCommands.find((e) => e.command.includes("telegram-bridge"));
-    assert.ok(telegramProvider, "expected telegram-bridge provider create command");
-    assert.match(telegramProvider.command, /'--credential' 'TELEGRAM_BOT_TOKEN'/);
+      const telegramProvider = providerCommands.find((e) => e.command.includes("telegram-bridge"));
+      assert.ok(telegramProvider, "expected telegram-bridge provider create command");
+      assert.match(telegramProvider.command, /'--credential' 'TELEGRAM_BOT_TOKEN'/);
 
-    // Verify sandbox create includes --provider flags for all three
-    const createCommand = payload.commands.find((e) => e.command.includes("'sandbox' 'create'"));
-    assert.ok(createCommand, "expected sandbox create command");
-    assert.match(createCommand.command, /'--provider' 'discord-bridge'/);
-    assert.match(createCommand.command, /'--provider' 'slack-bridge'/);
-    assert.match(createCommand.command, /'--provider' 'telegram-bridge'/);
+      // Verify sandbox create includes --provider flags for all three
+      const createCommand = payload.commands.find((e) => e.command.includes("'sandbox' 'create'"));
+      assert.ok(createCommand, "expected sandbox create command");
+      assert.match(createCommand.command, /'--provider' 'discord-bridge'/);
+      assert.match(createCommand.command, /'--provider' 'slack-bridge'/);
+      assert.match(createCommand.command, /'--provider' 'telegram-bridge'/);
 
-    // Verify real token values are NOT in the sandbox create command
-    assert.doesNotMatch(createCommand.command, /test-discord-token-value/);
-    assert.doesNotMatch(createCommand.command, /xoxb-test-slack-token-value/);
-    assert.doesNotMatch(createCommand.command, /123456:ABC-test-telegram-token/);
+      // Verify real token values are NOT in the sandbox create command
+      assert.doesNotMatch(createCommand.command, /test-discord-token-value/);
+      assert.doesNotMatch(createCommand.command, /xoxb-test-slack-token-value/);
+      assert.doesNotMatch(createCommand.command, /123456:ABC-test-telegram-token/);
 
-    // Verify blocked credentials are NOT in the sandbox spawn environment
-    assert.ok(createCommand.env, "expected env to be captured from spawn call");
-    assert.equal(createCommand.env.DISCORD_BOT_TOKEN, undefined,
-      "DISCORD_BOT_TOKEN must not be in sandbox env");
-    assert.equal(createCommand.env.SLACK_BOT_TOKEN, undefined,
-      "SLACK_BOT_TOKEN must not be in sandbox env");
-    assert.equal(createCommand.env.TELEGRAM_BOT_TOKEN, undefined,
-      "TELEGRAM_BOT_TOKEN must not be in sandbox env");
-    assert.equal(createCommand.env.NVIDIA_API_KEY, undefined,
-      "NVIDIA_API_KEY must not be in sandbox env");
+      // Verify blocked credentials are NOT in the sandbox spawn environment
+      assert.ok(createCommand.env, "expected env to be captured from spawn call");
+      assert.equal(
+        createCommand.env.DISCORD_BOT_TOKEN,
+        undefined,
+        "DISCORD_BOT_TOKEN must not be in sandbox env",
+      );
+      assert.equal(
+        createCommand.env.SLACK_BOT_TOKEN,
+        undefined,
+        "SLACK_BOT_TOKEN must not be in sandbox env",
+      );
+      assert.equal(
+        createCommand.env.TELEGRAM_BOT_TOKEN,
+        undefined,
+        "TELEGRAM_BOT_TOKEN must not be in sandbox env",
+      );
+      assert.equal(
+        createCommand.env.NVIDIA_API_KEY,
+        undefined,
+        "NVIDIA_API_KEY must not be in sandbox env",
+      );
 
-    // Belt-and-suspenders: raw token values must not appear anywhere in env
-    const envString = JSON.stringify(createCommand.env);
-    assert.ok(!envString.includes("test-discord-token-value"),
-      "Discord token value must not leak into sandbox env");
-    assert.ok(!envString.includes("xoxb-test-slack-token-value"),
-      "Slack token value must not leak into sandbox env");
-    assert.ok(!envString.includes("123456:ABC-test-telegram-token"),
-      "Telegram token value must not leak into sandbox env");
-  });
+      // Belt-and-suspenders: raw token values must not appear anywhere in env
+      const envString = JSON.stringify(createCommand.env);
+      assert.ok(
+        !envString.includes("test-discord-token-value"),
+        "Discord token value must not leak into sandbox env",
+      );
+      assert.ok(
+        !envString.includes("xoxb-test-slack-token-value"),
+        "Slack token value must not leak into sandbox env",
+      );
+      assert.ok(
+        !envString.includes("123456:ABC-test-telegram-token"),
+        "Telegram token value must not leak into sandbox env",
+      );
+    },
+  );
 
   it("upsertProvider creates a new provider and returns ok on success", () => {
     const repoRoot = path.join(import.meta.dirname, "..");
@@ -1624,7 +1714,9 @@ const { createSandbox } = require(${onboardPath});
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = `
 const runner = require(${runnerPath});
@@ -1662,7 +1754,9 @@ console.log(JSON.stringify({ result, commands }));
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = `
 const runner = require(${runnerPath});
@@ -1694,7 +1788,10 @@ console.log(JSON.stringify({ result, commands }));
     assert.equal(payload.commands.length, 2);
     assert.match(payload.commands[0], /'provider' 'create'/);
     assert.match(payload.commands[1], /'provider' 'update'/);
-    assert.match(payload.commands[1], /'--config' 'OPENAI_BASE_URL=https:\/\/integrate.api.nvidia.com\/v1'/);
+    assert.match(
+      payload.commands[1],
+      /'--config' 'OPENAI_BASE_URL=https:\/\/integrate.api.nvidia.com\/v1'/,
+    );
   });
 
   it("upsertProvider returns error details when both create and update fail", () => {
@@ -1706,7 +1803,9 @@ console.log(JSON.stringify({ result, commands }));
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = `
 const runner = require(${runnerPath});
@@ -1741,7 +1840,9 @@ console.log(JSON.stringify(result));
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = `
 const runner = require(${runnerPath});
@@ -1773,7 +1874,9 @@ console.log(JSON.stringify({ exists: providerExistsInGateway("discord-bridge") }
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = `
 const credentials = require(${credentialsPath});
@@ -1809,8 +1912,16 @@ console.log(JSON.stringify({
     assert.equal(result.status, 0, result.stderr);
     const payload = JSON.parse(result.stdout.trim().split("\n").pop());
     assert.equal(payload.nullResult, null, "should return null for null input");
-    assert.equal(payload.hydrated, "stored-telegram-token", "should return stored credential value");
-    assert.equal(payload.envSet, "stored-telegram-token", "should set process.env with stored value");
+    assert.equal(
+      payload.hydrated,
+      "stored-telegram-token",
+      "should return stored credential value",
+    );
+    assert.equal(
+      payload.envSet,
+      "stored-telegram-token",
+      "should set process.env with stored value",
+    );
     assert.equal(payload.missing, null, "should return null when credential is not stored");
   });
 
@@ -1823,7 +1934,9 @@ console.log(JSON.stringify({
     const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = `
 const runner = require(${runnerPath});
@@ -1859,7 +1972,9 @@ console.log(JSON.stringify({ exists: providerExistsInGateway("nonexistent") }));
     const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -1975,7 +2090,9 @@ const { createSandbox } = require(${onboardPath});
     const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -2023,13 +2140,13 @@ const { createSandbox } = require(${onboardPath});
     assert.equal(payload.sandboxName, "my-assistant");
     assert.ok(
       payload.commands.some((entry) =>
-        entry.command.includes("'forward' 'start' '--background' '0.0.0.0:18789' 'my-assistant'")
+        entry.command.includes("'forward' 'start' '--background' '0.0.0.0:18789' 'my-assistant'"),
       ),
-      "expected dashboard forward restore on sandbox reuse"
+      "expected dashboard forward restore on sandbox reuse",
     );
     assert.ok(
       payload.commands.every((entry) => !entry.command.includes("'sandbox' 'create'")),
-      "did not expect sandbox create when reusing existing sandbox"
+      "did not expect sandbox create when reusing existing sandbox",
     );
   });
 
@@ -2044,7 +2161,7 @@ const { createSandbox } = require(${onboardPath});
           "  [progress] Uploaded to gateway",
           "Error: failed to read image export stream",
           "Timeout error",
-        ].join("\n")
+        ].join("\n"),
       );
     } finally {
       console.error = originalError;
@@ -2055,7 +2172,7 @@ const { createSandbox } = require(${onboardPath});
     assert.match(joined, /Recovery: nemoclaw onboard --resume/);
     assert.match(
       joined,
-      /Progress reached the gateway upload stage, so resume may be able to reuse existing gateway state\./
+      /Progress reached the gateway upload stage, so resume may be able to reuse existing gateway state\./,
     );
   });
 
@@ -2069,7 +2186,7 @@ const { createSandbox } = require(${onboardPath});
           "  Pushing image openshell/sandbox-from:123 into gateway nemoclaw",
           "  [progress] Uploaded to gateway",
           "Error: Connection reset by peer",
-        ].join("\n")
+        ].join("\n"),
       );
     } finally {
       console.error = originalError;
@@ -2078,7 +2195,10 @@ const { createSandbox } = require(${onboardPath});
     const joined = errors.join("\n");
     assert.match(joined, /Hint: the image push\/import stream was interrupted\./);
     assert.match(joined, /Recovery: nemoclaw onboard --resume/);
-    assert.match(joined, /The image appears to have reached the gateway before the stream failed\./);
+    assert.match(
+      joined,
+      /The image appears to have reached the gateway before the stream failed\./,
+    );
   });
 
   it("accepts gateway inference when system inference is separately not configured", () => {
@@ -2091,7 +2211,9 @@ const { createSandbox } = require(${onboardPath});
     const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -2159,7 +2281,9 @@ const { setupInference } = require(${onboardPath});
     const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
 
     fs.mkdirSync(fakeBin, { recursive: true });
-    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
+      mode: 0o755,
+    });
 
     const script = String.raw`
 const runner = require(${runnerPath});
@@ -2215,5 +2339,4 @@ const { setupInference } = require(${onboardPath});
     const commands = JSON.parse(result.stdout.trim().split("\n").pop());
     assert.equal(commands.length, 3);
   });
-
 });
