@@ -27,7 +27,7 @@ export function resolveDashboardForwardTarget(
   }
 }
 
-export function buildControlUiUrls(token: string | null): string[] {
+export function buildControlUiUrls(token: string | null = null): string[] {
   const hash = token ? `#token=${token}` : "";
   const baseUrl = `http://127.0.0.1:${CONTROL_UI_PORT}`;
   const urls = [`${baseUrl}${CONTROL_UI_PATH}${hash}`];
