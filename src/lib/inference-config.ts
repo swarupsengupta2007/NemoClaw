@@ -115,10 +115,10 @@ export function getProviderSelectionConfig(
   }
 }
 
-export function getOpenClawPrimaryModel(provider: string, model?: string): string | null {
+export function getOpenClawPrimaryModel(provider: string, model?: string): string {
   const resolvedModel =
     model || (provider === "ollama-local" ? DEFAULT_OLLAMA_MODEL : DEFAULT_CLOUD_MODEL);
-  return resolvedModel ? `${MANAGED_PROVIDER_ID}/${resolvedModel}` : null;
+  return `${MANAGED_PROVIDER_ID}/${resolvedModel}`;
 }
 
 export function parseGatewayInference(output: string | null | undefined): GatewayInference | null {
