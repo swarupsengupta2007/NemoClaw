@@ -9,8 +9,10 @@
 # That address is NOT reachable from k3s pods, causing DNS to fail and
 # CoreDNS to CrashLoop.
 #
-# Fix: forward CoreDNS to the container's default gateway IP, which
-# is reachable from pods and routes DNS through Docker/Podman to the host.
+# Fix: forward CoreDNS to a non-loopback upstream resolver derived from
+# the container's resolv.conf, the host's resolv.conf, or systemd-resolved's
+# actual upstream (via resolve_coredns_upstream). This avoids the loopback
+# address that is unreachable from k3s pods.
 #
 # Run this after `openshell gateway start` on Colima or Podman setups.
 #

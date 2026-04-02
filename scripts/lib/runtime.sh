@@ -129,7 +129,10 @@ find_podman_socket() {
   else
     local uid
     uid="$(id -u 2>/dev/null || echo 1000)"
+    # XDG_RUNTIME_DIR takes priority (user-set, may differ from /run/user/$uid)
+    local xdg_sock="${XDG_RUNTIME_DIR:-/run/user/$uid}/podman/podman.sock"
     for socket_path in \
+      "$xdg_sock" \
       "/run/user/$uid/podman/podman.sock" \
       "/run/podman/podman.sock"
     do
