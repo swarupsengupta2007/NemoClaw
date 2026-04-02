@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { execFileSync, execSync, spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { platform, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -69,7 +69,11 @@ const TIMEOUT_MS = 30_000;
 
 function commandExists(cmd: string): boolean {
   try {
-    execSync(`command -v ${cmd}`, { stdio: ["ignore", "ignore", "ignore"] });
+    // Use sh -c with the command as a separate argument to avoid shell injection.
+    // While cmd values are hardcoded internally, this is defensive.
+    execFileSync("sh", ["-c", `command -v "$1"`, "--", cmd], {
+      stdio: ["ignore", "ignore", "ignore"],
+    });
     return true;
   } catch {
     return false;
