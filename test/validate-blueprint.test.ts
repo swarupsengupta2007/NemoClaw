@@ -32,6 +32,10 @@ describe("blueprint.yaml", () => {
     expect(bp).toEqual(expect.objectContaining({}));
   });
 
+  it("declares the current minimum OpenShell version expected by NemoClaw", () => {
+    expect(bp.min_openshell_version).toBe("0.0.21");
+  });
+
   it("has a non-empty top-level profiles list", () => {
     expect(declared.length).toBeGreaterThan(0);
   });
