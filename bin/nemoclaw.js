@@ -786,7 +786,10 @@ async function start() {
 
 function stop() {
   const { stopAll } = require("./lib/services");
-  stopAll();
+  const { defaultSandbox } = registry.listSandboxes();
+  const safeName =
+    defaultSandbox && /^[a-zA-Z0-9._-]+$/.test(defaultSandbox) ? defaultSandbox : null;
+  stopAll({ sandboxName: safeName || undefined });
 }
 
 function debug(args) {
@@ -862,7 +865,7 @@ function showStatus() {
 
   // Show service status
   const { showStatus: showServiceStatus } = require("./lib/services");
-  showServiceStatus();
+  showServiceStatus({ sandboxName: defaultSandbox || undefined });
 }
 
 async function listSandboxes() {
