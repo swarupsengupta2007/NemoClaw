@@ -3157,44 +3157,64 @@ async function setupMessagingChannels() {
     return;
   }
 
-  // Show available channels with ●/○ markers — same UX as policy presets
-  const suggestions = MESSAGING_CHANNELS.filter((c) => getMessagingToken(c.envKey)).map(
-    (c) => c.name,
-  );
+  // Show available channels with ●/○ markers (same UX as policy presets)
+  const configured = MESSAGING_CHANNELS.filter((c) => getMessagingToken(c.envKey));
+  const suggestions = configured.map((c) => c.name);
 
   console.log("");
   console.log("  Available messaging channels:");
-  MESSAGING_CHANNELS.forEach((ch) => {
+  for (const ch of MESSAGING_CHANNELS) {
     const hasToken = !!getMessagingToken(ch.envKey);
     const marker = hasToken ? "●" : "○";
-    const configured = hasToken ? " (configured)" : "";
-    console.log(`    ${marker} ${ch.name} — ${ch.description}${configured}`);
-  });
+    const status = hasToken ? " (configured)" : "";
+    console.log(`    ${marker} ${ch.name} — ${ch.description}${status}`);
+  }
   console.log("");
 
-  const promptText =
-    suggestions.length > 0
-      ? `  Enable channels (${suggestions.join(", ")})? [Y/n/list]: `
-      : "  Enable messaging channels? [y/N/list]: ";
-  const defaultYes = suggestions.length > 0;
-
-  const answer = (await prompt(promptText)).trim().toLowerCase();
-
-  if (answer === "n" || (!defaultYes && answer !== "y" && answer !== "yes" && answer !== "list")) {
-    console.log("  Skipping messaging channels.");
-    return;
-  }
-
   let selected;
-  if (answer === "list") {
-    const picks = await prompt("  Enter channel names (comma-separated): ");
-    selected = picks
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean);
+
+  if (suggestions.length > 0) {
+    const answer = (
+      await prompt(`  Keep configured channels (${suggestions.join(", ")})? [Y/n/list]: `)
+    )
+      .trim()
+      .toLowerCase();
+
+    if (answer === "n") {
+      console.log("  Skipping messaging channels.");
+      return;
+    }
+    if (answer === "list") {
+      const picks = await prompt("  Enter channel names (comma-separated): ");
+      selected = picks
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+    } else {
+      // Y or Enter — keep what's configured, nothing more to do
+      console.log(`  ✓ Keeping: ${suggestions.join(", ")}`);
+      return;
+    }
   } else {
-    // Y/Enter (when suggestions exist) or y/yes (when none) — use suggestions or all
-    selected = suggestions.length > 0 ? suggestions : MESSAGING_CHANNELS.map((c) => c.name);
+    const answer = (
+      await prompt("  Enable messaging channels? [y/N/list]: ")
+    )
+      .trim()
+      .toLowerCase();
+
+    if (answer === "list") {
+      const picks = await prompt("  Enter channel names (comma-separated): ");
+      selected = picks
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .filter(Boolean);
+    } else if (answer === "y" || answer === "yes") {
+      // Enable all
+      selected = MESSAGING_CHANNELS.map((c) => c.name);
+    } else {
+      console.log("  Skipping messaging channels.");
+      return;
+    }
   }
 
   // For each selected channel, prompt for token if not already set
