@@ -453,8 +453,11 @@ info "Telegram API response: ${tg_api:0:300}"
 tg_status=$(echo "$tg_api" | grep -E '^[0-9]' | head -1 | awk '{print $1}')
 if [ "$tg_status" = "200" ]; then
   pass "M15: Telegram getMe returned 200 — real token verified!"
-elif [ "$tg_status" = "401" ]; then
-  pass "M15: Telegram getMe returned 401 — L7 proxy rewrote placeholder (fake token rejected by API)"
+elif [ "$tg_status" = "401" ] || [ "$tg_status" = "404" ]; then
+  # Telegram returns 404 (not 401) for invalid bot tokens in the URL path.
+  # Either status proves the L7 proxy rewrote the placeholder and the request
+  # reached the real Telegram API.
+  pass "M15: Telegram getMe returned $tg_status — L7 proxy rewrote placeholder (fake token rejected by API)"
   pass "M16: Full chain verified: sandbox → proxy → token rewrite → Telegram API"
 elif echo "$tg_api" | grep -q "TIMEOUT"; then
   skip "M15: Telegram API timed out (network issue, not a plumbing failure)"
