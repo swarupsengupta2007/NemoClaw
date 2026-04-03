@@ -816,15 +816,18 @@ resolve_openclaw_version() {
 
 install_nemoclaw() {
   command_exists git || error "git was not found on PATH."
-  if [[ -f "./package.json" ]] && grep -q '"name": "nemoclaw"' ./package.json 2>/dev/null; then
-    info "NemoClaw package.json found in current directory — installing from source…"
-    NEMOCLAW_SOURCE_ROOT="$(pwd)"
-    spin "Preparing OpenClaw package" bash -c "$(declare -f info warn resolve_openclaw_version pre_extract_openclaw); pre_extract_openclaw \"\$1\"" _ "$(pwd)" \
+  local repo_root package_json
+  repo_root="$(resolve_repo_root)"
+  package_json="${repo_root}/package.json"
+  if [[ -f "$package_json" ]] && grep -q '"name"[[:space:]]*:[[:space:]]*"nemoclaw"' "$package_json" 2>/dev/null; then
+    info "NemoClaw package.json found in the selected source checkout — installing from source…"
+    NEMOCLAW_SOURCE_ROOT="$repo_root"
+    spin "Preparing OpenClaw package" bash -c "$(declare -f info warn resolve_openclaw_version pre_extract_openclaw); pre_extract_openclaw \"\$1\"" _ "$NEMOCLAW_SOURCE_ROOT" \
       || warn "Pre-extraction failed — npm install may fail if openclaw tarball is broken"
-    spin "Installing NemoClaw dependencies" npm install --ignore-scripts
-    spin "Building NemoClaw CLI modules" npm run --if-present build:cli
-    spin "Building NemoClaw plugin" bash -c 'cd nemoclaw && npm install --ignore-scripts && npm run build'
-    spin "Linking NemoClaw CLI" npm link
+    spin "Installing NemoClaw dependencies" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm install --ignore-scripts"
+    spin "Building NemoClaw CLI modules" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm run --if-present build:cli"
+    spin "Building NemoClaw plugin" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\"/nemoclaw && npm install --ignore-scripts && npm run build"
+    spin "Linking NemoClaw CLI" bash -c "cd \"$NEMOCLAW_SOURCE_ROOT\" && npm link"
   else
     info "Installing NemoClaw from GitHub…"
     # Resolve the latest release tag so we never install raw main.

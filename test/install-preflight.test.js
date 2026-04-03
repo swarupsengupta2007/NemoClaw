@@ -112,7 +112,7 @@ exit 1
     expect(output).toMatch(/Failed to download nvm installer/);
   });
 
-  it("uses the HTTPS GitHub fallback when not installing from a repo checkout", () => {
+  it("treats the installer script's checkout as the source root even when cwd is elsewhere", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-install-fallback-"));
     const fakeBin = path.join(tmp, "bin");
     const prefix = path.join(tmp, "prefix");
@@ -212,7 +212,9 @@ exit 98
     });
 
     expect(result.status).toBe(0);
-    expect(fs.readFileSync(gitLog, "utf-8")).toMatch(/clone.*NemoClaw\.git/);
+    const gitCalls = fs.readFileSync(gitLog, "utf-8");
+    expect(gitCalls).not.toMatch(/clone/);
+    expect(gitCalls).not.toMatch(/fetch/);
   }, 60_000);
 
   it("prints the HTTPS GitHub remediation when the binary is missing", () => {
@@ -1136,7 +1138,7 @@ exit 0`,
     expect(`${result.stdout}${result.stderr}`).not.toMatch(/curl should not be called/);
   });
 
-  it("full install: git clone receives --branch with the resolved release tag", () => {
+  it("repo-checkout install does not clone a separate ref even when cwd is elsewhere", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-install-tag-e2e-"));
     const fakeBin = path.join(tmp, "bin");
     const prefix = path.join(tmp, "prefix");
@@ -1200,7 +1202,8 @@ fi`,
 
     expect(result.status).toBe(0);
     const gitCalls = fs.readFileSync(gitLog, "utf-8");
-    expect(gitCalls).toMatch(/--branch latest/);
+    expect(gitCalls).not.toMatch(/clone/);
+    expect(gitCalls).not.toMatch(/fetch/);
   });
 });
 
@@ -1609,7 +1612,7 @@ exit 0`,
     return { fakeBin, prefix, gitLog };
   }
 
-  it("git clone receives --branch latest by default", () => {
+  it("repo-checkout install ignores release-tag cloning when invoked by path", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-curl-pipe-tag-e2e-"));
     const { fakeBin, prefix, gitLog } = buildCurlPipeEnv(tmp, {
       curlStub: `#!/usr/bin/env bash
@@ -1645,10 +1648,11 @@ exit 0`,
 
     expect(result.status).toBe(0);
     const gitCalls = fs.readFileSync(gitLog, "utf-8");
-    expect(gitCalls).toMatch(/--branch latest/);
+    expect(gitCalls).not.toMatch(/clone/);
+    expect(gitCalls).not.toMatch(/fetch/);
   });
 
-  it("uses NEMOCLAW_INSTALL_TAG override without calling the API", () => {
+  it("repo-checkout install ignores NEMOCLAW_INSTALL_TAG when invoked by path", () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-curl-pipe-tag-override-"));
     const { fakeBin, prefix, gitLog } = buildCurlPipeEnv(tmp, {
       curlStub: `#!/usr/bin/env bash
@@ -1691,8 +1695,8 @@ exit 0`,
 
     expect(result.status).toBe(0);
     const gitCalls = fs.readFileSync(gitLog, "utf-8");
-    expect(gitCalls).toMatch(/--branch v0\.2\.0/);
-    // Confirm the releases API was NOT called
+    expect(gitCalls).not.toMatch(/clone/);
+    expect(gitCalls).not.toMatch(/fetch/);
     expect(`${result.stdout}${result.stderr}`).not.toMatch(/curl should not hit the releases API/);
   });
 
