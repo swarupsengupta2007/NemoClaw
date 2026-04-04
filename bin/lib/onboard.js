@@ -3191,17 +3191,13 @@ async function setupMessagingChannels() {
   );
 
   const output = process.stderr;
-  // Total lines drawn: 1 blank + 1 header + N channels + 1 blank + 1 prompt = N + 4
-  const listLineCount = MESSAGING_CHANNELS.length + 4;
+  // Lines above the prompt: 1 blank + 1 header + N channels + 1 blank = N + 3
+  const linesAbovePrompt = MESSAGING_CHANNELS.length + 3;
   let firstDraw = true;
   const showList = () => {
     if (!firstDraw) {
-      // Move cursor up to overwrite previous list, then clear each line
-      output.write(`\x1b[${listLineCount}A`);
-      for (let line = 0; line < listLineCount; line += 1) {
-        output.write("\x1b[2K\n");
-      }
-      output.write(`\x1b[${listLineCount}A`);
+      // Cursor is at end of prompt line. Move to column 0, go up, clear to end of screen.
+      output.write(`\r\x1b[${linesAbovePrompt}A\x1b[J`);
     }
     firstDraw = false;
     output.write("\n");
