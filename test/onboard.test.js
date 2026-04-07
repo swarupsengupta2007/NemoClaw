@@ -1567,94 +1567,94 @@ console.log(JSON.stringify({ liveExists, sandbox: registry.getSandbox("my-assist
     "binds the dashboard forward to 0.0.0.0 when CHAT_UI_URL points to a remote host",
     { timeout: 45000 },
     async () => {
-      const repoRoot = path.join(import.meta.dirname, "..");
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-remote-forward-"));
       const fakeBin = path.join(tmpDir, "bin");
-      const scriptPath = path.join(tmpDir, "create-sandbox-remote-forward.js");
-      const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
-      const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
-      const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
-      const preflightPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "preflight.js"));
-      const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
-
       fs.mkdirSync(fakeBin, { recursive: true });
       fs.writeFileSync(path.join(fakeBin, "openshell"), "#!/usr/bin/env bash\nexit 0\n", {
         mode: 0o755,
       });
 
-      const script = String.raw`
-const runner = require(${runnerPath});
-const registry = require(${registryPath});
-const preflight = require(${preflightPath});
-const credentials = require(${credentialsPath});
-const childProcess = require("node:child_process");
-const { EventEmitter } = require("node:events");
+      const runner = cjsRequire("../bin/lib/runner");
+      const registry = cjsRequire("../bin/lib/registry");
+      const preflight = cjsRequire("../bin/lib/preflight");
+      const credentials = cjsRequire("../bin/lib/credentials");
+      const sandboxCreateStream = cjsRequire("../dist/lib/sandbox-create-stream");
 
-const commands = [];
-runner.run = (command, opts = {}) => {
-  commands.push({ command, env: opts.env || null });
-  return { status: 0 };
-};
-runner.runCapture = (command) => {
-  if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
-  if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
-  if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) return "ok";
-  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
-  return "";
-};
-registry.registerSandbox = () => true;
-registry.removeSandbox = () => true;
-preflight.checkPortAvailable = async () => ({ ok: true });
-credentials.prompt = async () => "";
+      const originalRun = runner.run;
+      const originalRunCapture = runner.runCapture;
+      const originalRegisterSandbox = registry.registerSandbox;
+      const originalRemoveSandbox = registry.removeSandbox;
+      const originalCheckPortAvailable = preflight.checkPortAvailable;
+      const originalPrompt = credentials.prompt;
+      const originalStreamSandboxCreate = sandboxCreateStream.streamSandboxCreate;
+      const originalHome = process.env.HOME;
+      const originalPath = process.env.PATH;
+      const originalGateway = process.env.OPENSHELL_GATEWAY;
+      const originalNonInteractive = process.env.NEMOCLAW_NON_INTERACTIVE;
+      const originalChatUiUrl = process.env.CHAT_UI_URL;
 
-childProcess.spawn = (...args) => {
-  const child = new EventEmitter();
-  child.stdout = new EventEmitter();
-  child.stderr = new EventEmitter();
-  commands.push({ command: args[1][1], env: args[2]?.env || null });
-  process.nextTick(() => {
-    child.stdout.emit("data", Buffer.from("Created sandbox: my-assistant\n"));
-    child.emit("close", 0);
-  });
-  return child;
-};
+      const commands = [];
+      try {
+        runner.run = (command, opts = {}) => {
+          commands.push({ command, env: opts.env || null });
+          return { status: 0 };
+        };
+        runner.runCapture = (command) => {
+          if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
+          if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
+          if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) {
+            return "ok";
+          }
+          if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
+          return "";
+        };
+        registry.registerSandbox = () => true;
+        registry.removeSandbox = () => true;
+        preflight.checkPortAvailable = async () => ({ ok: true });
+        credentials.prompt = async () => "";
+        sandboxCreateStream.streamSandboxCreate = async (command, env) => {
+          commands.push({ command, env: env || null });
+          return {
+            status: 0,
+            output: "Created sandbox: my-assistant",
+            sawProgress: true,
+          };
+        };
 
-const { createSandbox } = require(${onboardPath});
+        process.env.HOME = tmpDir;
+        process.env.PATH = `${fakeBin}:${originalPath || ""}`;
+        process.env.OPENSHELL_GATEWAY = "nemoclaw";
+        process.env.NEMOCLAW_NON_INTERACTIVE = "1";
+        process.env.CHAT_UI_URL = "https://chat.example.com";
 
-(async () => {
-  process.env.OPENSHELL_GATEWAY = "nemoclaw";
-  process.env.CHAT_UI_URL = "https://chat.example.com";
-  await createSandbox(null, "gpt-5.4");
-  console.log(JSON.stringify(commands));
-})().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
-`;
-      fs.writeFileSync(scriptPath, script);
+        const { createSandbox } = loadFreshOnboardModule();
+        await createSandbox(null, "gpt-5.4");
 
-      const result = spawnSync(process.execPath, [scriptPath], {
-        cwd: repoRoot,
-        encoding: "utf-8",
-        env: {
-          ...process.env,
-          HOME: tmpDir,
-          PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          NEMOCLAW_NON_INTERACTIVE: "1",
-          NODE_OPTIONS: "",
-          NODE_V8_COVERAGE: "",
-        },
-        timeout: 30000,
-      });
-
-      assert.equal(result.status, 0, result.stderr);
-      const commands = JSON.parse(result.stdout.trim().split("\n").pop());
-      assert.ok(
-        commands.some((entry) =>
-          entry.command.includes("'forward' 'start' '--background' '0.0.0.0:18789' 'my-assistant'"),
-        ),
-        "expected remote dashboard forward target",
-      );
+        assert.ok(
+          commands.some((entry) =>
+            entry.command.includes(
+              "'forward' 'start' '--background' '0.0.0.0:18789' 'my-assistant'",
+            ),
+          ),
+          "expected remote dashboard forward target",
+        );
+      } finally {
+        runner.run = originalRun;
+        runner.runCapture = originalRunCapture;
+        registry.registerSandbox = originalRegisterSandbox;
+        registry.removeSandbox = originalRemoveSandbox;
+        preflight.checkPortAvailable = originalCheckPortAvailable;
+        credentials.prompt = originalPrompt;
+        sandboxCreateStream.streamSandboxCreate = originalStreamSandboxCreate;
+        process.env.HOME = originalHome;
+        process.env.PATH = originalPath;
+        if (originalGateway === undefined) delete process.env.OPENSHELL_GATEWAY;
+        else process.env.OPENSHELL_GATEWAY = originalGateway;
+        if (originalNonInteractive === undefined) delete process.env.NEMOCLAW_NON_INTERACTIVE;
+        else process.env.NEMOCLAW_NON_INTERACTIVE = originalNonInteractive;
+        if (originalChatUiUrl === undefined) delete process.env.CHAT_UI_URL;
+        else process.env.CHAT_UI_URL = originalChatUiUrl;
+      }
     },
   );
 
@@ -3023,15 +3023,8 @@ const { setupMessagingChannels } = require(${onboardPath});
     "uses the custom Dockerfile parent directory as build context when --from is given",
     { timeout: 45000 },
     async () => {
-      const repoRoot = path.join(import.meta.dirname, "..");
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-onboard-from-dockerfile-"));
       const fakeBin = path.join(tmpDir, "bin");
-      const scriptPath = path.join(tmpDir, "create-sandbox-from.js");
-      const onboardPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "onboard.js"));
-      const runnerPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "runner.js"));
-      const registryPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "registry.js"));
-      const preflightPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "preflight.js"));
-      const credentialsPath = JSON.stringify(path.join(repoRoot, "bin", "lib", "credentials.js"));
 
       // Create a minimal custom Dockerfile in a temporary directory
       const customBuildDir = path.join(tmpDir, "custom-image");
@@ -3058,98 +3051,93 @@ const { setupMessagingChannels } = require(${onboardPath});
         mode: 0o755,
       });
 
-      const customDockerfilePath = JSON.stringify(path.join(customBuildDir, "Dockerfile"));
+      const runner = cjsRequire("../bin/lib/runner");
+      const registry = cjsRequire("../bin/lib/registry");
+      const preflight = cjsRequire("../bin/lib/preflight");
+      const credentials = cjsRequire("../bin/lib/credentials");
+      const sandboxCreateStream = cjsRequire("../dist/lib/sandbox-create-stream");
 
-      const script = String.raw`
-const runner = require(${runnerPath});
-const registry = require(${registryPath});
-const preflight = require(${preflightPath});
-const credentials = require(${credentialsPath});
-const childProcess = require("node:child_process");
-const { EventEmitter } = require("node:events");
-const fs = require("node:fs");
+      const originalRun = runner.run;
+      const originalRunCapture = runner.runCapture;
+      const originalRegisterSandbox = registry.registerSandbox;
+      const originalRemoveSandbox = registry.removeSandbox;
+      const originalCheckPortAvailable = preflight.checkPortAvailable;
+      const originalPrompt = credentials.prompt;
+      const originalStreamSandboxCreate = sandboxCreateStream.streamSandboxCreate;
+      const originalHome = process.env.HOME;
+      const originalPath = process.env.PATH;
+      const originalGateway = process.env.OPENSHELL_GATEWAY;
+      const originalNonInteractive = process.env.NEMOCLAW_NON_INTERACTIVE;
 
-const commands = [];
-runner.run = (command, opts = {}) => {
-  commands.push({ command, env: opts.env || null });
-  return { status: 0 };
-};
-runner.runCapture = (command) => {
-  if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
-  if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
-  if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) return "ok";
-  if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
-  return "";
-};
-registry.registerSandbox = () => true;
-registry.removeSandbox = () => true;
-preflight.checkPortAvailable = async () => ({ ok: true });
-credentials.prompt = async () => "";
+      const commands = [];
+      try {
+        runner.run = (command, opts = {}) => {
+          commands.push({ command, env: opts.env || null });
+          return { status: 0 };
+        };
+        runner.runCapture = (command) => {
+          if (command.includes("'sandbox' 'get' 'my-assistant'")) return "";
+          if (command.includes("'sandbox' 'list'")) return "my-assistant Ready";
+          if (command.includes("sandbox exec my-assistant curl -sf http://localhost:18789/")) {
+            return "ok";
+          }
+          if (command.includes("'forward' 'list'")) return "18789 -> my-assistant:18789";
+          return "";
+        };
+        registry.registerSandbox = () => true;
+        registry.removeSandbox = () => true;
+        preflight.checkPortAvailable = async () => ({ ok: true });
+        credentials.prompt = async () => "";
+        sandboxCreateStream.streamSandboxCreate = async (command, env) => {
+          commands.push({ command, env: env || null });
+          return {
+            status: 0,
+            output: "Created sandbox: my-assistant",
+            sawProgress: true,
+          };
+        };
 
-childProcess.spawn = (...args) => {
-  const child = new EventEmitter();
-  child.stdout = new EventEmitter();
-  child.stderr = new EventEmitter();
-  commands.push({ command: args[1][1], env: args[2]?.env || null });
-  process.nextTick(() => {
-    child.stdout.emit("data", Buffer.from("Created sandbox: my-assistant\n"));
-    child.emit("close", 0);
-  });
-  return child;
-};
+        process.env.HOME = tmpDir;
+        process.env.PATH = `${fakeBin}:${originalPath || ""}`;
+        process.env.OPENSHELL_GATEWAY = "nemoclaw";
+        process.env.NEMOCLAW_NON_INTERACTIVE = "1";
 
-const { createSandbox } = require(${onboardPath});
+        const { createSandbox } = loadFreshOnboardModule();
+        const sandboxName = await createSandbox(
+          null,
+          "gpt-5.4",
+          "openai-api",
+          null,
+          "my-assistant",
+          null,
+          null,
+          path.join(customBuildDir, "Dockerfile"),
+        );
 
-(async () => {
-  process.env.OPENSHELL_GATEWAY = "nemoclaw";
-  const sandboxName = await createSandbox(null, "gpt-5.4", "openai-api", null, "my-assistant", null, null, ${customDockerfilePath});
-  // Verify the staged build context contains the extra file from the custom dir
-  const createCmd = commands.find((e) => e.command.includes("'sandbox' 'create'"));
-  const fromMatch = createCmd && createCmd.command.match(/--from['\s]+'([^']+)'/);
-  let stagedDir = null;
-  let hasExtraFile = false;
-  if (fromMatch) {
-    const dockerfilePath = fromMatch[1];
-    stagedDir = require("node:path").dirname(dockerfilePath);
-    hasExtraFile = fs.existsSync(require("node:path").join(stagedDir, "extra.txt"));
-  }
-  console.log(JSON.stringify({ sandboxName, hasExtraFile }));
-})().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
-`;
-      fs.writeFileSync(scriptPath, script);
-
-      const result = spawnSync(process.execPath, [scriptPath], {
-        cwd: repoRoot,
-        encoding: "utf-8",
-        env: {
-          ...process.env,
-          HOME: tmpDir,
-          PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          NEMOCLAW_NON_INTERACTIVE: "1",
-          NODE_OPTIONS: "",
-          NODE_V8_COVERAGE: "",
-        },
-        timeout: 30000,
-      });
-
-      assert.equal(result.status, 0, result.stderr);
-      const payloadLine = result.stdout
-        .trim()
-        .split("\n")
-        .slice()
-        .reverse()
-        .find((line) => line.startsWith("{") && line.endsWith("}"));
-      assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
-      const payload = JSON.parse(payloadLine);
-      assert.equal(payload.sandboxName, "my-assistant");
-      assert.equal(
-        payload.hasExtraFile,
-        true,
-        "extra.txt from custom build context should be staged",
-      );
+        assert.equal(sandboxName, "my-assistant");
+        const createCmd = commands.find((entry) => entry.command.includes("'sandbox' 'create'"));
+        const fromMatch = createCmd && createCmd.command.match(/--from['\s]+'([^']+)'/);
+        let hasExtraFile = false;
+        if (fromMatch) {
+          const stagedDir = path.dirname(fromMatch[1]);
+          hasExtraFile = fs.existsSync(path.join(stagedDir, "extra.txt"));
+        }
+        assert.equal(hasExtraFile, true, "extra.txt from custom build context should be staged");
+      } finally {
+        runner.run = originalRun;
+        runner.runCapture = originalRunCapture;
+        registry.registerSandbox = originalRegisterSandbox;
+        registry.removeSandbox = originalRemoveSandbox;
+        preflight.checkPortAvailable = originalCheckPortAvailable;
+        credentials.prompt = originalPrompt;
+        sandboxCreateStream.streamSandboxCreate = originalStreamSandboxCreate;
+        process.env.HOME = originalHome;
+        process.env.PATH = originalPath;
+        if (originalGateway === undefined) delete process.env.OPENSHELL_GATEWAY;
+        else process.env.OPENSHELL_GATEWAY = originalGateway;
+        if (originalNonInteractive === undefined) delete process.env.NEMOCLAW_NON_INTERACTIVE;
+        else process.env.NEMOCLAW_NON_INTERACTIVE = originalNonInteractive;
+      }
     },
   );
 
