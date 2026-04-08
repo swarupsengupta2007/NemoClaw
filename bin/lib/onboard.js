@@ -1531,6 +1531,7 @@ function sleep(seconds) {
   require("child_process").spawnSync("sleep", [String(seconds)]);
 }
 
+/** Tear down the named gateway, its orphaned containers, and leftover Docker volumes. */
 function destroyGateway() {
   const destroyResult = runOpenshell(["gateway", "destroy", "-g", GATEWAY_NAME], {
     ignoreError: true,
