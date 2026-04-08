@@ -96,4 +96,5 @@ RUN mkdir -p /sandbox/.hermes-data/memories \
 RUN pip3 install --no-cache-dir --break-system-packages \
         "hermes-agent @ https://github.com/NousResearch/hermes-agent/archive/refs/tags/${HERMES_VERSION}.tar.gz" \
         "pyyaml==6.0.3" \
+        "python-telegram-bot>=21.0" \
     && hermes --version
