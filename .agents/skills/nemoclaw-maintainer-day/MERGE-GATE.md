@@ -23,19 +23,25 @@ This checks all 4 gates programmatically and returns structured JSON with `allPa
 
 The script handles the deterministic checks. You handle judgment calls:
 
+- **Conflicts (DIRTY):** Do NOT approve — GitHub invalidates approvals when new commits are pushed. Salvage first (rebase), wait for CI, then re-run the gate checker. Follow [SALVAGE-PR.md](SALVAGE-PR.md).
 - **CI failing but narrow:** Follow the salvage workflow in [SALVAGE-PR.md](SALVAGE-PR.md).
-- **Conflicts:** Salvage only when mechanical and small.
+- **CI pending:** Wait and re-check. Do not approve while checks are still running.
 - **CodeRabbit:** Script flags unresolved major/critical threads. Review the `snippet` to confirm it's a real issue vs style nit. If doubt, leave unapproved.
 - **Tests:** If `riskyCodeTested.pass` is false, follow [TEST-GAPS.md](TEST-GAPS.md).
 
 ## Step 3: Approve or Report
 
-**All pass:** Approve and summarize why.
+**Approve only when:** `allPass` is true AND `mergeStateStatus` is not DIRTY. Approving a PR with conflicts is wasted effort — the rebase will invalidate the approval.
+
+The correct sequence for a conflicted PR: **salvage (rebase) → CI green → approve → report ready for merge.**
+
+**All pass + no conflicts:** Approve and summarize why.
 
 **Any fail:**
 
 | Gate | Status | What is needed |
 |------|--------|----------------|
 | CI | Failing | Fix flaky timeout test |
+| Conflicts | DIRTY | Rebase onto main first — approval would be invalidated |
 
 Use full GitHub links.
