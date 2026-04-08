@@ -14,7 +14,7 @@ interface ProgressItem {
   title: string;
   url: string;
   type: "pr" | "issue";
-  ageDays: number;
+  ageHours: number;
 }
 
 interface ProgressOutput {
@@ -45,7 +45,7 @@ function queryItems(
       title: i.title,
       url: i.url,
       type: kind,
-      ageDays: Math.floor((now - new Date(i.createdAt).getTime()) / 86_400_000),
+      ageHours: Math.floor((now - new Date(i.createdAt).getTime()) / 3_600_000),
     }));
   } catch {
     return [];
