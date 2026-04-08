@@ -156,8 +156,15 @@ jobs:
           # ~/.brev/credentials.json. The login call was removed in #1470
           # (374a847d), breaking CI. Write the credentials file so `brev ls`
           # works in the test harness's hasAuthenticatedBrev check.
+          if [ -z "${BREV_API_TOKEN:-}" ]; then
+            echo "::error::BREV_API_TOKEN is empty — cannot authenticate Brev CLI."
+            exit 1
+          fi
           mkdir -p ~/.brev
+          umask 077
           printf '{"refresh_token":"%s"}' "$BREV_API_TOKEN" > ~/.brev/credentials.json
+          chmod 600 ~/.brev/credentials.json
+          brev ls >/dev/null
 
       - name: Install dependencies
         run: npm install --ignore-scripts
