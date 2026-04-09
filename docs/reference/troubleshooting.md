@@ -44,8 +44,7 @@ Run `source ~/.bashrc` (or `source ~/.zshrc` for zsh), or open a new terminal wi
 ### Installer fails on unsupported platform
 
 The installer checks for a supported OS and architecture before proceeding.
-NemoClaw requires Linux Ubuntu 22.04 LTS or later.
-If you see an unsupported platform error, verify that you are running on a supported Linux distribution.
+If you see an unsupported platform error, verify that you are running on a tested platform listed in the Container Runtimes table in the quickstart guide.
 
 ### Node.js version is too old
 
@@ -92,6 +91,15 @@ To avoid these issues, install the prerequisites in the following order before r
 1. Install Xcode Command Line Tools (`xcode-select --install`). These are needed by the installer and Node.js toolchain.
 2. Install and start a supported container runtime (Docker Desktop or Colima). Without a running runtime, the installer cannot connect to Docker.
 
+### Permission errors during installation
+
+The NemoClaw installer does not require `sudo` or root.
+It installs Node.js via nvm and NemoClaw via npm, both into user-local directories.
+The installer also handles OpenShell installation automatically using a pinned release.
+
+If you see permission errors during installation, they typically come from Docker, not the NemoClaw installer itself.
+Docker must be installed and running before you run the installer, and installing Docker may require elevated privileges on Linux.
+
 ### npm install fails with permission errors
 
 If `npm install` fails with an `EACCES` permission error, do not run npm with `sudo`.
@@ -123,15 +131,17 @@ Then retry onboarding.
 
 ### Cgroup v2 errors during onboard
 
-On Ubuntu 24.04, DGX Spark, and WSL2, Docker may not be configured for cgroup v2 delegation.
-The onboard preflight check detects this and fails with a clear error message.
+Older NemoClaw releases relied on a Docker cgroup workaround on Ubuntu 24.04, DGX Spark, and WSL2.
+Current OpenShell releases handle that behavior themselves, so NemoClaw no longer requires a Spark-specific setup step.
 
-Run the Spark setup script to fix the Docker cgroup configuration, then retry onboarding:
+If onboarding reports that Docker is missing or unreachable, fix Docker first and retry onboarding:
 
 ```console
-$ sudo nemoclaw setup-spark
 $ nemoclaw onboard
 ```
+
+Podman is not a tested runtime.
+If onboarding or sandbox lifecycle fails, switch to a tested runtime (Docker Desktop, Colima, or Docker Engine) and rerun onboarding.
 
 ### Invalid sandbox name
 
@@ -210,19 +220,21 @@ Follow these steps to reconnect.
    $ nemoclaw <name> connect
    ```
 
-1. Start auxiliary services (if needed).
+1. Start host auxiliary services (if needed).
 
-   If you use the Telegram bridge or cloudflared tunnel, start them again:
+   If you use the cloudflared tunnel started by `nemoclaw start`, start it again:
 
    ```console
    $ nemoclaw start
    ```
 
+   Telegram, Discord, and Slack are handled by OpenShell-managed channel messaging configured at onboarding, not by a separate bridge process from `nemoclaw start`.
+
 :::{admonition} If the sandbox does not recover
 :class: warning
 
 If the sandbox remains missing after restarting the gateway, run `nemoclaw onboard` to recreate it.
-The wizard prompts for confirmation before destroying an existing sandbox. If you confirm, it **destroys and recreates** the sandbox — workspace files (SOUL.md, USER.md, IDENTITY.md, AGENTS.md, MEMORY.md, and daily memory notes) are lost.
+The wizard prompts for confirmation before destroying an existing sandbox. If you confirm, it **destroys and recreates** the sandbox. Workspace files (SOUL.md, USER.md, IDENTITY.md, AGENTS.md, MEMORY.md, and daily memory notes) are lost.
 Back up your workspace first by following the instructions at [Back Up and Restore](../workspace/backup-restore.md).
 :::
 
@@ -251,6 +263,15 @@ $ nemoclaw <name> status
 If the endpoint is correct but requests still fail, check for network policy rules that may block the connection.
 Then verify the credential and base URL for the provider you selected during onboarding.
 
+### `NEMOCLAW_DISABLE_DEVICE_AUTH=1` does not change an existing sandbox
+
+This is expected behavior.
+`NEMOCLAW_DISABLE_DEVICE_AUTH` is a build-time setting used when NemoClaw creates the sandbox image.
+Changing or exporting it later does not rewrite the baked `openclaw.json` inside an existing sandbox.
+
+If you need a different device-auth setting, rerun onboarding so NemoClaw rebuilds the sandbox image with the desired configuration.
+For the security trade-offs, refer to [Security Best Practices](../security/best-practices.md).
+
 ### Agent cannot reach an external host
 
 OpenShell blocks outbound connections to hosts not listed in the network policy.
@@ -272,3 +293,9 @@ $ nemoclaw <name> logs
 ```
 
 Use `--follow` to stream logs in real time while debugging.
+
+## Podman
+
+Podman is not a tested runtime.
+OpenShell officially documents Docker-based runtimes only.
+If you encounter issues with Podman, switch to a tested runtime (Docker Engine, Docker Desktop, or Colima) and rerun onboarding.

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import policies from "../bin/lib/policies";
 
@@ -19,7 +19,7 @@ const SELECT_FROM_LIST_ITEMS = [
   { name: "pypi", description: "Python Package Index (PyPI) access" },
 ];
 
-function runPolicyAdd(confirmAnswer) {
+function runPolicyAdd(confirmAnswer, extraArgs = []) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-policy-add-"));
   const scriptPath = path.join(tmpDir, "policy-add-check.js");
   const script = String.raw`
@@ -28,6 +28,8 @@ const policies = require(${POLICIES_PATH});
 const credentials = require(${CREDENTIALS_PATH});
 const calls = [];
 policies.selectFromList = async () => "pypi";
+policies.loadPreset = () => "network_policies:\n  pypi:\n    host: pypi.org\n";
+policies.getPresetEndpoints = () => ["pypi.org"];
 credentials.prompt = async (message) => {
   calls.push({ type: "prompt", message });
   return ${JSON.stringify(confirmAnswer)};
@@ -42,10 +44,10 @@ policies.getAppliedPresets = () => [];
 policies.applyPreset = (sandboxName, presetName) => {
   calls.push({ type: "apply", sandboxName, presetName });
 };
-process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-add"];
+process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-add", ...${JSON.stringify(extraArgs)}];
 require(${CLI_PATH});
 setImmediate(() => {
-  process.stdout.write(JSON.stringify(calls));
+  process.stdout.write("\n__CALLS__" + JSON.stringify(calls));
 });
 `;
 
@@ -112,8 +114,8 @@ describe("policies", () => {
         .sort();
       const expected = [
         "brave",
+        "brew",
         "discord",
-        "docker",
         "huggingface",
         "jira",
         "local-inference",
@@ -165,6 +167,82 @@ describe("policies", () => {
         const content = policies.loadPreset(p.name);
         const hosts = policies.getPresetEndpoints(content);
         expect(hosts.length > 0).toBeTruthy();
+      }
+    });
+
+    it("strips surrounding quotes from hostnames", () => {
+      const yaml = "host: \"example.com\"\n  host: 'other.com'";
+      const hosts = policies.getPresetEndpoints(yaml);
+      expect(hosts).toEqual(["example.com", "other.com"]);
+    });
+  });
+
+  describe("applyPreset disclosure logging", () => {
+    it("logs egress endpoints before applying", () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("exit");
+      });
+
+      try {
+        try {
+          policies.applyPreset("test-sandbox", "npm");
+        } catch {
+          /* applyPreset may throw if sandbox not running — we only care about the log */
+        }
+        const messages = logSpy.mock.calls.map((c) => c[0]);
+        expect(
+          messages.some((m) => typeof m === "string" && m.includes("Widening sandbox egress")),
+        ).toBe(true);
+      } finally {
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+        exitSpy.mockRestore();
+      }
+    });
+
+    it("does not log when preset does not exist", () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      try {
+        policies.applyPreset("test-sandbox", "nonexistent");
+        const messages = logSpy.mock.calls.map((c) => c[0]);
+        expect(
+          messages.some((m) => typeof m === "string" && m.includes("Widening sandbox egress")),
+        ).toBe(false);
+      } finally {
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+      }
+    });
+
+    it("does not log when preset exists but has no host entries", () => {
+      const noHostPreset =
+        "preset:\n  name: empty\n\nnetwork_policies:\n  empty_rule:\n    name: empty_rule\n    endpoints: []\n";
+      const loadSpy = vi.spyOn(policies, "loadPreset").mockReturnValue(noHostPreset);
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+        throw new Error("exit");
+      });
+
+      try {
+        try {
+          policies.applyPreset("test-sandbox", "empty");
+        } catch {
+          /* applyPreset may throw if sandbox not running */
+        }
+        const messages = logSpy.mock.calls.map((c) => c[0]);
+        expect(
+          messages.some((m) => typeof m === "string" && m.includes("Widening sandbox egress")),
+        ).toBe(false);
+      } finally {
+        loadSpy.mockRestore();
+        logSpy.mockRestore();
+        errSpy.mockRestore();
+        exitSpy.mockRestore();
       }
     });
   });
@@ -609,7 +687,7 @@ describe("policies", () => {
       const result = runPolicyAdd("y");
 
       expect(result.status).toBe(0);
-      const calls = JSON.parse(result.stdout.trim());
+      const calls = JSON.parse(result.stdout.split("__CALLS__")[1].trim());
       expect(calls).toContainEqual({
         type: "prompt",
         message: "  Apply 'pypi' to sandbox 'test-sandbox'? [Y/n]: ",
@@ -625,12 +703,23 @@ describe("policies", () => {
       const result = runPolicyAdd("n");
 
       expect(result.status).toBe(0);
-      const calls = JSON.parse(result.stdout.trim());
+      const calls = JSON.parse(result.stdout.split("__CALLS__")[1].trim());
       expect(calls).toContainEqual({
         type: "prompt",
         message: "  Apply 'pypi' to sandbox 'test-sandbox'? [Y/n]: ",
       });
       expect(calls.some((call) => call.type === "apply")).toBeFalsy();
+    });
+
+    it("does not prompt or apply when --dry-run is passed", () => {
+      const result = runPolicyAdd("y", ["--dry-run"]);
+
+      expect(result.status).toBe(0);
+      const calls = JSON.parse(result.stdout.split("__CALLS__")[1].trim());
+      expect(calls.some((call) => call.type === "prompt")).toBeFalsy();
+      expect(calls.some((call) => call.type === "apply")).toBeFalsy();
+      expect(result.stdout).toMatch(/Endpoints that would be opened: pypi\.org/);
+      expect(result.stdout).toMatch(/--dry-run: no changes applied\./);
     });
   });
 });
