@@ -241,7 +241,7 @@ else
 fi
 
 # 3c: Session records agent=hermes
-session_file="$HOME/.nemoclaw/sessions/${SANDBOX_NAME}.json"
+session_file="$HOME/.nemoclaw/onboard-session.json"
 if [ -f "$session_file" ]; then
   if grep -q '"agent"' "$session_file" && grep -q '"hermes"' "$session_file"; then
     pass "Onboard session records agent=hermes"
@@ -486,6 +486,8 @@ if openshell sandbox ssh-config "$SANDBOX_NAME" >"$ssh_config" 2>/dev/null; then
 
   if echo "$ps_output" | grep -qi "hermes"; then
     pass "Hermes process found running in sandbox"
+  elif [ -z "$ps_output" ]; then
+    skip "ps not available in sandbox (health probe already confirmed Hermes is running)"
   else
     fail "No Hermes process found running in sandbox"
     info "Processes: ${ps_output:0:500}"
