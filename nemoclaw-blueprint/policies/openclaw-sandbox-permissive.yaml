@@ -170,13 +170,25 @@ network_policies:
       - host: raw.githubusercontent.com
         port: 443
         access: full
+      - host: objects.githubusercontent.com
+        port: 443
+        access: full
+      - host: pkg-containers.githubusercontent.com
+        port: 443
+        access: full
 
   # ── Third-party services ──
 
   jira:
     name: jira
     endpoints:
-      - host: jira.atlassian.net
+      - host: "*.atlassian.net"
+        port: 443
+        access: full
+      - host: api.atlassian.com
+        port: 443
+        access: full
+      - host: auth.atlassian.com
         port: 443
         access: full
 
@@ -189,6 +201,12 @@ network_policies:
       - host: outlook.office.com
         port: 443
         access: full
+      - host: graph.microsoft.com
+        port: 443
+        access: full
+      - host: login.microsoftonline.com
+        port: 443
+        access: full
 
   huggingface:
     name: huggingface
@@ -197,6 +215,9 @@ network_policies:
         port: 443
         access: full
       - host: cdn-lfs.huggingface.co
+        port: 443
+        access: full
+      - host: router.huggingface.co
         port: 443
         access: full
 
