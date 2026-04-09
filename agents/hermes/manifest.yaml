@@ -23,7 +23,7 @@ gateway_command: "hermes gateway run"
 health_probe:
   url: "http://localhost:8642/health"
   port: 8642
-  timeout_seconds: 30
+  timeout_seconds: 90
 
 # ── Dashboard / UI ──────────────────────────────────────────────
 # Hermes exposes an OpenAI-compatible API, not a web dashboard.

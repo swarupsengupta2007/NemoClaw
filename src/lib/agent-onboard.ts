@@ -167,9 +167,12 @@ export async function handleAgentSetup(
 
   const probe = agent.healthProbe;
   if (probe?.url) {
-    console.log(`  Waiting for ${agent.displayName} gateway...`);
+    const timeoutSecs = probe.timeout_seconds || 60;
+    const pollInterval = 3;
+    const maxAttempts = Math.ceil(timeoutSecs / pollInterval);
+    console.log(`  Waiting for ${agent.displayName} gateway (up to ${timeoutSecs}s)...`);
     let healthy = false;
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < maxAttempts; i++) {
       const result = runCaptureOpenshell(
         ["sandbox", "exec", sandboxName, "curl", "-sf", "--max-time", "3", probe.url],
         { ignoreError: true },
@@ -178,11 +181,11 @@ export async function handleAgentSetup(
         healthy = true;
         break;
       }
-      sleep(2);
+      sleep(pollInterval);
     }
     if (!healthy) {
       throw new Error(
-        `${agent.displayName} gateway health check timed out after 15 attempts. ` +
+        `${agent.displayName} gateway health check timed out after ${timeoutSecs}s. ` +
           `Check logs with: nemoclaw ${sandboxName} logs`,
       );
     }
