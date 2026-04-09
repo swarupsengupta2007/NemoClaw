@@ -210,12 +210,8 @@ function buildWrapper(oldRel: string, newRel: string, strategy: ShimStrategy): s
   }
 }
 
-function rewriteNamedExports(content: string): string {
-  return content.replace(/module\.exports\s*=\s*\{([\s\S]*?)\};?\s*$/m, "export {$1};\n");
-}
-
 function rewriteMovedRuntimeContent(content: string, oldAbs: string, newAbs: string): string {
-  const rewrittenRequires = content.replace(
+  return content.replace(
     /(require(?:\.resolve)?\(\s*["'])([^"']+)(["']\s*\))/g,
     (match, prefix: string, specifier: string, suffix: string) => {
       if (!specifier.startsWith(".")) {
@@ -231,7 +227,6 @@ function rewriteMovedRuntimeContent(content: string, oldAbs: string, newAbs: str
       return `${prefix}${ensureDotSlash(rewritten)}${suffix}`;
     },
   );
-  return rewriteNamedExports(rewrittenRequires);
 }
 
 function renameTest(oldRel: string, apply: boolean) {
