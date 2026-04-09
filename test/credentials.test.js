@@ -73,6 +73,9 @@ describe("credential prompts", () => {
 
   it("deleteCredential removes a stored key and leaves the file mode intact", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-creds-"));
+    // Ensure env vars don't shadow file-based credentials for the test keys.
+    vi.stubEnv("NVIDIA_API_KEY", "");
+    vi.stubEnv("OTHER_KEY", "");
     const credentials = await importCredentialsModule(home);
 
     credentials.saveCredential("NVIDIA_API_KEY", "nvapi-bad-key");

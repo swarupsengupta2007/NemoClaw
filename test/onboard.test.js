@@ -1599,7 +1599,7 @@ const { setupInference } = require(${onboardPath});
 
     assert.match(
       source,
-      /startRecordedStep\("sandbox", \{ sandboxName, provider, model \}\);\s*sandboxName = await createSandbox\(\s*gpu,\s*model,\s*provider,\s*preferredInferenceApi,\s*sandboxName,\s*webSearchConfig,\s*enabledChannels,\s*fromDockerfile,\s*\);/,
+      /startRecordedStep\("sandbox", \{ sandboxName, provider, model \}\);\s*sandboxName = await createSandbox\(\s*gpu,\s*model,\s*provider,\s*preferredInferenceApi,\s*sandboxName,\s*webSearchConfig,\s*enabledChannels,\s*fromDockerfile,\s*agent,\s*\);/,
     );
   });
 
@@ -1611,8 +1611,8 @@ const { setupInference } = require(${onboardPath});
 
     assert.match(source, /const ONBOARD_STEP_INDEX = \{/);
     assert.match(source, /function skippedStepMessage\(stepName, detail, reason = "resume"\)/);
-    assert.match(source, /step\(stepInfo\.number, ONBOARD_TOTAL_STEPS, stepInfo\.title\);/);
-    assert.match(source, /skippedStepMessage\("agent_setup", sandboxName\)/);
+    assert.match(source, /step\(stepInfo\.number, 8, stepInfo\.title\);/);
+    assert.match(source, /skippedStepMessage\("openclaw", sandboxName\)/);
     assert.match(
       source,
       /skippedStepMessage\("policies", \(recordedPolicyPresets \|\| \[\]\)\.join\(", "\)\)/,
