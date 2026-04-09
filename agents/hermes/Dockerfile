@@ -42,7 +42,7 @@ print('[patch] Disabled TelegramFallbackTransport for sandbox proxy compatibilit
 COPY agents/hermes/plugin/ /opt/nemoclaw-hermes-plugin/
 
 # Copy config generation script and URL-decode proxy
-COPY agents/hermes/generate-config.py /opt/nemoclaw-generate-config.py
+COPY agents/hermes/generate-config.ts /opt/nemoclaw-generate-config.ts
 COPY agents/hermes/decode-proxy.py /usr/local/bin/nemoclaw-decode-proxy
 RUN chmod 755 /usr/local/bin/nemoclaw-decode-proxy
 
@@ -80,9 +80,9 @@ RUN mkdir -p /sandbox/.nemoclaw/blueprints/0.1.0 \
 # Generate Hermes config.yaml and .env from build args.
 # config.yaml is immutable at runtime (Landlock read-only on /sandbox/.hermes).
 # .env holds API key placeholders for OpenShell provider pipeline.
-# SECURITY: Uses a separate script file instead of inline python3 -c to avoid
+# SECURITY: Uses a separate script file instead of inline code to avoid
 # code injection via build-arg interpolation (same concern as OpenClaw C-2).
-RUN python3 /opt/nemoclaw-generate-config.py
+RUN node --experimental-strip-types /opt/nemoclaw-generate-config.ts
 
 # Install NemoClaw plugin into Hermes
 RUN mkdir -p /sandbox/.hermes-data/plugins/nemoclaw \
