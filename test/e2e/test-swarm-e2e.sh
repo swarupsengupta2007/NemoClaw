@@ -278,7 +278,7 @@ fi
 section "Phase 7: Health probe on new instance"
 
 if [ -n "$AGENT1_PORT" ]; then
-  HEALTH_RESULT=$(openshell sandbox exec "$SANDBOX_NAME" -- curl -sf "http://localhost:${AGENT1_PORT}/" 2>/dev/null | head -c 100)
+  HEALTH_RESULT=$(openshell sandbox exec --name "$SANDBOX_NAME" -- curl -sf "http://localhost:${AGENT1_PORT}/" 2>/dev/null | head -c 100)
   if [ -n "$HEALTH_RESULT" ]; then
     pass "Health probe on port $AGENT1_PORT returned data"
   else
@@ -306,7 +306,7 @@ print('')
 " 2>/dev/null)
 
 if [ -n "$CONFIG_DIR" ]; then
-  DIR_EXISTS=$(openshell sandbox exec "$SANDBOX_NAME" -- test -d "$CONFIG_DIR" 2>/dev/null && echo "yes" || echo "no")
+  DIR_EXISTS=$(openshell sandbox exec --name "$SANDBOX_NAME" -- test -d "$CONFIG_DIR" 2>/dev/null && echo "yes" || echo "no")
   if [ "$DIR_EXISTS" = "yes" ]; then
     pass "Config directory $CONFIG_DIR exists in sandbox"
   else
@@ -320,7 +320,7 @@ fi
 
 section "Phase 9: Swarm manifest"
 
-MANIFEST=$(openshell sandbox exec "$SANDBOX_NAME" -- cat /sandbox/.nemoclaw/swarm/manifest.json 2>/dev/null)
+MANIFEST=$(openshell sandbox exec --name "$SANDBOX_NAME" -- cat /sandbox/.nemoclaw/swarm/manifest.json 2>/dev/null)
 if [ -n "$MANIFEST" ]; then
   pass "Swarm manifest exists in sandbox"
 
