@@ -50,7 +50,7 @@ function sandboxExec(sandboxName: string, cmd: string, opts: Record<string, unkn
   const openshell = getOpenshellCommand();
   const encoded = Buffer.from(cmd).toString("base64");
   return run(
-    `${openshell} sandbox exec ${shellQuote(sandboxName)} bash -c ${shellQuote(`echo ${encoded} | base64 -d | bash`)}`,
+    `printf '%s' ${shellQuote(encoded)} | base64 -d | ${openshell} sandbox exec --name ${shellQuote(sandboxName)} -- bash`,
     { ignoreError: true, ...opts },
   );
 }
@@ -59,7 +59,7 @@ function sandboxExecCapture(sandboxName: string, cmd: string): string {
   const openshell = getOpenshellCommand();
   const encoded = Buffer.from(cmd).toString("base64");
   return runCapture(
-    `${openshell} sandbox exec ${shellQuote(sandboxName)} bash -c ${shellQuote(`echo ${encoded} | base64 -d | bash`)}`,
+    `printf '%s' ${shellQuote(encoded)} | base64 -d | ${openshell} sandbox exec --name ${shellQuote(sandboxName)} -- bash`,
     { ignoreError: true },
   );
 }
