@@ -647,12 +647,7 @@ describe.runIf(hasRequiredVars && hasAuthenticatedBrev)("Brev E2E", () => {
       console.log(`  To delete:  brev delete ${INSTANCE_NAME}\n`);
       return;
     }
-    if (!deleteBrevInstance(INSTANCE_NAME)) {
-      console.warn(
-        `⚠️  Failed to delete Brev instance "${INSTANCE_NAME}" during cleanup. ` +
-        `Delete it manually: brev delete ${INSTANCE_NAME}`,
-      );
-    }
+    deleteBrevInstance(INSTANCE_NAME);
   }, 120_000); // 2 min for cleanup
 
   // NOTE: The full E2E test runs install.sh --non-interactive which destroys and
