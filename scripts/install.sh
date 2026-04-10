@@ -175,6 +175,21 @@ resolve_default_sandbox_name() {
   printf "%s" "${sandbox_name:-my-assistant}"
 }
 
+resolve_onboarded_agent() {
+  local session_file="${HOME}/.nemoclaw/onboard-session.json"
+  if [[ -f "$session_file" ]] && command_exists node; then
+    node -e '
+      const fs = require("fs");
+      try {
+        const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        process.stdout.write(data.agent || "openclaw");
+      } catch { process.stdout.write("openclaw"); }
+    ' "$session_file" 2>/dev/null || printf "openclaw"
+  else
+    printf "openclaw"
+  fi
+}
+
 # step N "Description" — numbered section header
 step() {
   local n=$1 msg=$2
@@ -209,9 +224,14 @@ print_done() {
   printf "  ${C_GREEN}${C_BOLD}NemoClaw${C_RESET}  ${C_DIM}(%ss)${C_RESET}\n" "$elapsed"
   printf "\n"
   if [[ "$ONBOARD_RAN" == true ]]; then
-    local sandbox_name
+    local sandbox_name agent_name
     sandbox_name="$(resolve_default_sandbox_name)"
-    printf "  ${C_GREEN}Your OpenClaw Sandbox is live.${C_RESET}\n"
+    agent_name="$(resolve_onboarded_agent)"
+    if [[ "$agent_name" == "openclaw" || -z "$agent_name" ]]; then
+      printf "  ${C_GREEN}Your OpenClaw Sandbox is live.${C_RESET}\n"
+    else
+      printf "  ${C_GREEN}Your %s Sandbox is live.${C_RESET}\n" "${agent_name^}"
+    fi
     printf "  ${C_DIM}Sandbox in, break things, and tell us what you find.${C_RESET}\n"
     printf "\n"
     printf "  ${C_GREEN}Next:${C_RESET}\n"
@@ -219,7 +239,9 @@ print_done() {
       printf "  %s$%s source %s\n" "$C_GREEN" "$C_RESET" "$(detect_shell_profile)"
     fi
     printf "  %s$%s nemoclaw %s connect\n" "$C_GREEN" "$C_RESET" "$sandbox_name"
-    printf "  %ssandbox@%s$%s openclaw tui\n" "$C_GREEN" "$sandbox_name" "$C_RESET"
+    if [[ "$agent_name" == "openclaw" || -z "$agent_name" ]]; then
+      printf "  %ssandbox@%s$%s openclaw tui\n" "$C_GREEN" "$sandbox_name" "$C_RESET"
+    fi
   elif [[ "$NEMOCLAW_READY_NOW" == true ]]; then
     printf "  ${C_GREEN}NemoClaw CLI is installed.${C_RESET}\n"
     printf "  ${C_DIM}Onboarding has not run yet.${C_RESET}\n"
