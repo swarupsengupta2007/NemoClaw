@@ -42,18 +42,24 @@ function getOpenshellCommand(): string {
   return shellQuote(binary);
 }
 
+/**
+ * Execute a command inside the sandbox. Multi-line scripts are base64-encoded
+ * to avoid the "command argument contains newline" gRPC error from openshell.
+ */
 function sandboxExec(sandboxName: string, cmd: string, opts: Record<string, unknown> = {}): unknown {
   const openshell = getOpenshellCommand();
+  const encoded = Buffer.from(cmd).toString("base64");
   return run(
-    `${openshell} sandbox exec ${shellQuote(sandboxName)} -- bash -c ${shellQuote(cmd)}`,
+    `${openshell} sandbox exec ${shellQuote(sandboxName)} -- bash -c ${shellQuote(`echo ${encoded} | base64 -d | bash`)}`,
     { ignoreError: true, ...opts },
   );
 }
 
 function sandboxExecCapture(sandboxName: string, cmd: string): string {
   const openshell = getOpenshellCommand();
+  const encoded = Buffer.from(cmd).toString("base64");
   return runCapture(
-    `${openshell} sandbox exec ${shellQuote(sandboxName)} -- bash -c ${shellQuote(cmd)}`,
+    `${openshell} sandbox exec ${shellQuote(sandboxName)} -- bash -c ${shellQuote(`echo ${encoded} | base64 -d | bash`)}`,
     { ignoreError: true },
   );
 }
@@ -109,18 +115,8 @@ export async function addAgent(opts: AddAgentOptions): Promise<AgentInstance | n
     }
   }
 
-  // ── Step 4: Allocate port and compute instance ID ──────────────
-  const instanceIndex = registry.nextInstanceIndex(sandboxName, agentType);
-  const instanceId = `${agentType}-${instanceIndex}`;
-  const existingInstances = registry.getAgentInstances(sandboxName);
-  const usedPorts = usedPortsFromInstances(existingInstances);
-  const basePort = agentDef.healthProbe?.port || agentDef.forwardPort || 18789;
-  const port = allocatePort(basePort, instanceIndex, usedPorts);
-
-  console.log(`\n  Adding ${agentDef.displayName} instance: ${instanceId} on port ${port}`);
-
-  // ── Step 5: Bootstrap swarm manifest ───────────────────────────
-  // On first add-agent call, create the manifest and register instance-0
+  // ── Step 4: Bootstrap swarm manifest ────────────────────────────
+  // Must happen BEFORE port allocation so nextInstanceIndex sees instance-0.
   const rawManifest = sandboxExecCapture(sandboxName, buildReadManifestCommand());
   let manifest = parseManifest(rawManifest);
   if (!manifest) {
@@ -150,6 +146,16 @@ export async function addAgent(opts: AddAgentOptions): Promise<AgentInstance | n
 
     console.log(`  Bootstrapped swarm manifest (registered ${primaryAgent}-0 as primary)`);
   }
+
+  // ── Step 5: Allocate port and compute instance ID ──────────────
+  const instanceIndex = registry.nextInstanceIndex(sandboxName, agentType);
+  const instanceId = `${agentType}-${instanceIndex}`;
+  const existingInstances = registry.getAgentInstances(sandboxName);
+  const usedPorts = usedPortsFromInstances(existingInstances);
+  const basePort = agentDef.healthProbe?.port || agentDef.forwardPort || 18789;
+  const port = allocatePort(basePort, instanceIndex, usedPorts);
+
+  console.log(`\n  Adding ${agentDef.displayName} instance: ${instanceId} on port ${port}`);
 
   // ── Step 6: Create config/data directories ─────────────────────
   const configDir = instanceIndex === 0 && agentType === (sandbox.agent || "openclaw")
