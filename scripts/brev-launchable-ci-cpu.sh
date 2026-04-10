@@ -214,6 +214,33 @@ else
     "https://github.com/NVIDIA/NemoClaw.git" "$NEMOCLAW_CLONE_DIR"
 fi
 
+# ── Start Docker image pulls in the background ─────────────────────
+# Docker pulls are network-bound and independent of npm install / plugin
+# build (CPU-bound). Running them in parallel saves ~60-80s.
+DOCKER_PULL_PID=""
+if [[ "${SKIP_DOCKER_PULL:-0}" != "1" ]]; then
+  info "Pre-pulling Docker images in background..."
+  (
+    # The openshell/cluster image tag should match the CLI version.
+    CLUSTER_TAG="${OPENSHELL_VERSION#v}" # v0.0.20 → 0.0.20
+    CLUSTER_IMAGE="ghcr.io/nvidia/openshell/cluster:${CLUSTER_TAG}"
+
+    # Pull all images in parallel
+    for image in "${DOCKER_IMAGES[@]}" "$CLUSTER_IMAGE"; do
+      sg docker -c "docker pull $image" 2>&1 | tail -1 &
+    done
+    wait
+
+    # If pinned cluster tag failed, try :latest
+    if ! sg docker -c "docker image inspect $CLUSTER_IMAGE" >/dev/null 2>&1; then
+      warn "  Could not pull $CLUSTER_IMAGE — trying :latest"
+      sg docker -c "docker pull ghcr.io/nvidia/openshell/cluster:latest" 2>&1 | tail -1 \
+        || warn "  Failed to pull openshell/cluster (will be pulled at test time)"
+    fi
+  ) &
+  DOCKER_PULL_PID=$!
+fi
+
 info "Installing npm dependencies..."
 cd "$NEMOCLAW_CLONE_DIR"
 npm install --ignore-scripts 2>&1 | tail -3
@@ -227,32 +254,14 @@ cd "$NEMOCLAW_CLONE_DIR"
 info "Plugin built"
 
 # ══════════════════════════════════════════════════════════════════════
-# 6. Pre-pull Docker images
+# 6. Wait for Docker image pulls to finish
 # ══════════════════════════════════════════════════════════════════════
-if [[ "${SKIP_DOCKER_PULL:-0}" == "1" ]]; then
-  info "Skipping Docker image pre-pulls (SKIP_DOCKER_PULL=1)"
-else
-  info "Pre-pulling Docker images (this saves 3-5 min per CI run)..."
-
-  # Use sg docker to ensure docker group is active without re-login
-  for image in "${DOCKER_IMAGES[@]}"; do
-    info "  Pulling $image..."
-    sg docker -c "docker pull $image" 2>&1 | tail -1 \
-      || warn "  Failed to pull $image (will be pulled at test time)"
-  done
-
-  # The openshell/cluster image tag should match the CLI version.
-  # Try the pinned version first, fall back to latest.
-  CLUSTER_TAG="${OPENSHELL_VERSION#v}" # v0.0.20 → 0.0.20
-  CLUSTER_IMAGE="ghcr.io/nvidia/openshell/cluster:${CLUSTER_TAG}"
-  info "  Pulling $CLUSTER_IMAGE..."
-  if ! sg docker -c "docker pull $CLUSTER_IMAGE" 2>&1 | tail -1; then
-    warn "  Could not pull $CLUSTER_IMAGE — trying :latest"
-    sg docker -c "docker pull ghcr.io/nvidia/openshell/cluster:latest" 2>&1 | tail -1 \
-      || warn "  Failed to pull openshell/cluster (will be pulled at test time)"
-  fi
-
+if [[ -n "$DOCKER_PULL_PID" ]]; then
+  info "Waiting for background Docker pulls to finish..."
+  wait "$DOCKER_PULL_PID" || warn "Some Docker pulls failed (will be pulled at test time)"
   info "Docker images pre-pulled"
+elif [[ "${SKIP_DOCKER_PULL:-0}" == "1" ]]; then
+  info "Skipping Docker image pre-pulls (SKIP_DOCKER_PULL=1)"
 fi
 
 # ══════════════════════════════════════════════════════════════════════
