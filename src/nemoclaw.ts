@@ -1221,9 +1221,15 @@ function sandboxPolicyList(sandboxName) {
 }
 
 function cleanupSandboxServices(sandboxName) {
-  // Stop host services (cloudflared) and clean up PID directory.
-  const { stopAll } = require("./lib/services");
-  stopAll({ sandboxName });
+  const { defaultSandbox } = registry.listSandboxes();
+  const shouldStopHostServices = !defaultSandbox || defaultSandbox === sandboxName;
+
+  // Host-side services/forwards are effectively singleton state. Only stop
+  // them when destroying the default sandbox (or when no default remains).
+  if (shouldStopHostServices) {
+    const { stopAll } = require("./lib/services");
+    stopAll({ sandboxName });
+  }
   try {
     fs.rmSync(`/tmp/nemoclaw-services-${sandboxName}`, { recursive: true, force: true });
   } catch {
