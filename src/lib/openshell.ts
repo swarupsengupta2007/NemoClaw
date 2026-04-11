@@ -124,3 +124,29 @@ export function getInstalledOpenshellVersion(
   });
   return parseVersionFromText(versionResult.output);
 }
+
+export function isOpenshellVmAvailable(
+  opts: { whichImpl?: (bin: string) => boolean } = {},
+): boolean {
+  const which =
+    opts.whichImpl ??
+    ((bin: string) => {
+      const result = spawnSync("which", [bin], {
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      return result.status === 0;
+    });
+  return which("openshell-vm");
+}
+
+export function getInstalledOpenshellVmVersion(
+  binary = "openshell-vm",
+  opts: CaptureOpenshellOptions = {},
+): string | null {
+  const versionResult = captureOpenshellCommand(binary, ["--version"], {
+    ...opts,
+    ignoreError: true,
+  });
+  return parseVersionFromText(versionResult.output);
+}

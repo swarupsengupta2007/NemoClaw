@@ -1793,7 +1793,7 @@ async function preflight() {
       }
     } else {
       const parts = currentVersion.split(".").map(Number);
-      const minParts = [0, 0, 24]; // must match MIN_VERSION in scripts/install-openshell.sh
+      const minParts = [0, 0, 26]; // must match MIN_VERSION in scripts/install-openshell.sh
       const needsUpgrade =
         parts[0] < minParts[0] ||
         (parts[0] === minParts[0] && parts[1] < minParts[1]) ||

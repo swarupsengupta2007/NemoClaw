@@ -38,6 +38,8 @@ export interface SessionMetadata {
   fromDockerfile: string | null;
 }
 
+export type GatewayBackend = "docker" | "vm";
+
 export interface Session {
   version: number;
   sessionId: string;
@@ -51,6 +53,7 @@ export interface Session {
   failure: SessionFailure | null;
   agent: string | null;
   sandboxName: string | null;
+  gatewayBackend: GatewayBackend | null;
   provider: string | null;
   model: string | null;
   endpointUrl: string | null;
@@ -80,6 +83,7 @@ export interface LockResult {
 
 export interface SessionUpdates {
   sandboxName?: string;
+  gatewayBackend?: GatewayBackend;
   provider?: string;
   model?: string;
   endpointUrl?: string;
@@ -190,6 +194,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     failure: overrides.failure || null,
     agent: overrides.agent || null,
     sandboxName: overrides.sandboxName || null,
+    gatewayBackend: overrides.gatewayBackend || null,
     provider: overrides.provider || null,
     model: overrides.model || null,
     endpointUrl: overrides.endpointUrl || null,
@@ -225,6 +230,8 @@ export function normalizeSession(data: unknown): Session | null {
     updatedAt: typeof d.updatedAt === "string" ? d.updatedAt : undefined,
     agent: typeof d.agent === "string" ? d.agent : null,
     sandboxName: typeof d.sandboxName === "string" ? d.sandboxName : null,
+    gatewayBackend:
+      d.gatewayBackend === "docker" || d.gatewayBackend === "vm" ? d.gatewayBackend : null,
     provider: typeof d.provider === "string" ? d.provider : null,
     model: typeof d.model === "string" ? d.model : null,
     endpointUrl: typeof d.endpointUrl === "string" ? redactUrl(d.endpointUrl) : null,
@@ -415,6 +422,8 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
   const safe: Partial<Session> = {};
   if (!isObject(updates)) return safe;
   if (typeof updates.sandboxName === "string") safe.sandboxName = updates.sandboxName;
+  if (updates.gatewayBackend === "docker" || updates.gatewayBackend === "vm")
+    safe.gatewayBackend = updates.gatewayBackend;
   if (typeof updates.provider === "string") safe.provider = updates.provider;
   if (typeof updates.model === "string") safe.model = updates.model;
   if (typeof updates.endpointUrl === "string") safe.endpointUrl = redactUrl(updates.endpointUrl);
@@ -515,6 +524,7 @@ export function summarizeForDebug(session: Session | null = loadSession()): Reco
     startedAt: session.startedAt,
     updatedAt: session.updatedAt,
     sandboxName: session.sandboxName,
+    gatewayBackend: session.gatewayBackend,
     provider: session.provider,
     model: session.model,
     endpointUrl: redactUrl(session.endpointUrl),

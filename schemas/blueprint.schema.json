@@ -33,6 +33,12 @@
       "uniqueItems": true,
       "description": "Declared inference profile names."
     },
+    "gateway_backends": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["docker", "vm"] },
+      "uniqueItems": true,
+      "description": "Supported gateway backends. docker = Docker + k3s (GPU via CDI). vm = openshell-vm microVM (no Docker, CPU-only)."
+    },
     "description": {
       "type": "string"
     },

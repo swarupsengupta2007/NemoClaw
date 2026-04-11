@@ -339,8 +339,8 @@ In that case:
 
 ### Sandbox lost after gateway restart
 
-Sandboxes created with OpenShell versions older than 0.0.24 can become unreachable after a gateway restart because SSH secrets were not persisted.
-Running `nemoclaw onboard` automatically upgrades OpenShell to 0.0.24 or later during the preflight check.
+Sandboxes created with OpenShell versions older than 0.0.26 can become unreachable after a gateway restart because SSH secrets were not persisted.
+Running `nemoclaw onboard` automatically upgrades OpenShell to 0.0.26 or later during the preflight check.
 After the upgrade, recreate the sandbox with `nemoclaw onboard`.
 
 ### Agent cannot reach external hosts through a proxy

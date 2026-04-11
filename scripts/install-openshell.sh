@@ -33,9 +33,10 @@ esac
 
 info "Detected $OS_LABEL ($ARCH_LABEL)"
 
-# Minimum version required for sandbox persistence across gateway restarts
+# Minimum version required for microVM gateway support (openshell-vm crate:
+# NVIDIA/OpenShell#611) and sandbox persistence across gateway restarts
 # (deterministic k3s node name + workspace PVC: NVIDIA/OpenShell#739, #488)
-MIN_VERSION="0.0.24"
+MIN_VERSION="0.0.26"
 
 version_gte() {
   # Returns 0 (true) if $1 >= $2 — portable, no sort -V (BSD compat)

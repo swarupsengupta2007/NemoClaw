@@ -2,8 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 version: "0.1.0"
-min_openshell_version: "0.0.24"
+min_openshell_version: "0.0.26"
 min_openclaw_version: "2026.3.0"
+# Supported gateway backends. "docker" uses Docker + k3s (required for GPU
+# via CDI injection). "vm" uses openshell-vm (libkrun microVM, no Docker
+# required, CPU-only). The CLI reads this list to validate user selection.
+gateway_backends:
+  - docker
+  - vm
 # Mirrors the components.sandbox.image manifest digest below. Lets a
 # downstream consumer (or release tooling) verify the blueprint declares
 # a specific sandbox image without parsing the components tree, and

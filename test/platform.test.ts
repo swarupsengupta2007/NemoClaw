@@ -7,6 +7,7 @@ import path from "node:path";
 
 import {
   detectDockerHost,
+  detectGatewayBackend,
   findColimaDockerSocket,
   getDockerSocketCandidates,
   getPodmanSocketCandidates,
@@ -204,6 +205,86 @@ describe("platform helpers", () => {
         source: "socket",
         socketPath: colimaSocket,
       });
+    });
+  });
+
+  describe("detectGatewayBackend", () => {
+    it("returns env var override when NEMOCLAW_GATEWAY_BACKEND is set to vm", () => {
+      expect(
+        detectGatewayBackend({ env: { NEMOCLAW_GATEWAY_BACKEND: "vm" } }),
+      ).toBe("vm");
+    });
+
+    it("returns env var override when NEMOCLAW_GATEWAY_BACKEND is set to docker", () => {
+      expect(
+        detectGatewayBackend({ env: { NEMOCLAW_GATEWAY_BACKEND: "docker" } }),
+      ).toBe("docker");
+    });
+
+    it("prefers vm when available and no GPU requested", () => {
+      expect(
+        detectGatewayBackend({
+          env: {},
+          vmAvailable: true,
+          dockerAvailable: true,
+          gpuRequested: false,
+        }),
+      ).toBe("vm");
+    });
+
+    it("falls back to docker when vm is not available", () => {
+      expect(
+        detectGatewayBackend({
+          env: {},
+          vmAvailable: false,
+          dockerAvailable: true,
+          gpuRequested: false,
+        }),
+      ).toBe("docker");
+    });
+
+    it("requires docker when GPU is requested", () => {
+      expect(
+        detectGatewayBackend({
+          env: {},
+          vmAvailable: true,
+          dockerAvailable: true,
+          gpuRequested: true,
+        }),
+      ).toBe("docker");
+    });
+
+    it("returns unknown when GPU requested but docker unavailable", () => {
+      expect(
+        detectGatewayBackend({
+          env: {},
+          vmAvailable: true,
+          dockerAvailable: false,
+          gpuRequested: true,
+        }),
+      ).toBe("unknown");
+    });
+
+    it("returns unknown when nothing is available", () => {
+      expect(
+        detectGatewayBackend({
+          env: {},
+          vmAvailable: false,
+          dockerAvailable: false,
+          gpuRequested: false,
+        }),
+      ).toBe("unknown");
+    });
+
+    it("ignores invalid env var values", () => {
+      expect(
+        detectGatewayBackend({
+          env: { NEMOCLAW_GATEWAY_BACKEND: "invalid" },
+          vmAvailable: true,
+          dockerAvailable: false,
+          gpuRequested: false,
+        }),
+      ).toBe("vm");
     });
   });
 });

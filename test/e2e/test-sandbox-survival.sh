@@ -17,8 +17,8 @@
 # This test uses NemoClaw's own install.sh to set up everything including
 # OpenShell — we are the installer, we test the installer.
 #
-# Requires OpenShell >= 0.0.24 (gateway resume + SSH secret persistence +
-# sandbox state persistence: NVIDIA/OpenShell#488, #739).
+# Requires OpenShell >= 0.0.26 (microVM gateway: NVIDIA/OpenShell#611,
+# gateway resume + SSH secret persistence: NVIDIA/OpenShell#488, #739).
 #
 # Prerequisites:
 #   - Docker running
@@ -101,7 +101,7 @@ SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-e2e-survival}"
 REGISTRY="$HOME/.nemoclaw/sandboxes.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-MIN_OPENSHELL="0.0.24"
+MIN_OPENSHELL="0.0.26"
 MODEL="nvidia/nemotron-3-super-120b-a12b"
 
 # SSH helper — sets up SSH config and common options for sandbox access
