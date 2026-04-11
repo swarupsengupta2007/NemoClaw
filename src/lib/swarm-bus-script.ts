@@ -14,10 +14,10 @@ export const SWARM_BUS_SCRIPT = `#!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Swarm bus - JSONL-backed HTTP sidecar for inter-agent messaging."""
-import argparse, json, os, sys, threading
+import argparse, json, os, queue, sys, threading
 from collections import deque
 from datetime import datetime, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from urllib.request import urlopen
 from urllib.error import URLError
@@ -178,23 +178,25 @@ class BusHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        event = threading.Event()
-        pending = []
+        q = queue.Queue()
         def on_message(msg):
-            pending.append(msg)
-            event.set()
+            q.put(msg)
         self.store.subscribe(on_message)
         try:
             while True:
-                event.wait(timeout=15)
-                if event.is_set():
-                    event.clear()
-                    while pending:
-                        msg = pending.pop(0)
-                        data = json.dumps(msg)
-                        self.wfile.write(f"data: {data}\\n\\n".encode("utf-8"))
+                try:
+                    msg = q.get(timeout=15)
+                    data = json.dumps(msg)
+                    self.wfile.write(f"data: {data}\\n\\n".encode("utf-8"))
+                    while not q.empty():
+                        try:
+                            msg = q.get_nowait()
+                            data = json.dumps(msg)
+                            self.wfile.write(f"data: {data}\\n\\n".encode("utf-8"))
+                        except queue.Empty:
+                            break
                     self.wfile.flush()
-                else:
+                except queue.Empty:
                     self.wfile.write(b": keepalive\\n\\n")
                     self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
@@ -215,7 +217,8 @@ def main():
     args = parser.parse_args()
     store = MessageStore(args.log_file)
     handler = make_handler(store)
-    server = HTTPServer(("127.0.0.1", args.port), handler)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    server.daemon_threads = True
     print(f"[swarm-bus] listening on 127.0.0.1:{args.port}", file=sys.stderr)
     print(f"[swarm-bus] log file: {args.log_file}", file=sys.stderr)
     try:
