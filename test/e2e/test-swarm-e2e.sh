@@ -177,8 +177,11 @@ fi
 info "Destroying default sandbox to rebuild with swarm image..."
 nemoclaw "$SANDBOX_NAME" destroy --yes 2>/dev/null || true
 
-info "Building Hermes base image from agents/hermes/Dockerfile..."
-if docker build -f "$REPO/agents/hermes/Dockerfile" -t nemoclaw-hermes-sandbox-base:latest "$REPO/agents/hermes" 2>&1 | tail -5; then
+info "Building Hermes base image from agents/hermes/Dockerfile.base..."
+info "This builds from scratch (node:22-slim + Hermes CLI + Python packages)."
+if docker build -f "$REPO/agents/hermes/Dockerfile.base" \
+  -t ghcr.io/nvidia/nemoclaw/hermes-sandbox-base:latest \
+  "$REPO/agents/hermes" 2>&1 | tail -10; then
   pass "Hermes base image built"
 else
   fail "Hermes base image build failed"
