@@ -290,6 +290,20 @@ def find_text_in_response(data):
                 return found
     return None
 
+import re as _re
+_ERROR_PATTERNS = _re.compile(
+    r'timed?\s*out|timeout|ETIMEDOUT|ECONNREFUSED|connection refused'
+    r'|relay.*failed|delivery.*failed|no text after|error.*attempt'
+    r'|try again.*timeoutSeconds|before a response was generated',
+    _re.IGNORECASE,
+)
+
+def is_real_response(text):
+    """Return False for timeout/error artifacts that are not real agent replies."""
+    if not text or len(text.strip()) < 10:
+        return False
+    return not _ERROR_PATTERNS.search(text)
+
 def deliver_openclaw(agent, message, config_dir):
     session_id = f"swarm-{message['from']}"
     env = dict(os.environ)
@@ -298,11 +312,11 @@ def deliver_openclaw(agent, message, config_dir):
         config_file = os.path.join(config_dir, "openclaw.json")
         if os.path.exists(config_file):
             env["OPENCLAW_CONFIG_PATH"] = config_file
-    cmd = ["openclaw", "agent", "--message", message["content"], "--session-id", session_id, "--json", "--timeout", "90"]
+    cmd = ["openclaw", "agent", "--message", message["content"], "--session-id", session_id, "--json", "--timeout", "120"]
     # Retry up to 3 times — first call may get empty response while session initializes
     for attempt in range(3):
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=95, env=env)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=130, env=env)
             if result.returncode != 0:
                 stderr = result.stderr.strip()[-200:] if result.stderr else ""
                 log(f"attempt {attempt+1}: exit {result.returncode}: {stderr}")
@@ -310,9 +324,12 @@ def deliver_openclaw(agent, message, config_dir):
                 continue
             data = json.loads(result.stdout)
             text = find_text_in_response(data)
-            if text:
+            if text and is_real_response(text):
                 return text, None
-            log(f"attempt {attempt+1}: no text, keys={list(data.keys())}, stdout={result.stdout[:300]}")
+            if text:
+                log(f"attempt {attempt+1}: filtered error response: {text[:100]}")
+            else:
+                log(f"attempt {attempt+1}: no text, keys={list(data.keys())}, stdout={result.stdout[:300]}")
             time.sleep(3)
         except subprocess.TimeoutExpired:
             log(f"attempt {attempt+1}: timeout")
@@ -357,9 +374,9 @@ def deliver_hermes(agent, message):
             if not text:
                 choice = data.get("choices", [{}])[0]
                 text = choice.get("message", {}).get("content", "")
-            if text and text.strip():
+            if text and text.strip() and is_real_response(text.strip()):
                 return text.strip(), None
-            log(f"hermes attempt {attempt+1}: no text, keys={list(data.keys())}")
+            log(f"hermes attempt {attempt+1}: no usable text, keys={list(data.keys())}")
             time.sleep(3)
         except (URLError, OSError) as e:
             log(f"hermes attempt {attempt+1}: {e}")
