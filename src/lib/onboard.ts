@@ -2111,14 +2111,6 @@ async function startVmGatewayProcess({ exitOnFailure = true } = {}) {
   console.log("  Starting openshell-vm gateway...");
   const dir = path.dirname(VM_LOG_FILE);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const logFd = fs.openSync(VM_LOG_FILE, "a");
-  // openshell-vm --name nemoclaw: boots a microVM with gateway identity
-  // "openshell-vm-nemoclaw". The binary handles rootfs extraction, k3s
-  // bootstrap, mTLS cert generation, and metadata registration internally.
-  //
-  // --mem 4096: CI runners (16GB) can't spare the default 8GB while also
-  // running k3s image pulls; 4GB is enough for a lightweight gateway.
-  const vmArgs = ["--name", GATEWAY_NAME, "--mem", "4096"];
 
   // If the E2E test downloaded a VM runtime, prefer it over the embedded
   // one — the downloaded runtime matches the release tag and may contain
@@ -2133,6 +2125,41 @@ async function startVmGatewayProcess({ exitOnFailure = true } = {}) {
     console.log(`  Using downloaded VM runtime: ${downloadedRuntime}`);
   }
 
+  // Ensure rootfs is extracted before booting so we can patch the init
+  // script. openshell-vm's embedded kernel has CONFIG_POSIX_MQUEUE=y but
+  // the init script doesn't mount the mqueue filesystem. runc needs
+  // /dev/mqueue to create container sandboxes — without it k3s pods fail
+  // with "error mounting mqueue: no such device".
+  const prepResult = spawnSync("openshell-vm", ["prepare-rootfs", "--name", GATEWAY_NAME], {
+    cwd: ROOT,
+    env: vmEnv,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (prepResult.status === 0 && prepResult.stdout?.trim()) {
+    const rootfsDir = prepResult.stdout.trim();
+    const initScript = path.join(rootfsDir, "srv", "openshell-vm-init.sh");
+    if (fs.existsSync(initScript)) {
+      const initContent = fs.readFileSync(initScript, "utf-8");
+      if (!initContent.includes("/dev/mqueue")) {
+        // Inject mqueue mount after the devpts/shm mounts, before k3s start.
+        const patched = initContent.replace(
+          "mount -t tmpfs    tmpfs    /dev/shm  2>/dev/null &",
+          "mount -t tmpfs    tmpfs    /dev/shm  2>/dev/null &\nmkdir -p /dev/mqueue\nmount -t mqueue   mqueue   /dev/mqueue 2>/dev/null &",
+        );
+        if (patched !== initContent) {
+          fs.writeFileSync(initScript, patched);
+          console.log("  Patched VM init script: added /dev/mqueue mount");
+        }
+      }
+    }
+  }
+
+  // --mem 4096: CI runners (16GB) can't spare the default 8GB while also
+  // running k3s image pulls; 4GB is enough for a lightweight gateway.
+  const vmArgs = ["--name", GATEWAY_NAME, "--mem", "4096"];
+
+  const logFd = fs.openSync(VM_LOG_FILE, "a");
   const child = spawn("openshell-vm", vmArgs, {
     cwd: ROOT,
     env: vmEnv,
