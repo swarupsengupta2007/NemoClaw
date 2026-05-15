@@ -74,6 +74,14 @@ const { shouldInspectLegacyGatewayGpuPassthrough }: typeof import("./onboard/gat
 const {
   syncPresetSelection,
 }: typeof import("./onboard/policy-preset-sync") = require("./onboard/policy-preset-sync");
+const {
+  gatherWechatConfig,
+  hasWechatConfigDrift,
+  toSessionWechatConfig,
+} = require("./onboard/wechat-config") as typeof import("./onboard/wechat-config");
+const {
+  setupSelectedMessagingChannels,
+} = require("./onboard/messaging-channel-setup") as typeof import("./onboard/messaging-channel-setup");
 const crypto = require("node:crypto");
 const fs = require("fs");
 const os = require("os");
@@ -337,42 +345,42 @@ const sandboxCreateFailureDiagnostics: typeof import("./onboard/sandbox-create-f
 
 import type { AgentDefinition } from "./agent/defs";
 import type { CurlProbeResult } from "./adapters/http/probe";
-import type { GatewayReuseState } from "./state/gateway";
 import type { GatewayInference } from "./inference/config";
 import type { GpuInfo, ValidationResult } from "./inference/local";
+import type { WebSearchConfig } from "./inference/web-search";
 import {
   hydrateMessagingChannelConfig,
   type MessagingChannelConfig,
   mergeMessagingChannelConfigs,
-  normalizeMessagingChannelConfigValue,
   readMessagingChannelConfigFromEnv,
   sanitizeMessagingChannelConfig,
 } from "./messaging-channel-config";
-import type { ContainerRuntime } from "./platform";
-import type { Session, SessionUpdates } from "./state/onboard-session";
+import { streamGatewayStart } from "./onboard/gateway";
+import { reportGpuPassthroughRecovery } from "./onboard/gpu-recovery";
+import { getMessagingToken } from "./onboard/messaging-token";
+import type {
+  DockerDriverBinaryOverrides,
+  OpenShellInstallDeps,
+  OpenShellInstallResult,
+} from "./onboard/openshell-install";
+import { decidePolicyCarryForward } from "./onboard/policy-carryforward";
+import type { SelectionDrift } from "./onboard/selection-drift";
 import type {
   ModelCatalogFetchResult,
   ModelValidationResult,
   ProbeResult,
   ValidationFailureLike,
 } from "./onboard/types";
+import type { ContainerRuntime } from "./platform";
+import type { TierDefinition, TierPreset } from "./policy/tiers";
 import { channelHasStaticToken, getChannelTokenKeys, listChannels } from "./sandbox/channels";
-import { getMessagingToken } from "./onboard/messaging-token";
-import { streamGatewayStart } from "./onboard/gateway";
-import { reportGpuPassthroughRecovery } from "./onboard/gpu-recovery";
 import type { StreamSandboxCreateResult } from "./sandbox/create-stream";
+import type { GatewayReuseState } from "./state/gateway";
+import type { Session, SessionUpdates } from "./state/onboard-session";
 import type { SandboxEntry } from "./state/registry";
 import type { BackupResult } from "./state/sandbox";
-import type { TierDefinition, TierPreset } from "./policy/tiers";
 import type { SandboxCreateFailure, ValidationClassification } from "./validation";
 import type { ProbeRecovery } from "./validation-recovery";
-import type { WebSearchConfig } from "./inference/web-search";
-import type {
-  DockerDriverBinaryOverrides,
-  OpenShellInstallDeps,
-  OpenShellInstallResult,
-} from "./onboard/openshell-install";
-import type { SelectionDrift } from "./onboard/selection-drift";
 
 const EXPERIMENTAL = process.env.NEMOCLAW_EXPERIMENTAL === "1";
 const USE_COLOR = !process.env.NO_COLOR && !!process.stdout.isTTY;
@@ -1371,9 +1379,7 @@ function validateSandboxGpuPreflight(config: SandboxGpuConfig): void {
   if (cdiSpecFiles.length === 0) {
     console.error("");
     console.error("  ✗ Docker CDI GPU support was not detected.");
-    for (const line of sandboxGpuRemediationLines()) {
-      console.error(`    ${line}`);
-    }
+    for (const line of sandboxGpuRemediationLines()) console.error(`    ${line}`);
     process.exit(1);
   }
   console.log(`  ✓ Docker CDI GPU support detected (${cdiSpecFiles.join(", ")})`);
@@ -1459,31 +1465,8 @@ function getDockerDriverGatewayEndpointArg(): string {
   return safeOpenShellArgument(getDockerDriverGatewayEndpoint(), "gateway endpoint");
 }
 
-/**
- * Execute a shell command inside a sandbox for post-deployment verification.
- * Returns a structured result with status, stdout, stderr — or null if
- * the sandbox is unreachable. Uses `openshell sandbox exec` with sh -c.
- */
-function executeSandboxCommandForVerification(
-  sandboxName: string,
-  script: string,
-): { status: number; stdout: string; stderr: string } | null {
-  try {
-    const result = spawnSync(
-      getOpenshellBinary(),
-      ["sandbox", "exec", "-n", sandboxName, "--", "sh", "-c", script],
-      { encoding: "utf-8", timeout: 15000, stdio: ["ignore", "pipe", "pipe"] },
-    );
-    if (result.error) return null;
-    return {
-      status: result.status ?? 1,
-      stdout: (result.stdout || "").trim(),
-      stderr: (result.stderr || "").trim(),
-    };
-  } catch {
-    return null;
-  }
-}
+const { executeSandboxCommandForVerification }: typeof import("./onboard/sandbox-verification-exec") =
+  require("./onboard/sandbox-verification-exec");
 
 // URL/string utilities — delegated to src/lib/core/url-utils.ts
 const {
@@ -1927,6 +1910,7 @@ function verifyDirectSandboxGpu(sandboxName: string): void {
       console.log(`  ✓ GPU proof passed: ${proof.label}`);
       continue;
     }
+    if (proof.optional === true) return;
     const diagnostic = compactText(redact(`${result.stderr || ""} ${result.stdout || ""}`));
     console.error(`  ✗ GPU proof failed: ${proof.label}`);
     if (diagnostic) console.error(`    ${diagnostic.slice(0, 300)}`);
@@ -1973,6 +1957,7 @@ function getMessagingChannelForEnvKey(envKey: string): string | null {
   if (envKey === "DISCORD_BOT_TOKEN") return "discord";
   if (envKey === "SLACK_BOT_TOKEN") return "slack";
   if (envKey === "TELEGRAM_BOT_TOKEN") return "telegram";
+  if (envKey === "WECHAT_BOT_TOKEN") return "wechat";
   return null;
 }
 
@@ -2382,15 +2367,12 @@ const {
   hasChatCompletionsToolCall,
   hasChatCompletionsToolCallLeak,
   shouldRequireResponsesToolCalling,
+  verifyOnboardInferenceSmoke,
   getProbeAuthMode,
   getValidationProbeCurlArgs,
   probeOpenAiLikeEndpoint,
   probeAnthropicEndpoint,
 } = require("./inference/onboard-probes");
-
-// shouldSkipResponsesProbe and isNvcfFunctionNotFoundForAccount /
-// nvcfFunctionNotFoundMessage — see validation import above. They live in
-// src/lib/validation.ts so they can be unit-tested independently.
 
 async function validateOpenAiLikeSelection(
   label: string,
@@ -5111,7 +5093,7 @@ async function createSandbox(
   // Credentials stay in the keychain; the bridge simply isn't registered with
   // the gateway on the next rebuild. `channels start` removes the entry and
   // the bridge comes back.
-  const disabledChannels = registry.getDisabledChannels(sandboxName);
+  const disabledChannels = require("./onboard/channel-state").resolveDisabledChannels(sandboxName);
   const disabledEnvKeys = new Set(
     MESSAGING_CHANNELS.filter((c) => disabledChannels.includes(c.name)).flatMap((c) =>
       getChannelTokenKeys(c),
@@ -5138,6 +5120,11 @@ async function createSandbox(
       name: `${sandboxName}-telegram-bridge`,
       envKey: "TELEGRAM_BOT_TOKEN",
       token: getMessagingToken("TELEGRAM_BOT_TOKEN"),
+    },
+    {
+      name: `${sandboxName}-wechat-bridge`,
+      envKey: "WECHAT_BOT_TOKEN",
+      token: getMessagingToken("WECHAT_BOT_TOKEN"),
     },
   ]
     .filter(({ envKey }) => !enabledEnvKeys || enabledEnvKeys.has(envKey))
@@ -5446,13 +5433,12 @@ async function createSandbox(
     }
 
     const previousEntry: SandboxEntry | null = registry.getSandbox(sandboxName);
-    const previousPolicies = previousEntry?.policies ?? null;
-    if (previousPolicies && previousPolicies.length > 0) {
-      onboardSession.updateSession((current: Session) => {
-        current.policyPresets = previousPolicies;
-        return current;
-      });
-    }
+    const decision = decidePolicyCarryForward(previousEntry?.policies, process.env, isNonInteractive());
+    onboardSession.updateSession((c: Session) => {
+      c.policyPresets = decision.newPresets;
+      return c;
+    });
+    if (decision.overrideNote !== null) note(decision.overrideNote);
 
     note(`  Deleting and recreating sandbox '${sandboxName}'...`);
 
@@ -5699,6 +5685,7 @@ async function createSandbox(
       telegramConfig.requireMention = telegramRequireMention;
     }
   }
+  const wechatConfig = gatherWechatConfig(onboardSession.loadSession());
   // Persist the effective Telegram config into the session so a later resume
   // can detect drift (TELEGRAM_REQUIRE_MENTION changed since last build) and
   // force a sandbox recreate — otherwise the old groupPolicy would stay baked
@@ -5708,6 +5695,7 @@ async function createSandbox(
       typeof telegramConfig.requireMention === "boolean"
         ? { requireMention: telegramConfig.requireMention as boolean }
         : null;
+    current.wechatConfig = toSessionWechatConfig(wechatConfig);
     current.messagingChannelConfig = messagingChannelConfig;
     return current;
   });
@@ -5760,6 +5748,7 @@ async function createSandbox(
     discordGuilds,
     resolved ? resolved.ref : null,
     telegramConfig,
+    wechatConfig as Record<string, unknown>,
     // Docker-on-Colima uses normal container ownership; keep the old VM chmod
     // compatibility path disabled unless a future VM-specific flow opts in.
     false,
@@ -7716,6 +7705,7 @@ async function setupInference(
     }
 
     verifyInferenceRoute(provider, model);
+    verifyOnboardInferenceSmoke({ provider, model, endpointUrl, credentialEnv });
     if (sandboxName) {
       registry.updateSandbox(sandboxName, { model, provider });
     }
@@ -7991,6 +7981,7 @@ async function setupInference(
   }
 
   verifyInferenceRoute(provider, model);
+  verifyOnboardInferenceSmoke({ provider, model, endpointUrl, credentialEnv });
   if (sandboxName) {
     registry.updateSandbox(sandboxName, { model, provider });
   }
@@ -8095,9 +8086,6 @@ async function checkTelegramReachability(token: string) {
 
 async function setupMessagingChannels(): Promise<string[]> {
   step(5, 8, "Messaging channels");
-
-  const getMessagingConfigValue = (envKey: string): string | null =>
-    normalizeMessagingChannelConfigValue(envKey, process.env[envKey]);
 
   // Non-interactive: skip prompt, tokens come from env/credentials
   if (isNonInteractive() || process.env.NEMOCLAW_NON_INTERACTIVE === "1") {
@@ -8223,126 +8211,7 @@ async function setupMessagingChannels(): Promise<string[]> {
     return [];
   }
 
-  // For each selected channel, prompt for token if not already set
-  for (const name of selected) {
-    const ch = MESSAGING_CHANNELS.find((c) => c.name === name);
-    if (!ch) {
-      console.log(`  Unknown channel: ${name}`);
-      continue;
-    }
-    if (!channelHasStaticToken(ch)) continue;
-    if (getMessagingToken(ch.envKey)) {
-      console.log(`  ✓ ${ch.name} — already configured`);
-    } else {
-      console.log("");
-      console.log(`  ${ch.help}`);
-      const token = normalizeCredentialValue(await prompt(`  ${ch.label}: `, { secret: true }));
-      if (token && ch.tokenFormat && !ch.tokenFormat.test(token)) {
-        console.log(
-          `  ✗ Invalid format. ${ch.tokenFormatHint || "Check the token and try again."}`,
-        );
-        console.log(`  Skipped ${ch.name} (invalid token format)`);
-        enabled.delete(ch.name);
-        continue;
-      }
-      if (token) {
-        saveCredential(ch.envKey, token);
-        process.env[ch.envKey] = token;
-        console.log(`  ✓ ${ch.name} token saved`);
-      } else {
-        console.log(`  Skipped ${ch.name} (no token entered)`);
-        enabled.delete(ch.name);
-        continue;
-      }
-    }
-    if (ch.appTokenEnvKey) {
-      const existingAppToken = getMessagingToken(ch.appTokenEnvKey);
-      if (existingAppToken) {
-        console.log(`  ✓ ${ch.name} app token — already configured`);
-      } else {
-        console.log("");
-        console.log(`  ${ch.appTokenHelp}`);
-        const appToken = normalizeCredentialValue(
-          await prompt(`  ${ch.appTokenLabel}: `, { secret: true }),
-        );
-        if (appToken && ch.appTokenFormat && !ch.appTokenFormat.test(appToken)) {
-          console.log(
-            `  ✗ Invalid format. ${ch.appTokenFormatHint || "Check the token and try again."}`,
-          );
-          console.log(`  Skipped ${ch.name} app token (invalid token format)`);
-          enabled.delete(ch.name);
-          continue;
-        }
-        if (appToken) {
-          saveCredential(ch.appTokenEnvKey, appToken);
-          process.env[ch.appTokenEnvKey] = appToken;
-          console.log(`  ✓ ${ch.name} app token saved`);
-        } else {
-          console.log(`  Skipped ${ch.name} app token (Socket Mode requires both tokens)`);
-          enabled.delete(ch.name);
-          continue;
-        }
-      }
-    }
-    if (ch.serverIdEnvKey) {
-      const existingServerIds = getMessagingConfigValue(ch.serverIdEnvKey) || "";
-      if (existingServerIds) {
-        process.env[ch.serverIdEnvKey] = existingServerIds;
-        console.log(`  ✓ ${ch.name} — server ID already set: ${existingServerIds}`);
-      } else {
-        console.log(`  ${ch.serverIdHelp}`);
-        const serverId = (await prompt(`  ${ch.serverIdLabel}: `)).trim();
-        if (serverId) {
-          process.env[ch.serverIdEnvKey] = serverId;
-          console.log(`  ✓ ${ch.name} server ID saved`);
-        } else {
-          console.log(`  Skipped ${ch.name} server ID (guild channels stay disabled)`);
-        }
-      }
-    }
-    // Mention-control prompt: fires for any channel that exposes a
-    // requireMention env key. Discord gates the prompt behind a configured
-    // server ID (mention control only makes sense in a guild). Telegram
-    // has no serverIdEnvKey because mention control applies to every group
-    // the bot is added to, so the prompt always fires there. See #1737.
-    const requireMentionKey = ch.requireMentionEnvKey;
-    if (requireMentionKey && (!ch.serverIdEnvKey || Boolean(process.env[ch.serverIdEnvKey]))) {
-      const existingRequireMention = getMessagingConfigValue(requireMentionKey);
-      if (existingRequireMention === "0" || existingRequireMention === "1") {
-        process.env[requireMentionKey] = existingRequireMention;
-        const mode = existingRequireMention === "0" ? "all messages" : "@mentions only";
-        console.log(`  ✓ ${ch.name} — reply mode already set: ${mode}`);
-      } else {
-        console.log(`  ${ch.requireMentionHelp}`);
-        const answer = (await prompt("  Reply only when @mentioned? [Y/n]: ")).trim().toLowerCase();
-        const value = answer === "n" || answer === "no" ? "0" : "1";
-        process.env[requireMentionKey] = value;
-        const mode = value === "0" ? "all messages" : "@mentions only";
-        console.log(`  ✓ ${ch.name} reply mode saved: ${mode}`);
-      }
-    }
-    // Prompt for user/sender ID when the channel supports allowlisting
-    if (ch.userIdEnvKey && (!ch.serverIdEnvKey || process.env[ch.serverIdEnvKey])) {
-      const existingIds = getMessagingConfigValue(ch.userIdEnvKey) || "";
-      if (existingIds) {
-        process.env[ch.userIdEnvKey] = existingIds;
-        console.log(`  ✓ ${ch.name} — allowed IDs already set: ${existingIds}`);
-      } else {
-        console.log(`  ${ch.userIdHelp}`);
-        const userId = (await prompt(`  ${ch.userIdLabel}: `)).trim();
-        if (userId) {
-          process.env[ch.userIdEnvKey] = userId;
-          console.log(`  ✓ ${ch.name} allowed IDs saved`);
-        } else {
-          const skippedReason =
-            ch.allowIdsMode === "guild"
-              ? "any member in the configured server can message the bot"
-              : "bot will require manual pairing";
-          console.log(`  Skipped ${ch.name} user ID (${skippedReason})`);
-        }
-      }
-    }
-  }
+  await setupSelectedMessagingChannels(selected, enabled, MESSAGING_CHANNELS);
   console.log("");
 
   // Channels where the user declined to enter a token were dropped from
@@ -8396,6 +8265,7 @@ function getSuggestedPolicyPresets({
   maybeSuggestMessagingPreset("telegram", "TELEGRAM_BOT_TOKEN");
   maybeSuggestMessagingPreset("slack", "SLACK_BOT_TOKEN");
   maybeSuggestMessagingPreset("discord", "DISCORD_BOT_TOKEN");
+  maybeSuggestMessagingPreset("wechat", "WECHAT_BOT_TOKEN");
 
   if (webSearchConfig) suggestions.push("brave");
 
@@ -10536,11 +10406,13 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     const sandboxGpuConfigChanged = sandboxName
       ? hasSandboxGpuDrift(sandboxName, sandboxGpuConfig)
       : false;
+    const wechatConfigChanged = hasWechatConfigDrift(session);
     const resumeSandbox =
       resume &&
       !webSearchConfigChanged &&
       !telegramConfigChanged &&
       !sandboxGpuConfigChanged &&
+      !wechatConfigChanged &&
       !messagingChannelConfigChanged &&
       session?.steps?.sandbox?.status === "complete" &&
       sandboxReuseState === "ready";
@@ -10564,6 +10436,11 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
           }
         } else if (sandboxGpuConfigChanged) {
           note("  [resume] Sandbox GPU settings changed; recreating sandbox.");
+          if (sandboxName) {
+            registry.removeSandbox(sandboxName);
+          }
+        } else if (wechatConfigChanged) {
+          note("  [resume] WeChat account metadata changed; recreating sandbox.");
           if (sandboxName) {
             registry.removeSandbox(sandboxName);
           }
@@ -10814,12 +10691,22 @@ async function onboard(opts: OnboardOptions = {}): Promise<void> {
     // every target is already clean.
     cleanupStaleHostFiles();
 
+    // Step [8/8] policy-apply restarts the sandbox container; the OpenClaw
+    // gateway inside the new container is launched lazily (normally by the
+    // first `nemoclaw <name> connect`). Bring it up explicitly here so the
+    // verifyDeployment block below does not race the post-policy startup and
+    // surface a false "gateway crashed during startup" warning. The helper
+    // is a no-op when the gateway is already running. Fixes #3573.
+    const processRecovery: typeof import("./actions/sandbox/process-recovery") =
+      require("./actions/sandbox/process-recovery");
+    processRecovery.checkAndRecoverSandboxProcesses(sandboxName, { quiet: true });
+
     // Post-deployment verification — confirm the full delivery chain is
     // operational before telling the user "YOUR AGENT IS LIVE". Fixes #2342.
     const verifyDeploymentModule: typeof import("./verify-deployment") = require("./verify-deployment");
     const _verifyChatUiUrl = process.env.CHAT_UI_URL || `http://127.0.0.1:${DASHBOARD_PORT}`;
     const verifyChain = buildChain({ chatUiUrl: _verifyChatUiUrl, isWsl: isWsl(), wslHostAddress: getWslHostAddress() });
-    const verificationResult = verifyDeploymentModule.verifyDeployment(
+    const verificationResult = await verifyDeploymentModule.verifyDeployment(
       sandboxName,
       verifyChain,
       {
