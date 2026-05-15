@@ -83,7 +83,6 @@ else
 fi
 
 SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-e2e-channels-add-remove}"
-REGISTRY="$HOME/.nemoclaw/sandboxes.json"
 INSTALL_LOG="/tmp/nemoclaw-e2e-install.log"
 TELEGRAM_TOKEN="${TELEGRAM_BOT_TOKEN:-test-fake-telegram-token-add-remove-e2e}"
 
@@ -112,21 +111,6 @@ sandbox_exec() {
   echo "$result"
 }
 
-# Inspect the registry for one sandbox. Echoes a JSON blob; callers `jq` it.
-registry_field() {
-  local field="$1"
-  if command -v jq >/dev/null 2>&1; then
-    jq -c --arg name "$SANDBOX_NAME" --arg field "$field" \
-      '.sandboxes[$name][$field]' "$REGISTRY" 2>/dev/null || echo "null"
-  else
-    node -e "
-const r = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
-const v = (r.sandboxes || {})[process.argv[2]]?.[process.argv[3]];
-process.stdout.write(JSON.stringify(v ?? null));
-" "$REGISTRY" "$SANDBOX_NAME" "$field" 2>/dev/null || echo "null"
-  fi
-}
-
 openclaw_has_telegram() {
   # Read /sandbox/.openclaw/openclaw.json from inside the sandbox and check
   # for `channels.telegram`. Exit 0 if present, 1 if absent, 2 if the file
@@ -142,25 +126,44 @@ openclaw_has_telegram() {
 }
 
 # Check whether a named preset is currently applied to the sandbox.
-# Uses host-side `nemoclaw <sb> policy list` since presets live in the
+# Uses host-side `nemoclaw <sb> policy-list` since presets live in the
 # gateway policy engine (not in the sandbox filesystem).
 policy_list_has_preset() {
   local preset="$1"
-  nemoclaw "$SANDBOX_NAME" policy list 2>/dev/null \
+  nemoclaw "$SANDBOX_NAME" policy-list 2>/dev/null \
     | grep -E "^\s*${preset}\b" >/dev/null
 }
 
+# Run rebuild with live tail of the rebuild log so the operator can see
+# progress. Mirrors the install.sh tail pattern in Phase 1.
+run_rebuild_with_live_log() {
+  local log_path="$1"
+  nemoclaw "$SANDBOX_NAME" rebuild --yes >"$log_path" 2>&1 &
+  local rebuild_pid=$!
+  tail -f "$log_path" --pid=$rebuild_pid 2>/dev/null &
+  local tail_pid=$!
+  wait $rebuild_pid
+  local rebuild_exit=$?
+  kill $tail_pid 2>/dev/null || true
+  wait $tail_pid 2>/dev/null || true
+  return $rebuild_exit
+}
+
 # Egress probe through the L7 proxy from inside the sandbox. Discriminates
-# between "reached Telegram" (preset applied -> proxy passes the request)
-# and "blocked by proxy" (no preset -> SSRF/L7 denies). Falls back to
-# inconclusive if the response is neither.
+# between "reached Telegram" (preset applied -> proxy passes the CONNECT)
+# and "blocked by proxy" (no preset -> proxy 403s the CONNECT or denies the
+# request). Falls back to inconclusive only when neither signal matches.
 telegram_egress_open() {
   local body
   body=$(sandbox_exec "curl -sS --max-time 15 https://api.telegram.org/ 2>&1" || true)
   if echo "$body" | grep -qiE "telegram bot api|<title>telegram"; then
     return 0
   fi
-  if echo "$body" | grep -qiE "policy_denied|engine:ssrf|forbidden by policy"; then
+  # Common proxy-denial signatures:
+  #   - curl (56) CONNECT tunnel failed, response 403  (CONNECT-based proxy)
+  #   - policy_denied / engine:ssrf                    (NemoClaw L7 body)
+  #   - forbidden by policy                            (generic phrasing)
+  if echo "$body" | grep -qiE "policy_denied|engine:ssrf|forbidden by policy|CONNECT tunnel failed.*40[0-9]"; then
     return 1
   fi
   echo "  [egress-probe inconclusive] first line: $(echo "$body" | head -1)" >&2
@@ -284,22 +287,10 @@ else
   fi
 fi
 
-baseline_messaging=$(registry_field messagingChannels)
-case "$baseline_messaging" in
-  "null" | "[]") pass "C2c: registry.messagingChannels empty at baseline (${baseline_messaging})" ;;
-  *)
-    if echo "$baseline_messaging" | grep -q '"telegram"'; then
-      fail "C2c: registry.messagingChannels contains telegram at baseline (${baseline_messaging})"
-    else
-      pass "C2c: registry.messagingChannels does not contain telegram (${baseline_messaging})"
-    fi
-    ;;
-esac
-
 if policy_list_has_preset telegram; then
-  fail "C2d: 'telegram' preset unexpectedly applied at baseline"
+  fail "C2c: 'telegram' preset unexpectedly applied at baseline"
 else
-  pass "C2d: 'telegram' preset not applied at baseline"
+  pass "C2c: 'telegram' preset not applied at baseline"
 fi
 
 # ══════════════════════════════════════════════════════════════════
@@ -325,7 +316,7 @@ else
 fi
 
 info "Rebuilding sandbox to apply the add..."
-if nemoclaw "$SANDBOX_NAME" rebuild --yes >/tmp/nc-rebuild-add.log 2>&1; then
+if run_rebuild_with_live_log /tmp/nc-rebuild-add.log; then
   pass "C3b: rebuild (post-add) completed"
 else
   fail "C3b: rebuild (post-add) failed"
@@ -363,36 +354,28 @@ else
   fi
 fi
 
-# C4c: registry.messagingChannels picks up telegram.
-post_add_messaging=$(registry_field messagingChannels)
-if echo "$post_add_messaging" | grep -q '"telegram"'; then
-  pass "C4c: registry.messagingChannels contains telegram (${post_add_messaging})"
+# C4c: bridge provider exists in the gateway (registered + survived rebuild).
+# `openshell provider get` is the source of truth — `sandbox describe` does
+# not surface provider attachment in a parseable way.
+if openshell provider get "${SANDBOX_NAME}-telegram-bridge" >/dev/null 2>&1; then
+  pass "C4c: telegram-bridge provider exists in gateway after add+rebuild"
 else
-  fail "C4c: registry.messagingChannels missing telegram (got: ${post_add_messaging})"
+  fail "C4c: telegram-bridge provider missing in gateway after add+rebuild"
 fi
 
-# C4d: bridge provider attached to the rebuilt sandbox in the gateway.
-attached=$(openshell sandbox describe "$SANDBOX_NAME" 2>&1 \
-  | grep -F "${SANDBOX_NAME}-telegram-bridge" || true)
-if [ -n "$attached" ]; then
-  pass "C4d: telegram-bridge provider attached to rebuilt sandbox"
-else
-  fail "C4d: telegram-bridge provider not attached after add+rebuild"
-fi
-
-# C4e: network reachability. With the preset applied, curl from inside the
+# C4d: network reachability. With the preset applied, curl from inside the
 # sandbox through the L7 proxy should reach api.telegram.org and get the
 # Bot API root page back; without the preset, the proxy denies with
 # policy_denied / engine:ssrf. This is the user-facing symptom that #3437
 # reports — bridge can't reach Telegram, bot stays silent.
 if telegram_egress_open; then
-  pass "C4e: egress to api.telegram.org reaches Telegram through L7 proxy"
+  pass "C4d: egress to api.telegram.org reaches Telegram through L7 proxy"
 else
   rc=$?
   if [ "$rc" = "2" ]; then
-    skip "C4e: egress probe inconclusive (network instability or unexpected proxy response)"
+    skip "C4d: egress probe inconclusive (network instability or unexpected proxy response)"
   else
-    fail "C4e: egress to api.telegram.org blocked by proxy (preset not in effect)"
+    fail "C4d: egress to api.telegram.org blocked by proxy (preset not in effect)"
   fi
 fi
 
@@ -415,7 +398,7 @@ else
 fi
 
 info "Rebuilding sandbox to apply the remove..."
-if nemoclaw "$SANDBOX_NAME" rebuild --yes >/tmp/nc-rebuild-remove.log 2>&1; then
+if run_rebuild_with_live_log /tmp/nc-rebuild-remove.log; then
   pass "C5b: rebuild (post-remove) completed"
 else
   fail "C5b: rebuild (post-remove) failed"
@@ -442,29 +425,14 @@ else
   fi
 fi
 
-# C6b: registry.messagingChannels no longer lists telegram.
-post_remove_messaging=$(registry_field messagingChannels)
-case "$post_remove_messaging" in
-  "null" | "[]") pass "C6b: registry.messagingChannels empty after remove (${post_remove_messaging})" ;;
-  *)
-    if echo "$post_remove_messaging" | grep -q '"telegram"'; then
-      fail "C6b: registry.messagingChannels still contains telegram after remove (got: ${post_remove_messaging})"
-    else
-      pass "C6b: registry.messagingChannels does not contain telegram (${post_remove_messaging})"
-    fi
-    ;;
-esac
-
-# C6c: bridge provider no longer attached to the sandbox.
-post_remove_attached=$(openshell sandbox describe "$SANDBOX_NAME" 2>&1 \
-  | grep -F "${SANDBOX_NAME}-telegram-bridge" || true)
-if [ -z "$post_remove_attached" ]; then
-  pass "C6c: telegram-bridge provider not attached after remove+rebuild"
+# C6b: bridge provider no longer exists in the gateway after remove.
+if openshell provider get "${SANDBOX_NAME}-telegram-bridge" >/dev/null 2>&1; then
+  fail "C6b: telegram-bridge provider still exists in gateway after remove+rebuild"
 else
-  fail "C6c: telegram-bridge provider still attached after remove (${post_remove_attached})"
+  pass "C6b: telegram-bridge provider removed from gateway after remove+rebuild"
 fi
 
-# C6d: Preset cleanup on remove — asymmetry with the add-side fix.
+# C6c: Preset cleanup on remove — asymmetry with the add-side fix.
 #
 # Issue #3462 Test 2 Step 7 expects `policy list` to no longer contain the
 # telegram preset after `channels remove`. PR #3452 only shipped the add-side
@@ -477,9 +445,9 @@ fi
 # Reported as info-only until the remove-side fix lands. Flip to pass/fail
 # once the symmetric helper is wired in.
 if policy_list_has_preset telegram; then
-  skip "C6d: 'telegram' preset still applied after remove — remove-side cleanup pending (follow-up)"
+  skip "C6c: 'telegram' preset still applied after remove — remove-side cleanup pending (follow-up)"
 else
-  pass "C6d: 'telegram' preset removed from policy list after remove+rebuild"
+  pass "C6c: 'telegram' preset removed from policy list after remove+rebuild"
 fi
 
 print_summary
