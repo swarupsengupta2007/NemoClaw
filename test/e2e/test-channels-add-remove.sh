@@ -153,9 +153,12 @@ run_rebuild_with_live_log() {
 # between "reached Telegram" (preset applied -> proxy passes the CONNECT)
 # and "blocked by proxy" (no preset -> proxy 403s the CONNECT or denies the
 # request). Falls back to inconclusive only when neither signal matches.
+# Uses `curl -v` so the operator sees the full CONNECT exchange + TLS state.
 telegram_egress_open() {
   local body
-  body=$(sandbox_exec "curl -sS --max-time 15 https://api.telegram.org/ 2>&1" || true)
+  body=$(sandbox_exec "curl -sSv --max-time 15 https://api.telegram.org/ 2>&1" || true)
+  echo "  [egress-probe] curl output (first 100 lines):"
+  echo "$body" | head -100 | sed 's/^/    /'
   if echo "$body" | grep -qiE "telegram bot api|<title>telegram"; then
     return 0
   fi
@@ -166,7 +169,6 @@ telegram_egress_open() {
   if echo "$body" | grep -qiE "policy_denied|engine:ssrf|forbidden by policy|CONNECT tunnel failed.*40[0-9]"; then
     return 1
   fi
-  echo "  [egress-probe inconclusive] first line: $(echo "$body" | head -1)" >&2
   return 2
 }
 
@@ -242,7 +244,7 @@ if [ $install_exit -eq 0 ]; then
   pass "C1b: install.sh + onboard completed (exit 0)"
 else
   fail "C1b: install.sh failed (exit $install_exit)"
-  tail -30 "$INSTALL_LOG" 2>/dev/null || true
+  tail -100 "$INSTALL_LOG" 2>/dev/null || true
   print_summary
 fi
 
@@ -320,7 +322,7 @@ if run_rebuild_with_live_log /tmp/nc-rebuild-add.log; then
   pass "C3b: rebuild (post-add) completed"
 else
   fail "C3b: rebuild (post-add) failed"
-  tail -30 /tmp/nc-rebuild-add.log 2>/dev/null || true
+  tail -100 /tmp/nc-rebuild-add.log 2>/dev/null || true
   print_summary
 fi
 
@@ -402,7 +404,7 @@ if run_rebuild_with_live_log /tmp/nc-rebuild-remove.log; then
   pass "C5b: rebuild (post-remove) completed"
 else
   fail "C5b: rebuild (post-remove) failed"
-  tail -30 /tmp/nc-rebuild-remove.log 2>/dev/null || true
+  tail -100 /tmp/nc-rebuild-remove.log 2>/dev/null || true
   print_summary
 fi
 
