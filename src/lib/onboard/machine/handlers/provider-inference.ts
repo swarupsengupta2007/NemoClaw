@@ -114,6 +114,13 @@ function requireSelection(provider: string | null, model: string | null): { prov
   return { provider, model };
 }
 
+function clearStagedCredentialEnv(
+  deps: Pick<ProviderInferenceStateOptions<unknown, unknown, unknown>["deps"], "deleteEnv">,
+  credentialEnv: string | null,
+): void {
+  if (credentialEnv) deps.deleteEnv(credentialEnv);
+}
+
 export async function handleProviderInferenceState<Gpu, Agent, Host>({
   resume,
   session,
@@ -193,15 +200,20 @@ export async function handleProviderInferenceState<Gpu, Agent, Host>({
       if (provider === constants.hermesProviderName) {
         if (!sandboxName) sandboxName = await deps.promptValidatedSandboxName(agent);
         await deps.startRecordedStep("inference", { provider, model });
-        const inferenceResult = await deps.setupInference(
-          sandboxName,
-          model,
-          provider,
-          endpointUrl,
-          credentialEnv,
-          hermesAuthMethod,
-          hermesToolGateways,
-        );
+        let inferenceResult: ProviderInferenceRetry;
+        try {
+          inferenceResult = await deps.setupInference(
+            sandboxName,
+            model,
+            provider,
+            endpointUrl,
+            credentialEnv,
+            hermesAuthMethod,
+            hermesToolGateways,
+          );
+        } finally {
+          clearStagedCredentialEnv(deps, credentialEnv);
+        }
         if (inferenceResult?.retry === "selection") {
           forceProviderSelection = true;
           continue;
@@ -258,16 +270,20 @@ export async function handleProviderInferenceState<Gpu, Agent, Host>({
     }
 
     await deps.startRecordedStep("inference", { provider, model });
-    const inferenceResult = await deps.setupInference(
-      sandboxName,
-      model,
-      provider,
-      endpointUrl,
-      credentialEnv,
-      hermesAuthMethod,
-      hermesToolGateways,
-    );
-    deps.deleteEnv("NVIDIA_API_KEY");
+    let inferenceResult: ProviderInferenceRetry;
+    try {
+      inferenceResult = await deps.setupInference(
+        sandboxName,
+        model,
+        provider,
+        endpointUrl,
+        credentialEnv,
+        hermesAuthMethod,
+        hermesToolGateways,
+      );
+    } finally {
+      clearStagedCredentialEnv(deps, credentialEnv);
+    }
     if (inferenceResult?.retry === "selection") {
       forceProviderSelection = true;
       continue;
