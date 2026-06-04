@@ -6,6 +6,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  CONNECT_AUTO_PAIR_APPROVE_TIMEOUT_S,
+  CONNECT_AUTO_PAIR_LIST_TIMEOUT_S,
+  CONNECT_AUTO_PAIR_MAX_APPROVALS,
+  CONNECT_AUTO_PAIR_TIMEOUT_MS,
+} from "../src/lib/actions/sandbox/connect-autopair-budget";
 import { execTimeout, testTimeoutOptions } from "./helpers/timeouts";
 
 /**
@@ -163,6 +169,17 @@ if (args[0] === "sandbox" && args[1] === "exec") {
     ) {
       process.stderr.write("simulated sandbox exec failure\\n");
       process.exit(7);
+    }
+    // Test hook (#4504): force the in-sandbox gateway health probe to report
+    // STOPPED so the probe path takes the not-running branch and (when recovery
+    // also fails) the probe-failure exit — where the approval sweep must NOT run.
+    if (
+      process.env.NEMOCLAW_TEST_GATEWAY_DOWN === "1" &&
+      command.includes("/health") &&
+      command.includes("HTTP_CODE")
+    ) {
+      process.stdout.write("__NEMOCLAW_SANDBOX_EXEC_STARTED__\\nSTOPPED\\n");
+      process.exit(0);
     }
     process.stdout.write("__NEMOCLAW_SANDBOX_EXEC_STARTED__\\nRUNNING\\n");
     process.exit(0);
@@ -1389,6 +1406,212 @@ describe("sandbox connect auto-pair approval pass (#4263)", () => {
         "connect",
         sandboxName,
       ]);
+    },
+  );
+});
+
+/**
+ * Tests for #4504 — the auto-pair scope-approval pass must also run on the
+ * recover / `connect --probe-only` path (defect A), and the shared pass must be
+ * able to actually complete a scope-upgrade approve (defect B): strip the full
+ * gateway env triplet and use the watcher's 10s approve budget while staying
+ * within the outer spawnSync cap.
+ *
+ * Helper: locate the approval-pass `sandbox exec` invocation (identified by the
+ * embedded `openclaw devices approve` call) and return its rendered script.
+ */
+function findApprovalExec(sandboxExecCalls: string[][]): string[] | undefined {
+  return sandboxExecCalls.find(
+    (call) =>
+      call.includes("--") &&
+      call.some((segment) => segment.includes("openclaw")) &&
+      call.some((segment) => segment.includes("devices")) &&
+      call.some((segment) => segment.includes("approve")),
+  );
+}
+
+describe("sandbox connect scope-upgrade approval on recover/probe (#4504)", () => {
+  it(
+    "runs the approval pass on the --probe-only (recover) path",
+    testTimeoutOptions(20_000),
+    () => {
+      // Scenario D: the probe takes the wasRunning branch (the fake openshell's
+      // health probe reports RUNNING), so the recover path must run the sweep —
+      // and must NOT open an SSH session.
+      const { tmpDir, stateFile, sandboxName } = setupFixture(
+        {
+          name: "probe-approval-sandbox",
+          model: "claude-sonnet-4-20250514",
+          provider: "anthropic-prod",
+          gpuEnabled: false,
+          policies: [],
+        },
+        "anthropic-prod",
+        "claude-sonnet-4-20250514",
+      );
+
+      const result = runConnect(tmpDir, sandboxName, {}, ["--probe-only"]);
+      expect(result.status).toBe(0);
+
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+      const approvalExec = findApprovalExec(state.sandboxExecCalls as string[][]);
+      expect(approvalExec).toBeDefined();
+      // Targets the requested sandbox via `sandbox exec --name <name> -- sh -c`.
+      expect(approvalExec).toContain("sandbox");
+      expect(approvalExec).toContain("exec");
+      expect(approvalExec).toContain("--name");
+      expect(approvalExec).toContain(sandboxName);
+      // probe-only never opens an SSH connect session.
+      expect(state.sandboxConnectCalls).toEqual([]);
+    },
+  );
+
+  it(
+    "does not fail the recover path when the probe approval pass errors",
+    testTimeoutOptions(20_000),
+    () => {
+      // Scenario D (best-effort): even when the in-sandbox approval exec exits
+      // non-zero, the probe-only flow must still succeed.
+      const { tmpDir, stateFile, sandboxName } = setupFixture(
+        {
+          name: "probe-approval-tolerant",
+          model: "claude-sonnet-4-20250514",
+          provider: "anthropic-prod",
+          gpuEnabled: false,
+          policies: [],
+        },
+        "anthropic-prod",
+        "claude-sonnet-4-20250514",
+      );
+
+      const result = runConnect(tmpDir, sandboxName, {
+        NEMOCLAW_TEST_FAIL_APPROVAL_PASS: "1",
+      }, ["--probe-only"]);
+      expect(result.status).toBe(0);
+
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+      const approvalExec = findApprovalExec(state.sandboxExecCalls as string[][]);
+      expect(approvalExec).toBeDefined();
+    },
+  );
+
+  it(
+    "does not run the approval pass when the probe fails (gateway down, recovery fails)",
+    testTimeoutOptions(20_000),
+    () => {
+      // Scenario D (negative half): the sweep is wired only into the wasRunning
+      // and recovered success branches — never the not-checked early exit nor
+      // the not-running failure exit, where the gateway is un-inspectable / down.
+      // Force the health probe to report STOPPED and let recovery fail so the
+      // probe lands on the failure branch; the approval pass must NOT run.
+      const { tmpDir, stateFile, sandboxName } = setupFixture(
+        {
+          name: "probe-gateway-down",
+          model: "claude-sonnet-4-20250514",
+          provider: "anthropic-prod",
+          gpuEnabled: false,
+          policies: [],
+        },
+        "anthropic-prod",
+        "claude-sonnet-4-20250514",
+      );
+
+      const result = runConnect(tmpDir, sandboxName, {
+        NEMOCLAW_TEST_GATEWAY_DOWN: "1",
+      }, ["--probe-only"]);
+      expect(result.status).toBe(1);
+
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+      const approvalExec = findApprovalExec(state.sandboxExecCalls as string[][]);
+      expect(approvalExec).toBeUndefined();
+      // And it never opens an SSH session on the failure path.
+      expect(state.sandboxConnectCalls).toEqual([]);
+    },
+  );
+
+  it(
+    "approve child strips the full gateway env triplet (#4462 self-defeat fix)",
+    testTimeoutOptions(20_000),
+    () => {
+      // Scenario E: the approve child must drop OPENCLAW_GATEWAY_URL, _PORT and
+      // _TOKEN so the local pairing fallback cannot re-pin to the gateway and
+      // hit the #4462 self-defeat. Assert on the rendered script text.
+      const { tmpDir, stateFile, sandboxName } = setupFixture(
+        {
+          name: "env-strip-sandbox",
+          model: "claude-sonnet-4-20250514",
+          provider: "anthropic-prod",
+          gpuEnabled: false,
+          policies: [],
+        },
+        "anthropic-prod",
+        "claude-sonnet-4-20250514",
+      );
+
+      const result = runConnect(tmpDir, sandboxName, {}, ["--probe-only"]);
+      expect(result.status).toBe(0);
+
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+      const approvalExec = findApprovalExec(state.sandboxExecCalls as string[][]);
+      expect(approvalExec).toBeDefined();
+      const script = approvalExec?.[approvalExec.length - 1] || "";
+      expect(script).toContain("approve_env = os.environ.copy()");
+      expect(script).toContain("approve_env.pop('OPENCLAW_GATEWAY_URL', None)");
+      expect(script).toContain("approve_env.pop('OPENCLAW_GATEWAY_PORT', None)");
+      expect(script).toContain("approve_env.pop('OPENCLAW_GATEWAY_TOKEN', None)");
+      // The stripped env is the one passed to the approve subprocess.
+      expect(script).toContain("env=approve_env");
+    },
+  );
+
+  it(
+    "approve timeout matches the watcher (10s) and stays within the outer cap",
+    testTimeoutOptions(20_000),
+    () => {
+      // Scenario F: assert the approve subprocess uses timeout=10 (matching the
+      // in-sandbox watcher RUN_TIMEOUT_SECS) and the list call keeps timeout=2,
+      // then check the budget invariant against the outer spawnSync cap.
+      const { tmpDir, stateFile, sandboxName } = setupFixture(
+        {
+          name: "approve-budget-sandbox",
+          model: "claude-sonnet-4-20250514",
+          provider: "anthropic-prod",
+          gpuEnabled: false,
+          policies: [],
+        },
+        "anthropic-prod",
+        "claude-sonnet-4-20250514",
+      );
+
+      const result = runConnect(tmpDir, sandboxName, {}, ["--probe-only"]);
+      expect(result.status).toBe(0);
+
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+      const approvalExec = findApprovalExec(state.sandboxExecCalls as string[][]);
+      expect(approvalExec).toBeDefined();
+      const script = approvalExec?.[approvalExec.length - 1] || "";
+
+      // The rendered script interpolates the exported budget constants, tying
+      // the runtime behaviour to the values the invariant below asserts on (no
+      // source-text scraping — the numbers come from the imported constants).
+      expect(script).toContain("[OPENCLAW, 'devices', 'list', '--json']");
+      expect(script).toContain(`timeout=${CONNECT_AUTO_PAIR_LIST_TIMEOUT_S},`);
+      expect(script).toContain(`timeout=${CONNECT_AUTO_PAIR_APPROVE_TIMEOUT_S},`);
+      expect(script).toContain(`MAX_APPROVALS = ${CONNECT_AUTO_PAIR_MAX_APPROVALS}`);
+
+      // Approve budget matches the in-sandbox watcher RUN_TIMEOUT_SECS = 10.
+      expect(CONNECT_AUTO_PAIR_APPROVE_TIMEOUT_S).toBe(10);
+
+      // Budget invariant: the inner worst case (list + approve × MAX_APPROVALS)
+      // must stay STRICTLY below the outer spawnSync cap. The outer timer starts
+      // when `sh` is spawned — before shell startup, sourcing the proxy env, the
+      // python3 launch, and `devices list` even begin — so the cap must leave
+      // slack above the inner budget, or a legitimate slow 10s approve is killed
+      // mid-loop and the allowlisted request is stranded (#4504).
+      const innerBudgetSeconds =
+        CONNECT_AUTO_PAIR_LIST_TIMEOUT_S +
+        CONNECT_AUTO_PAIR_APPROVE_TIMEOUT_S * CONNECT_AUTO_PAIR_MAX_APPROVALS;
+      expect(innerBudgetSeconds).toBeLessThan(CONNECT_AUTO_PAIR_TIMEOUT_MS / 1000);
     },
   );
 });
