@@ -14,6 +14,7 @@ export type {
   HostObservationSnapshot,
   HostObservations,
 } from "./host.js";
+export { createPublicReadinessReport, renderReadinessReport } from "./presentation.js";
 export {
   SUPPORTED_SYSTEM_READINESS_SCHEMA_MAJOR,
   SYSTEM_READINESS_SCHEMA_VERSION,
