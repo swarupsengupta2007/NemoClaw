@@ -148,7 +148,7 @@ describe("excludeBaselineEntry persistence boundary (#7178)", () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("no live policy changes"));
   });
 
-  it("refuses exclusion journal changes when authority changes during the live read (#9833)", () => {
+  it("does not treat a policy-source change as exclusion authority (#10514)", () => {
     mocks.inspectSandboxPolicyAuthority
       .mockReturnValueOnce(managedPolicyInspection())
       .mockReturnValueOnce({ ...managedPolicyInspection(), authority: "externally-managed" });
@@ -157,11 +157,12 @@ describe("excludeBaselineEntry persistence boundary (#7178)", () => {
       false,
     );
 
-    expectNoBaselineMutation();
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("externally managed"));
+    expect(mocks.beginBaselineExclusionTransition).toHaveBeenCalledOnce();
+    expect(mocks.run).not.toHaveBeenCalled();
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("externally managed"));
   });
 
-  it("preserves a pending exclusion when authority changes at the policy-set edge (#9833)", () => {
+  it("submits a pending exclusion after the policy source changes (#10514)", () => {
     mocks.beginBaselineExclusionTransition.mockReturnValue(true);
     mocks.inspectSandboxPolicyAuthority
       .mockReturnValueOnce(managedPolicyInspection())
@@ -173,10 +174,10 @@ describe("excludeBaselineEntry persistence boundary (#7178)", () => {
     );
 
     expect(mocks.beginBaselineExclusionTransition).toHaveBeenCalledOnce();
-    expect(mocks.run).not.toHaveBeenCalled();
-    expect(mocks.clearBaselineExclusionTransition).not.toHaveBeenCalled();
+    expect(mocks.run).toHaveBeenCalledOnce();
+    expect(mocks.clearBaselineExclusionTransition).toHaveBeenCalledOnce();
     expect(mocks.commitBaselineExclusionTransition).not.toHaveBeenCalled();
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("externally managed"));
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("externally managed"));
   });
 
   it("clears a fresh transaction when live narrowing fails", () => {
@@ -467,15 +468,16 @@ describe("restoreBaselineEntry persistence boundary (#7178)", () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("no live policy changes"));
   });
 
-  it("refuses restore journal changes when authority changes during the live read (#9833)", () => {
+  it("does not treat a policy-source change as restore authority (#10514)", () => {
     mocks.inspectSandboxPolicyAuthority
       .mockReturnValueOnce(managedPolicyInspection())
       .mockReturnValueOnce({ ...managedPolicyInspection(), authority: "externally-managed" });
 
     expect(restoreBaselineEntry("alpha", "nous_research", { nonFatal: true })).toBe(false);
 
-    expectNoBaselineMutation();
-    expect(console.error).toHaveBeenCalledWith(expect.stringContaining("externally managed"));
+    expect(mocks.beginBaselineExclusionTransition).toHaveBeenCalledOnce();
+    expect(mocks.run).toHaveBeenCalledOnce();
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("externally managed"));
   });
 
   it("clears the restore transaction when live policy restoration fails", () => {
