@@ -182,12 +182,6 @@ const createFixture = fixtureMocks.installVerifiedSandboxCreateFixture(registry,
 
 const preflight = require(${JSON.stringify(path.join(repoRoot, "src", "lib", "onboard", "preflight.ts"))});
 preflight.checkPortAvailable = async () => ({ ok: true });
-const policyAuthorityPreflight = require(${JSON.stringify(
-        path.join(repoRoot, "src", "lib", "onboard", "policy-authority", "preflight.ts"),
-      )});
-policyAuthorityPreflight.qualifySandboxPolicyAuthority = () => ({
-  authority: "nemoclaw-managed",
-});
 
 childProcess.spawn = (...args) => {
   sandboxRecreated = true;
@@ -272,16 +266,8 @@ const { createSandbox } = require(${onboardPath});
       const payload = trailingJsonPayload<{
         sandboxName: string | null;
         error?: string;
-        events: Array<{
-          kind: string;
-          cmd?: string;
-          name?: string;
-          removed?: boolean;
-        }>;
-        retainedReservation: {
-          reservationSessionId?: string;
-          model?: string;
-        } | null;
+        events: Array<{ kind: string; cmd?: string; name?: string; removed?: boolean }>;
+        retainedReservation: { reservationSessionId?: string; model?: string } | null;
       }>(result.stdout);
       assert.equal(payload.sandboxName, replaceBeforeCleanup ? null : "my-assistant");
       assert.match(
@@ -422,7 +408,6 @@ if (mode === "seed") {
       toolDisclosure: "progressive",
       dcodeAutoApprovalMode: null,
       observabilityEnabled: false,
-      policyTier: null,
     },
   });
 }
@@ -449,7 +434,7 @@ if (mode === "resume" && scenario === "changed-checkpoint") {
     if (reads === 1) {
       const data = registry.load();
       const changed = data.sandboxes["my-assistant"].pendingCreateVerification;
-      changed.policyVersion += 1;
+      changed.route = changed.route === "native" ? "none" : "native";
       registry.save(data);
     }
     return current;

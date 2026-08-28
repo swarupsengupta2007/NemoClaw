@@ -48,7 +48,7 @@ export {
  * Phase one of sandbox destroy. Remove the adapter entry from the retained
  * sandbox volume and detach exact MCP providers while preserving the global
  * provider objects (and therefore their host-only credentials) and registry
- * cleanup manifest. OpenShell requires the bound policy to be removed before
+ * cleanup manifest. OpenShell requires the generated policy key to be removed before
  * detach. Any failure restores the managed runtime before returning.
  */
 export async function prepareMcpBridgesForDestroy(
@@ -60,7 +60,7 @@ export async function prepareMcpBridgesForDestroy(
     (entry) => entry.addState !== "prepared",
   );
   // Run the host-visible config preflight before
-  // discardSafeIncompleteMcpAdds, which may remove an owned policy for a
+  // discardSafeIncompleteMcpAdds, which may remove the generated live policy key for a
   // providerless preflighted add. That cleanup has no adapter/provider to
   // probe; complete entries get the teardown runtime probe after retry markers.
   assertMcpAdapterConfigMutationsAllowed(
@@ -133,9 +133,7 @@ export async function prepareMcpBridgesForDestroy(
     }
     for (const entry of entries) {
       inspectExactMcpDestroyProvider(entry, { allowMissing: false });
-      const detachOutcome = detachProvider(sandboxName, entry, {
-        allowLegacyGeneric: true,
-      });
+      const detachOutcome = detachProvider(sandboxName, entry, { allowLegacyGeneric: true });
       if (detachOutcome === "unknown") {
         throw new McpBridgeError(
           `Could not prove provider detach for MCP server '${entry.server}'.`,
@@ -281,7 +279,7 @@ export async function restoreMcpBridgesAfterDestroyAbort(
 /**
  * Phase two of sandbox destroy, called only after OpenShell confirmed the
  * sandbox is gone. Delete exact matching global providers, then clear the MCP
- * bridge manifest and owned custom-policy records in one registry update.
+ * bridge lifecycle record in one registry update.
  */
 export async function finalizeMcpBridgesAfterSandboxDelete(
   sandboxName: string,

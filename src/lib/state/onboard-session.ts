@@ -62,13 +62,11 @@ import {
 import { nextMachineStateAfterCompletedStep } from "./onboard-step-state";
 import {
   listRetainedSandboxRecoveryRecords as readRetainedSandboxRecoveryRecords,
-  parseNemoClawPolicyCreationReceipt,
   recordRetainedSandboxRecovery as writeRetainedSandboxRecovery,
   retainedSandboxRecoveryFile,
   type RecordRetainedSandboxRecoveryInput,
   type RetainedSandboxRecoveryRecord,
   type RetainedSandboxRecoveryReason,
-  type RetainedSandboxVerifiedEffectivePolicyIdentity,
 } from "./onboard-session/retained-sandbox-recovery";
 import type { SandboxHostMount } from "./registry/types";
 import { hasUnsafeHostMountTerminalText } from "./registry/host-mount";
@@ -129,9 +127,7 @@ export interface SessionCancellationRecovery {
   readonly gatewayName: string;
   readonly gatewayPort: number;
   readonly lifecycleGeneration: string;
-  readonly verifiedEffectivePolicyIdentity: RetainedSandboxVerifiedEffectivePolicyIdentity | null;
   readonly createAttemptNonce: string;
-  readonly policyCreationReceipt: RetainedSandboxRecoveryRecord["policyCreationReceipt"];
   readonly recordedAt: string;
 }
 
@@ -140,10 +136,6 @@ function sameCancellationRecovery(
   right: SessionCancellationRecovery | null,
 ): boolean {
   if (left === null || right === null) return left === right;
-  const leftPolicy = left.verifiedEffectivePolicyIdentity;
-  const rightPolicy = right.verifiedEffectivePolicyIdentity;
-  const leftReceipt = left.policyCreationReceipt;
-  const rightReceipt = right.policyCreationReceipt;
   return (
     left.reason === right.reason &&
     left.sandboxName === right.sandboxName &&
@@ -152,22 +144,7 @@ function sameCancellationRecovery(
     left.gatewayPort === right.gatewayPort &&
     left.lifecycleGeneration === right.lifecycleGeneration &&
     left.createAttemptNonce === right.createAttemptNonce &&
-    left.recordedAt === right.recordedAt &&
-    (leftPolicy === null || rightPolicy === null
-      ? leftPolicy === rightPolicy
-      : leftPolicy.hash === rightPolicy.hash &&
-        leftPolicy.activeVersion === rightPolicy.activeVersion) &&
-    (leftReceipt === null || rightReceipt === null
-      ? leftReceipt === rightReceipt
-      : leftReceipt.schemaVersion === rightReceipt.schemaVersion &&
-        leftReceipt.origin === rightReceipt.origin &&
-        leftReceipt.gatewayName === rightReceipt.gatewayName &&
-        leftReceipt.gatewayPort === rightReceipt.gatewayPort &&
-        leftReceipt.sandboxName === rightReceipt.sandboxName &&
-        leftReceipt.lifecycleGeneration === rightReceipt.lifecycleGeneration &&
-        leftReceipt.sandboxIdentityFingerprint === rightReceipt.sandboxIdentityFingerprint &&
-        leftReceipt.policyHash === rightReceipt.policyHash &&
-        leftReceipt.policyVersion === rightReceipt.policyVersion)
+    left.recordedAt === right.recordedAt
   );
 }
 
@@ -520,54 +497,14 @@ export function sessionPath(): string {
 
 function defaultSteps(): Record<string, StepState> {
   return {
-    preflight: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
-    gateway: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
-    sandbox: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
-    provider_selection: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
-    inference: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
-    openclaw: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
-    agent_setup: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
-    policies: {
-      status: "pending",
-      startedAt: null,
-      completedAt: null,
-      error: null,
-    },
+    preflight: { status: "pending", startedAt: null, completedAt: null, error: null },
+    gateway: { status: "pending", startedAt: null, completedAt: null, error: null },
+    sandbox: { status: "pending", startedAt: null, completedAt: null, error: null },
+    provider_selection: { status: "pending", startedAt: null, completedAt: null, error: null },
+    inference: { status: "pending", startedAt: null, completedAt: null, error: null },
+    openclaw: { status: "pending", startedAt: null, completedAt: null, error: null },
+    agent_setup: { status: "pending", startedAt: null, completedAt: null, error: null },
+    policies: { status: "pending", startedAt: null, completedAt: null, error: null },
   };
 }
 
@@ -870,23 +807,6 @@ function parseSessionCancellationRecovery(
   const gatewayPort = value.gatewayPort;
   const lifecycleGeneration = readString(value.lifecycleGeneration);
   const createAttemptNonce = readString(value.createAttemptNonce);
-  const verifiedEffectivePolicyIdentity = (() => {
-    if (value.verifiedEffectivePolicyIdentity === null) return null;
-    if (!isObject(value.verifiedEffectivePolicyIdentity)) return undefined;
-    const hash = readString(value.verifiedEffectivePolicyIdentity.hash);
-    const activeVersion = value.verifiedEffectivePolicyIdentity.activeVersion;
-    return hash && Number.isSafeInteger(activeVersion) && Number(activeVersion) > 0
-      ? { hash, activeVersion: Number(activeVersion) }
-      : undefined;
-  })();
-  let policyCreationReceipt: RetainedSandboxRecoveryRecord["policyCreationReceipt"] = null;
-  if (value.policyCreationReceipt !== null) {
-    try {
-      policyCreationReceipt = parseNemoClawPolicyCreationReceipt(value.policyCreationReceipt);
-    } catch {
-      return null;
-    }
-  }
   if (
     !sandboxName ||
     sandboxName.length > NAME_MAX_LENGTH ||
@@ -898,17 +818,8 @@ function parseSessionCancellationRecovery(
     Number(gatewayPort) < 1024 ||
     Number(gatewayPort) > 65_535 ||
     !lifecycleGeneration ||
-    verifiedEffectivePolicyIdentity === undefined ||
     !createAttemptNonce ||
-    !/^[0-9a-f]{62}$/u.test(createAttemptNonce) ||
-    (policyCreationReceipt !== null &&
-      (policyCreationReceipt.gatewayName !== gatewayName ||
-        policyCreationReceipt.gatewayPort !== Number(gatewayPort) ||
-        policyCreationReceipt.sandboxName !== sandboxName ||
-        policyCreationReceipt.lifecycleGeneration !== lifecycleGeneration ||
-        policyCreationReceipt.sandboxIdentityFingerprint !== fingerprint ||
-        policyCreationReceipt.policyHash !== verifiedEffectivePolicyIdentity?.hash ||
-        policyCreationReceipt.policyVersion !== verifiedEffectivePolicyIdentity?.activeVersion))
+    !/^[0-9a-f]{62}$/u.test(createAttemptNonce)
   ) {
     return null;
   }
@@ -919,9 +830,7 @@ function parseSessionCancellationRecovery(
     gatewayName,
     gatewayPort: Number(gatewayPort),
     lifecycleGeneration,
-    verifiedEffectivePolicyIdentity,
     createAttemptNonce,
-    policyCreationReceipt,
     recordedAt,
   };
 }
@@ -1000,11 +909,7 @@ export function syncCheckpointMachineState(
   updatedAt: string,
 ): void {
   if (!session.checkpoint) return;
-  session.checkpoint = {
-    ...session.checkpoint,
-    machineState: state,
-    updatedAt,
-  };
+  session.checkpoint = { ...session.checkpoint, machineState: state, updatedAt };
 }
 
 export function createSession(overrides: Partial<Session> = {}): Session {
@@ -1076,11 +981,7 @@ export function createSession(overrides: Partial<Session> = {}): Session {
       gatewayName: overrides.metadata?.gatewayName ?? "nemoclaw",
       fromDockerfile: overrides.metadata?.fromDockerfile ?? null,
       ...(overrides.metadata?.hostMounts?.length
-        ? {
-            hostMounts: overrides.metadata.hostMounts.map((mount) => ({
-              ...mount,
-            })),
-          }
+        ? { hostMounts: overrides.metadata.hostMounts.map((mount) => ({ ...mount })) }
         : {}),
     },
     machine:
@@ -1312,10 +1213,7 @@ export function loadSession(): Session | null {
     if (lockOwned) assertOnboardLockOwned();
     return normalized;
   } catch (error) {
-    if (
-      error instanceof InvalidPersistedApfInterceptorIntentError ||
-      error instanceof InvalidPersistedCancellationRecoveryError
-    ) {
+    if (error instanceof InvalidPersistedApfInterceptorIntentError) {
       throw error;
     }
     if (lockOwned) throw error;
@@ -1974,9 +1872,7 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
     isObject(updates.telegramConfig) &&
     typeof updates.telegramConfig.requireMention === "boolean"
   ) {
-    safe.telegramConfig = {
-      requireMention: updates.telegramConfig.requireMention,
-    };
+    safe.telegramConfig = { requireMention: updates.telegramConfig.requireMention };
   } else if (updates.telegramConfig === null) {
     safe.telegramConfig = null;
   }
@@ -2008,9 +1904,7 @@ export interface RetainedSandboxRecoveryContext {
   readonly gatewayName: string;
   readonly gatewayPort: number;
   readonly lifecycleGeneration: string;
-  readonly verifiedEffectivePolicyIdentity: RetainedSandboxVerifiedEffectivePolicyIdentity | null;
   readonly createAttemptNonce: string;
-  readonly policyCreationReceipt: RetainedSandboxRecoveryRecord["policyCreationReceipt"];
 }
 
 function retainedSandboxResourceEvidence(session: Session) {
@@ -2041,9 +1935,7 @@ function persistIndependentRetainedSandboxRecovery(
     gatewayName: context.gatewayName,
     gatewayPort: context.gatewayPort,
     lifecycleGeneration: context.lifecycleGeneration,
-    verifiedEffectivePolicyIdentity: context.verifiedEffectivePolicyIdentity,
     createAttemptNonce: context.createAttemptNonce,
-    policyCreationReceipt: context.policyCreationReceipt,
     resources: retainedSandboxResourceEvidence(session),
     reason,
   });
@@ -2071,9 +1963,7 @@ export function listRetainedSandboxRecoveryRecords(): readonly RetainedSandboxRe
           gatewayName: recovery.gatewayName,
           gatewayPort: recovery.gatewayPort,
           lifecycleGeneration: recovery.lifecycleGeneration,
-          verifiedEffectivePolicyIdentity: recovery.verifiedEffectivePolicyIdentity,
           createAttemptNonce: recovery.createAttemptNonce,
-          policyCreationReceipt: recovery.policyCreationReceipt,
           resources: retainedSandboxResourceEvidence(current),
           reason: recovery.reason,
           recordedAt: recovery.recordedAt,

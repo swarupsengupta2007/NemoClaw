@@ -1,113 +1,177 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as policies from "../../policy";
-import { printSuccessfulRebuildSummary } from "./rebuild-post-restore-phase";
+import * as sandboxConfig from "../../sandbox/config";
 import { runRebuildRestorePhase } from "./rebuild-restore-phase";
 import * as snapshotRestore from "./snapshot/restore-authority";
 
-const policyDocument = `version: 1
-network_policies:
-  operator_added:
-    endpoints:
-      - host: operator.example.com
-        port: 443
-`;
+const backupManifest = {
+  agentType: "openclaw",
+  backupPath: "/tmp/rebuild-backup",
+} as never;
 
-function runRestore(backupManifest: never = null as never) {
-  return runRebuildRestorePhase({
-    sandboxName: "alpha",
-    targetAgentType: "openclaw",
-    targetImageIsCustom: false,
-    backupManifest,
-    policyDocument,
-    log: vi.fn(),
-  });
-}
-
-describe("rebuild live-policy restore", () => {
-  beforeEach(() => {
-    vi.spyOn(policies, "inspectPolicyMutationBoundary").mockReturnValue({
-      gatewayName: "nemoclaw",
-    });
-    vi.spyOn(policies, "getGatewayPresets").mockReturnValue(["npm"]);
+describe("rebuild filesystem restore", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
-  afterEach(() => vi.restoreAllMocks());
-
-  it("restores the exact bounded live-policy handoff and derives status from OpenShell", () => {
-    const setLive = vi.spyOn(policies, "setLivePolicyDocument").mockReturnValue(true);
-
-    const result = runRestore();
-
-    expect(setLive).toHaveBeenCalledWith("alpha", policyDocument, {
-      boundary: { gatewayName: "nemoclaw" },
-      operation: "restore the captured rebuild policy",
-      nonFatal: true,
-    });
-    expect(result).toMatchObject({
-      restoreSucceeded: true,
-      restoredPresets: ["npm"],
-      finalPresets: ["npm"],
-      failedPresets: [],
-      policyPresetReconciliationVerified: true,
-    });
-  });
-
-  it("retains rebuild recovery when OpenShell does not confirm the write", () => {
-    vi.spyOn(policies, "setLivePolicyDocument").mockReturnValue(false);
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    const result = runRestore();
-
-    expect(result).toMatchObject({
-      failedPresets: ["live-policy"],
-      finalPresets: [],
-      policyPresetReconciliationVerified: false,
-    });
-    expect(error.mock.calls.flat().join("\n")).toContain("rebuild recovery remains pending");
-  });
-
-  it("restores workspace state before restoring the captured policy", () => {
-    const restoreWorkspace = vi
+  it("restores through managed snapshot authority without replaying policy state", () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const restore = vi
       .spyOn(snapshotRestore, "restoreRecreatedSandboxStateWithManagedAuthority")
       .mockReturnValue({
         success: true,
         restoredDirs: ["workspace"],
+        restoredFiles: ["user.md"],
         failedDirs: [],
-        restoredFiles: [],
         failedFiles: [],
       });
-    const setLive = vi.spyOn(policies, "setLivePolicyDocument").mockReturnValue(true);
-    const manifest = {
-      agentType: "openclaw",
-      backupPath: "/tmp/rebuild-backup",
-    } as never;
 
-    const result = runRestore(manifest);
+    const result = runRebuildRestorePhase({
+      sandboxName: "alpha",
+      targetAgentType: "openclaw",
+      targetImageIsCustom: false,
+      backupManifest,
+      log: vi.fn(),
+    });
 
-    expect(restoreWorkspace).toHaveBeenCalled();
-    expect(setLive).toHaveBeenCalledAfter(restoreWorkspace);
-    expect(result.restoreSucceeded).toBe(true);
+    expect(restore).toHaveBeenCalledWith(
+      "alpha",
+      backupManifest,
+      { targetAgentType: "openclaw" },
+      { getSandbox: expect.any(Function) },
+    );
+    expect(result).toEqual({ restoreSucceeded: true });
   });
 
-  it("keeps the force-skipped backup warning in the success summary", () => {
-    const writeLine = vi.fn();
-    printSuccessfulRebuildSummary(
+  it("allows whole-state file restore only for an explicit custom image", () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const restore = vi
+      .spyOn(snapshotRestore, "restoreRecreatedSandboxStateWithManagedAuthority")
+      .mockReturnValue({
+        success: true,
+        restoredDirs: [],
+        restoredFiles: [],
+        failedDirs: [],
+        failedFiles: [],
+      });
+
+    runRebuildRestorePhase({
+      sandboxName: "alpha",
+      targetAgentType: "openclaw",
+      targetImageIsCustom: true,
+      backupManifest,
+      log: vi.fn(),
+    });
+
+    expect(restore).toHaveBeenCalledWith(
+      "alpha",
+      backupManifest,
       {
-        sandboxName: "alpha",
-        backupManifest: null,
-        backupWasForceSkipped: true,
-        staleRecovery: false,
-        rebuiltAgentName: "OpenClaw",
-        expectedVersion: "2026.6.10",
+        targetAgentType: "openclaw",
+        allowCustomImageWholeStateFileRestore: true,
       },
-      writeLine,
+      { getSandbox: expect.any(Function) },
     );
-    expect(writeLine.mock.calls.flat().join("\n")).toContain(
-      "Backup was skipped via --force after a total backup failure",
+  });
+
+  it("migrates restored Hermes dashboard state into its current profile", () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(snapshotRestore, "restoreRecreatedSandboxStateWithManagedAuthority").mockReturnValue({
+      success: true,
+      restoredDirs: ["profiles", "dashboard-home"],
+      restoredFiles: [],
+      failedDirs: [],
+      failedFiles: [],
+    });
+    const target = {
+      agentName: "hermes",
+      configDir: "/sandbox/.hermes",
+      configPath: "/sandbox/.hermes/config.yaml",
+      configFile: "config.yaml",
+      format: "yaml",
+      stateLockPlanInImage: true,
+    } as const;
+    vi.spyOn(sandboxConfig, "resolveAgentConfig").mockReturnValue(target);
+    const migrate = vi
+      .spyOn(sandboxConfig, "restoreHermesDashboardConfig")
+      .mockReturnValue("converged");
+    const log = vi.fn();
+
+    const result = runRebuildRestorePhase({
+      sandboxName: "hermes",
+      targetAgentType: "hermes",
+      targetImageIsCustom: false,
+      backupManifest,
+      log,
+    });
+
+    expect(migrate).toHaveBeenCalledWith("hermes", target);
+    expect(log).toHaveBeenCalledWith("Hermes dashboard state after restore: converged");
+    expect(result).toEqual({ restoreSucceeded: true });
+  });
+
+  it("reports an unresolved or failed Hermes dashboard migration as incomplete", () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(snapshotRestore, "restoreRecreatedSandboxStateWithManagedAuthority").mockReturnValue({
+      success: true,
+      restoredDirs: ["dashboard-home"],
+      restoredFiles: [],
+      failedDirs: [],
+      failedFiles: [],
+    });
+    vi.spyOn(sandboxConfig, "resolveAgentConfig").mockReturnValue({
+      agentName: "openclaw",
+      configDir: "/sandbox/.openclaw",
+      configPath: "/sandbox/.openclaw/openclaw.json",
+      configFile: "openclaw.json",
+      format: "json",
+      stateLockPlanInImage: true,
+    });
+    const migrate = vi.spyOn(sandboxConfig, "restoreHermesDashboardConfig");
+
+    const result = runRebuildRestorePhase({
+      sandboxName: "hermes",
+      targetAgentType: "hermes",
+      targetImageIsCustom: false,
+      backupManifest,
+      log: vi.fn(),
+    });
+
+    expect(migrate).not.toHaveBeenCalled();
+    expect(result).toEqual({ restoreSucceeded: false });
+  });
+
+  it("surfaces a filesystem restore failure without inventing policy recovery", () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.fn();
+    vi.spyOn(snapshotRestore, "restoreRecreatedSandboxStateWithManagedAuthority").mockReturnValue({
+      success: false,
+      restoredDirs: [],
+      restoredFiles: [],
+      failedDirs: ["extensions"],
+      failedFiles: [],
+      error: "could not read fresh OpenClaw plugin install registry",
+    });
+
+    const result = runRebuildRestorePhase({
+      sandboxName: "alpha",
+      targetAgentType: "openclaw",
+      targetImageIsCustom: false,
+      backupManifest,
+      log,
+    });
+
+    expect(result).toEqual({ restoreSucceeded: false });
+    expect(consoleError).toHaveBeenCalledWith(
+      "  Restore blocked: could not read fresh OpenClaw plugin install registry",
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("error=could not read fresh OpenClaw plugin install registry"),
     );
   });
 });

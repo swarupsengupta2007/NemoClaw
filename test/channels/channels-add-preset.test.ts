@@ -54,10 +54,7 @@ const TEST_ENV_KEYS = new Set([
 const originalProcessEnv = { ...process.env };
 
 function makeTelegramConfigPlan(requireMention: "0" | "1"): SandboxMessagingPlan {
-  const plan = makeMessagingPlan({
-    sandboxName: "test-sb",
-    channels: ["telegram"],
-  });
+  const plan = makeMessagingPlan({ sandboxName: "test-sb", channels: ["telegram"] });
   return {
     ...plan,
     channels: plan.channels.map((channel) => ({
@@ -147,7 +144,6 @@ let appliedPresets: string[];
 let presetContent: string | null;
 let applyPresetResult: boolean;
 let sessionState: onboardSession.Session | null;
-let sessionUpdates: unknown[];
 let callOrder: string[];
 let slackBotProbe: ProbeResult;
 let slackAppProbe: ProbeResult;
@@ -177,10 +173,7 @@ let stdinIsTty: PropertyDescriptor | undefined;
 beforeEach(() => {
   for (const key of TEST_ENV_KEYS) delete process.env[key];
   stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  Object.defineProperty(process.stdin, "isTTY", {
-    configurable: true,
-    value: true,
-  });
+  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
   testHome = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-channels-add-preset-"));
   process.env.HOME = testHome;
   process.env.NEMOCLAW_NON_INTERACTIVE = "1";
@@ -196,7 +189,6 @@ beforeEach(() => {
   presetContent = "network_policies:\n  stub:\n    egress:\n      - host: example.com\n";
   applyPresetResult = true;
   setSession();
-  sessionUpdates = [];
   callOrder = [];
   slackBotProbe = successfulProbe();
   slackAppProbe = successfulProbe('{"ok":true,"url":"wss://wss-primary.slack.com/link"}');
@@ -214,10 +206,9 @@ beforeEach(() => {
   exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
     throw new ExitError(code);
   }) as never);
-  vi.spyOn(
-    policyChannelDependencies,
-    "revalidateChannelProviderPolicyAuthority",
-  ).mockImplementation(() => undefined);
+  vi.spyOn(policyChannelDependencies, "revalidateChannelProviderPolicy").mockImplementation(
+    () => undefined,
+  );
 
   vi.spyOn(registry, "getSandbox").mockImplementation(() => registryEntry);
   vi.spyOn(registry, "listSandboxes").mockImplementation(() => ({
@@ -266,13 +257,6 @@ beforeEach(() => {
   });
 
   vi.spyOn(onboardSession, "loadSession").mockImplementation(() => sessionState);
-  vi.spyOn(onboardSession, "updateSession").mockImplementation((mutator) => {
-    sessionState ??= onboardSession.createSession();
-    const next = mutator(sessionState as onboardSession.Session) || sessionState;
-    sessionState = next as onboardSession.Session;
-    sessionUpdates.push({});
-    return sessionState;
-  });
 
   providerSpy = vi
     .spyOn(policyChannelDependencies, "upsertMessagingProviders")
@@ -401,10 +385,7 @@ describe("channels add applies a matching policy preset (#3437)", () => {
       .plan;
     const telegram = plan.channels.find((channel) => channel.channelId === "telegram");
     expect(telegram?.inputs).toContainEqual(
-      expect.objectContaining({
-        sourceEnv: "TELEGRAM_REQUIRE_MENTION",
-        value: "0",
-      }),
+      expect.objectContaining({ sourceEnv: "TELEGRAM_REQUIRE_MENTION", value: "0" }),
     );
   });
 
@@ -573,7 +554,6 @@ describe("channels add applies a matching policy preset (#3437)", () => {
     });
     expect(updateSandboxSpy).not.toHaveBeenCalled();
     expect(deleteCredentialSpy).toHaveBeenCalledWith("TELEGRAM_BOT_TOKEN");
-    expect(sessionUpdates).toEqual([]);
     expect(callOrder).not.toContain("promptAndRebuild");
   });
 
@@ -581,11 +561,7 @@ describe("channels add applies a matching policy preset (#3437)", () => {
     applyPresetResult = false;
     runOpenshellSpy.mockImplementation((args: string[]) =>
       args.slice(0, 3).join(" ") === "sandbox provider detach"
-        ? {
-            ...successfulOpenshellResult(),
-            status: 1,
-            stderr: "permission denied",
-          }
+        ? { ...successfulOpenshellResult(), status: 1, stderr: "permission denied" }
         : successfulOpenshellResult(),
     );
 
@@ -721,9 +697,7 @@ describe("channels add verifies bridge startup after rebuild (#4314, #4390)", ()
   beforeEach(() => {
     delete process.env.NEMOCLAW_NON_INTERACTIVE;
     promptSpy.mockResolvedValue("y");
-    testConfig = {
-      channels: { telegram: { enabled: true, accounts: { default: {} } } },
-    };
+    testConfig = { channels: { telegram: { enabled: true, accounts: { default: {} } } } };
   });
 
   it("confirms the startup breadcrumb when the bridge logs the starting-provider line", async () => {

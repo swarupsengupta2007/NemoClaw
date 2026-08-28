@@ -129,10 +129,7 @@ describe("getRebuildSandboxGpuOverrides", () => {
       sessionGpuPassthrough: false,
     });
     expect(
-      getRebuildSandboxGpuOverrides({
-        sandboxGpuMode: "auto",
-        sandboxGpuEnabled: true,
-      }),
+      getRebuildSandboxGpuOverrides({ sandboxGpuMode: "auto", sandboxGpuEnabled: true }),
     ).toEqual({
       sandboxGpu: null,
       sandboxGpuDevice: null,
@@ -141,12 +138,7 @@ describe("getRebuildSandboxGpuOverrides", () => {
   });
 
   it("does not treat legacy effective-enabled fields as forced sandbox GPU", () => {
-    expect(
-      getRebuildSandboxGpuOverrides({
-        sandboxGpuEnabled: true,
-        gpuEnabled: true,
-      }),
-    ).toEqual({
+    expect(getRebuildSandboxGpuOverrides({ sandboxGpuEnabled: true, gpuEnabled: true })).toEqual({
       sandboxGpu: null,
       sandboxGpuDevice: null,
       sessionGpuPassthrough: false,
@@ -213,11 +205,7 @@ describe("buildRebuildRecreateOnboardOpts", () => {
 
   it("carries durable read-only host mounts into authoritative recreation", () => {
     const hostMounts = [
-      {
-        source: process.cwd(),
-        target: "/sandbox/project",
-        readOnly: true as const,
-      },
+      { source: process.cwd(), target: "/sandbox/project", readOnly: true as const },
     ];
     const opts = buildRebuildRecreateOnboardOpts({
       ...baseArgs,
@@ -227,10 +215,7 @@ describe("buildRebuildRecreateOnboardOpts", () => {
     expect(opts.hostMounts).toEqual([
       {
         ...hostMounts[0],
-        sourceIdentity: {
-          device: expect.any(String),
-          inode: expect.any(String),
-        },
+        sourceIdentity: { device: expect.any(String), inode: expect.any(String) },
       },
     ]);
     expect(opts.hostMounts).not.toBe(hostMounts);
@@ -241,10 +226,7 @@ describe("buildRebuildRecreateOnboardOpts", () => {
       ...baseArgs,
       sb: { ...dashboard, endpointSource: "onboard" },
     });
-    const legacy = buildRebuildRecreateOnboardOpts({
-      ...baseArgs,
-      sb: dashboard,
-    });
+    const legacy = buildRebuildRecreateOnboardOpts({ ...baseArgs, sb: dashboard });
     const malformed = buildRebuildRecreateOnboardOpts({
       ...baseArgs,
       sb: { ...dashboard, endpointSource: "forged" } as typeof dashboard & {
@@ -263,20 +245,19 @@ describe("buildRebuildRecreateOnboardOpts", () => {
       rebuildAgent: "langchain-deepagents-code",
       sb: { ...dashboard, observabilityEnabled: true },
     });
-    const legacy = buildRebuildRecreateOnboardOpts({
-      ...baseArgs,
-      sb: dashboard,
-    });
+    const legacy = buildRebuildRecreateOnboardOpts({ ...baseArgs, sb: dashboard });
 
     expect(enabled.observabilityEnabled).toBe(true);
     expect(legacy.observabilityEnabled).toBe(false);
   });
 
-  it("carries durable observability intent without replaying a policy tier", () => {
+  it("carries observability into inner onboard without policy shadow state", () => {
     const opts = buildRebuildRecreateOnboardOpts({
       ...baseArgs,
       rebuildAgent: "langchain-deepagents-code",
-      sb: { observabilityEnabled: true },
+      sb: {
+        observabilityEnabled: true,
+      },
     });
 
     expect(opts).not.toHaveProperty("policyTier");

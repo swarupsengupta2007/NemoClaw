@@ -170,10 +170,7 @@ export async function prepareMcpBridgesForAbsentSandboxDestroy(
   const destroyAlreadyPrepared = !!sandbox.mcp?.destroyPreparedAt;
   const destroyAlreadyPending = !!sandbox.mcp?.destroyPendingAt;
   for (const entry of entries) {
-    inspectExactMcpDestroyProvider(entry, {
-      allowMissing: true,
-      force: options.force,
-    });
+    inspectExactMcpDestroyProvider(entry, { allowMissing: true, force: options.force });
   }
   return {
     entries,

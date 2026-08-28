@@ -234,10 +234,7 @@ describe("sandbox lifecycle MCP destroy boundaries", () => {
     removeSandboxUnlessSessionReservation(inspected.existingEntry, "beta");
 
     expect(inspected.liveExists).toBe(false);
-    expect(rows.get("beta")).toMatchObject({
-      name: "beta",
-      toolDisclosure: "progressive",
-    });
+    expect(rows.get("beta")).toMatchObject({ name: "beta", toolDisclosure: "progressive" });
   });
 
   it("inspects a stale registry entry without pruning it", () => {

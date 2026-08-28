@@ -7,7 +7,6 @@ import * as store from "../../credentials/store";
 import * as policies from "../../policy";
 import { digestBaselineEntry } from "../../policy/baseline-exclusion";
 import type { PolicyObject } from "../../policy/preset-parsing";
-import * as registry from "../../state/registry";
 
 vi.mock("../../state/mcp-lifecycle-lock", () => ({
   withSandboxMutationLock: <T>(_name: string, action: () => Promise<T>) => action(),
@@ -79,11 +78,6 @@ beforeEach(() => {
   }) as never);
   promptMock = vi.spyOn(store, "prompt").mockResolvedValue("y");
 
-  vi.spyOn(registry, "getSandbox").mockReturnValue({
-    name: "alpha",
-    agent: "hermes",
-  });
-
   vi.spyOn(policies, "resolveSandboxBaselinePolicy").mockReturnValue({
     agent: "hermes",
     policyPath: "/repo/policy-additions.yaml",
@@ -127,14 +121,9 @@ describe("excludeSandboxBaseline (#7178)", () => {
   });
 
   it("refuses to exclude a protected baseline entry", async () => {
-    vi.spyOn(policies, "getSandboxBaselineEntry").mockReturnValue({
-      name: "managed_inference",
-    });
+    vi.spyOn(policies, "getSandboxBaselineEntry").mockReturnValue({ name: "managed_inference" });
     const code = await captureExit(() =>
-      excludeSandboxBaseline("alpha", {
-        key: "managed_inference",
-        force: true,
-      }),
+      excludeSandboxBaseline("alpha", { key: "managed_inference", force: true }),
     );
     expect(code).toBe(1);
     expect(excludeBaselineEntryMock).not.toHaveBeenCalled();
@@ -158,10 +147,7 @@ describe("excludeSandboxBaseline (#7178)", () => {
   });
 
   it("excludes with a bound digest when acknowledged via --force", async () => {
-    await excludeSandboxBaseline("alpha", {
-      key: "nous_research",
-      force: true,
-    });
+    await excludeSandboxBaseline("alpha", { key: "nous_research", force: true });
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining(
         "Support impact: Hermes public metadata lookup and agent updates may stop working.",
@@ -192,9 +178,7 @@ describe("excludeSandboxBaseline (#7178)", () => {
   });
 
   it("fails closed when an entry has no reviewed feature disclosure", async () => {
-    vi.spyOn(policies, "getSandboxBaselineEntry").mockReturnValue({
-      name: "future_entry",
-    });
+    vi.spyOn(policies, "getSandboxBaselineEntry").mockReturnValue({ name: "future_entry" });
     const code = await captureExit(() =>
       excludeSandboxBaseline("alpha", { key: "future_entry", force: true }),
     );
@@ -207,10 +191,7 @@ describe("excludeSandboxBaseline (#7178)", () => {
   });
 
   it("does not mutate on --dry-run", async () => {
-    await excludeSandboxBaseline("alpha", {
-      key: "nous_research",
-      dryRun: true,
-    });
+    await excludeSandboxBaseline("alpha", { key: "nous_research", dryRun: true });
     expect(excludeBaselineEntryMock).not.toHaveBeenCalled();
   });
 
@@ -222,14 +203,7 @@ describe("excludeSandboxBaseline (#7178)", () => {
 });
 
 describe("restoreSandboxBaseline (#7178)", () => {
-  it("exits when the key is not excluded", async () => {
-    vi.mocked(policies.getSandboxBaselineEntry).mockReturnValueOnce(null);
-    const code = await captureExit(() => restoreSandboxBaseline("alpha", { key: "nous_research" }));
-    expect(code).toBe(1);
-    expect(restoreBaselineEntryMock).not.toHaveBeenCalled();
-  });
-
-  it("restores a recorded exclusion after interactive acknowledgement", async () => {
+  it("restores a live missing baseline entry after interactive acknowledgement", async () => {
     await restoreSandboxBaseline("alpha", { key: "nous_research" });
     expect(promptMock).toHaveBeenCalledOnce();
     expect(restoreBaselineEntryMock).toHaveBeenCalledWith("alpha", "nous_research", {
@@ -285,13 +259,20 @@ describe("restoreSandboxBaseline (#7178)", () => {
   });
 
   it("restores without prompting when acknowledged via --force (#8114)", async () => {
-    await restoreSandboxBaseline("alpha", {
-      key: "nous_research",
-      force: true,
-    });
+    await restoreSandboxBaseline("alpha", { key: "nous_research", force: true });
     expect(promptMock).not.toHaveBeenCalled();
     expect(restoreBaselineEntryMock).toHaveBeenCalledWith("alpha", "nous_research", {
       expectedTargetDigest: digestBaselineEntry(NOUS_ENTRY),
+    });
+  });
+
+  it("binds stale exclusion cleanup to an absent preview", async () => {
+    vi.mocked(policies.getSandboxBaselineEntry).mockReturnValue(null);
+
+    await restoreSandboxBaseline("alpha", { key: "legacy_entry", force: true });
+
+    expect(restoreBaselineEntryMock).toHaveBeenCalledWith("alpha", "legacy_entry", {
+      expectedTargetDigest: null,
     });
   });
 
@@ -321,10 +302,7 @@ describe("restoreSandboxBaseline (#7178)", () => {
   });
 
   it("does not mutate on --dry-run", async () => {
-    await restoreSandboxBaseline("alpha", {
-      key: "nous_research",
-      dryRun: true,
-    });
+    await restoreSandboxBaseline("alpha", { key: "nous_research", dryRun: true });
     expect(promptMock).not.toHaveBeenCalled();
     expect(restoreBaselineEntryMock).not.toHaveBeenCalled();
   });

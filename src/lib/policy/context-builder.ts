@@ -3,14 +3,11 @@
 
 import {
   getGatewayPresets,
-  getCustomPresetContent,
   getPresetEndpoints,
-  isAgentBasePreset,
   listCustomPresets,
   listPresets,
   loadPresetForSandbox,
 } from ".";
-import type { BaselineExclusionRuntimeStatus } from "./baseline-exclusion";
 import { hostStemsFromEndpoints } from "./host-redaction";
 
 interface PresetInfo {
@@ -19,7 +16,7 @@ interface PresetInfo {
   description: string;
 }
 
-export type PolicyContextPresetVerification = "verified" | "agent-base" | "gateway-unavailable";
+export type PolicyContextPresetVerification = "verified" | "gateway-unavailable";
 
 export interface PolicyContextPreset {
   name: string;
@@ -33,7 +30,9 @@ export interface PolicyContextPreset {
   redactedHostCount: number;
   source: "builtin" | "custom";
   /**
-   * Whether current OpenShell policy proves this preset is enforced.
+   * Source-of-truth state for whether this preset is enforced by the
+   * OpenShell gateway. `verified` is based on a live gateway probe;
+   * `gateway-unavailable` means enforcement was not observed.
    */
   verification: PolicyContextPresetVerification;
 }
@@ -59,39 +58,11 @@ export interface PolicyContextApprovalPath {
   documentation: string;
 }
 
-export type PolicyContextExclusionStatus =
-  | BaselineExclusionRuntimeStatus
-  | "pending-exclude-repair"
-  | "pending-restore-repair";
-
-export interface PolicyContextExclusion {
-  key: string;
-  digest: string;
-  acknowledgedAt: string | null;
-  /**
-   * `excluded` — the current baseline still defines this key at the reviewed
-   * digest and the observed live policy omits it.
-   * `content-changed` — a release redefined this key's content since
-   * approval; rebuild fails closed and requires re-approval before the
-   * exclusion applies again.
-   * `no-longer-in-baseline` — the current baseline no longer defines this
-   * key; the exclusion record is inert until restored or replaced.
-   * `live-policy-*` — live enforcement is unreadable or still contains the
-   * excluded key, so registry intent must not be treated as enforcement.
-   * `agent-changed` — the approval belongs to a different agent baseline.
-   * `pending-*-repair` — the live mutation was interrupted; its durable
-   * journal blocks rebuild until the exact policy command reconciles it.
-   */
-  status: PolicyContextExclusionStatus;
-  supportImpact: string;
-}
-
 export interface PolicyContext {
   sandboxName: string;
   tier: PolicyContextTier | null;
   activePresets: PolicyContextPreset[];
   knownUnappliedPresets: PolicyContextPreset[];
-  baselineExclusions: PolicyContextExclusion[];
   approvalPath: PolicyContextApprovalPath;
   supportBoundaries: PolicyContextSupportBoundary[];
   generatedAt: string;
@@ -123,8 +94,25 @@ function presetEntry(
   };
 }
 
+function resolveVerification(
+  presetName: string,
+  gatewayPresets: ReadonlyArray<string> | null,
+): PolicyContextPresetVerification {
+  if (gatewayPresets === null) {
+    return "gateway-unavailable";
+  }
+  const enforced = gatewayPresets.includes(presetName);
+  if (enforced) return "verified";
+  return "gateway-unavailable";
+}
+
 /**
- * Split known presets using only current OpenShell policy content.
+ * Split known presets into the active set (reported to agents as candidate
+ * allow-listed integrations) and the unapplied set (suggested as
+ * remediation targets). Two invariants:
+ *
+ * Custom and built-in preset presence is derived from the current OpenShell
+ * policy. NemoClaw does not maintain a second activation list.
  */
 function partitionPresets(
   sandboxName: string,
@@ -137,11 +125,7 @@ function partitionPresets(
   const unapplied: PolicyContextPreset[] = [];
   for (const info of builtin) {
     const isApplied = applied.has(info.name);
-    const verification: PolicyContextPresetVerification = isApplied
-      ? isAgentBasePreset(sandboxName, info.name)
-        ? "agent-base"
-        : "verified"
-      : "gateway-unavailable";
+    const verification = resolveVerification(info.name, gatewayPresets);
     const entry = presetEntry(
       info,
       "builtin",
@@ -155,13 +139,9 @@ function partitionPresets(
     }
   }
   for (const info of customInfo) {
+    const verification = resolveVerification(info.name, gatewayPresets);
     active.push(
-      presetEntry(
-        info,
-        "custom",
-        getCustomPresetContent(sandboxName, info.name),
-        gatewayPresets === null ? "gateway-unavailable" : "verified",
-      ),
+      presetEntry(info, "custom", loadPresetForSandbox(sandboxName, info.name), verification),
     );
   }
   return { active, unapplied };
@@ -183,7 +163,7 @@ function buildSupportBoundaries(): PolicyContextSupportBoundary[] {
     {
       capability: "policy convenience commands",
       owner: "nemoclaw",
-      note: "NemoClaw reads, scopes, applies, and verifies changes against the live policy",
+      note: "NemoClaw reads and changes the current OpenShell policy on operator request",
     },
     {
       capability: "host allowlist enforcement",
@@ -193,7 +173,7 @@ function buildSupportBoundaries(): PolicyContextSupportBoundary[] {
     {
       capability: "Shields transition",
       owner: "nemoclaw",
-      note: "Shields temporarily changes live policy and locks mutable configuration",
+      note: "Shields up locks mutable configuration and reverts its temporary policy delta",
     },
     {
       capability: "credential storage",
@@ -242,9 +222,9 @@ function probeGatewayPresets(
  *
  * Source-of-truth model:
  *
- * - Active preset names are derived from the live OpenShell policy. Built-in
- *   entries are matched by content and custom command identities are decoded
- *   from their namespaced live rule keys.
+ * - Active preset names are derived only from the current OpenShell policy.
+ *   `verified` represents live enforcement;
+ *   `gateway-unavailable` means no current observation was available.
  *
  * - Host stems are extracted by {@link hostStemsFromContent}, which
  *   redacts RFC1918, loopback, link-local, metadata, and internal-DNS
@@ -275,7 +255,6 @@ export function buildPolicyContext(
     tier: null,
     activePresets: active.sort((a, b) => a.name.localeCompare(b.name)),
     knownUnappliedPresets: unapplied.sort((a, b) => a.name.localeCompare(b.name)),
-    baselineExclusions: [],
     approvalPath: buildApprovalPath(sandboxName),
     supportBoundaries: buildSupportBoundaries(),
     generatedAt: new Date().toISOString(),
@@ -286,50 +265,9 @@ function verificationTag(verification: PolicyContextPresetVerification): string 
   switch (verification) {
     case "verified":
       return "verified";
-    case "agent-base":
-      return "agent-base (enforced by the agent's base policy; not user-applied; `policy add` is unnecessary)";
     case "gateway-unavailable":
       return "gateway-unavailable";
   }
-}
-
-function exclusionStatusTag(status: PolicyContextExclusionStatus): string {
-  switch (status) {
-    case "excluded":
-      return "excluded";
-    case "content-changed":
-      return "content-changed (release redefined this entry; rebuild requires re-approval)";
-    case "no-longer-in-baseline":
-      return "no-longer-in-baseline (record is inert)";
-    case "baseline-unreadable":
-      return "baseline-unreadable (current release scope could not be inspected)";
-    case "agent-changed":
-      return "agent-changed (approval belongs to a different agent baseline)";
-    case "live-policy-unreadable":
-      return "live-policy-unreadable (enforcement could not be inspected)";
-    case "live-policy-mismatch":
-      return "live-policy-mismatch (excluded key remains in the live policy)";
-    case "pending-exclude-repair":
-      return "repair-required (exclude transaction was interrupted; rebuild blocked)";
-    case "pending-restore-repair":
-      return "repair-required (restore transaction was interrupted; rebuild blocked)";
-  }
-}
-
-function formatExclusionLine(
-  exclusion: PolicyContextExclusion,
-  sandboxName: string,
-  restoreAction: string,
-): string {
-  const restore = restoreAction.startsWith("nemoclaw ")
-    ? `\`nemoclaw ${sandboxName} policy restore ${exclusion.key}\``
-    : restoreAction;
-  return [
-    `- \`${exclusion.key}\` — status: ${exclusionStatusTag(exclusion.status)}`,
-    `  acknowledged: ${exclusion.acknowledgedAt ?? "(unknown)"}`,
-    `  impact: ${exclusion.supportImpact}`,
-    `  restore: ${restore}`,
-  ].join("\n");
 }
 
 function formatPresetLine(preset: PolicyContextPreset): string {
@@ -389,15 +327,6 @@ export function renderPolicyContextMarkdown(ctx: PolicyContext): string {
     }
   }
   lines.push("");
-  lines.push("## Baseline exclusions");
-  if (ctx.baselineExclusions.length === 0) {
-    lines.push("- none");
-  } else {
-    for (const exclusion of ctx.baselineExclusions) {
-      lines.push(formatExclusionLine(exclusion, ctx.sandboxName, ctx.approvalPath.restoreBaseline));
-    }
-  }
-  lines.push("");
   lines.push("## Approval and remediation");
   lines.push(`- inspect: \`${ctx.approvalPath.inspect}\``);
   lines.push(`- add a preset: ${formatApprovalAction(ctx.approvalPath.add)}`);
@@ -426,7 +355,7 @@ export function renderPolicyContextMarkdown(ctx: PolicyContext): string {
   );
   lines.push("");
   lines.push(
-    "Preset status comes from current OpenShell policy. `verified` and `agent-base` confirm enforcement; `gateway-unavailable` is advisory because the live policy could not be read.",
+    "Preset status is derived from the current OpenShell policy. `verified` means the gateway confirms enforcement; `gateway-unavailable` is advisory because enforcement could not be observed.",
   );
   lines.push("");
   lines.push(`Generated at ${ctx.generatedAt}.`);

@@ -33,10 +33,7 @@ const ORDERED_PHASES: readonly CheckpointSandboxRecreatePhase[] = [
 
 export type ReplacedSandboxWorkloadCleanupResult =
   | RuntimeProviderWorkloadCleanupResult
-  | {
-      readonly status: "skipped";
-      readonly reason: "replacement-unproven" | "image-reused";
-    };
+  | { readonly status: "skipped"; readonly reason: "replacement-unproven" | "image-reused" };
 
 export type ReplacedSandboxSourceEntry = Omit<SandboxEntry, "workload"> & {
   readonly workload?:
@@ -128,10 +125,7 @@ export function retireReplacedSandboxWorkload(
   ) {
     return { status: "skipped", reason: "image-reused" };
   }
-  return authority.provider.cleanup.removeOwnedWorkload({
-    sandbox: cleanupSource,
-    sandboxName,
-  });
+  return authority.provider.cleanup.removeOwnedWorkload({ sandbox: cleanupSource, sandboxName });
 }
 
 function canonicalJsonValue(value: unknown): unknown {
@@ -204,7 +198,6 @@ const ROUTE_RESERVATION_FIELDS: readonly (keyof SandboxEntry)[] = [
   "gatewayName",
   "gatewayPort",
 ];
-// Rebuild may update these independently receipt-bound projections before delete.
 const RECEIPT_BOUND_PROJECTION_FIELDS: readonly (keyof SandboxEntry)[] = ["mcp"];
 
 export function fingerprintSandboxRegistryEntry(entry: SandboxEntry): string {

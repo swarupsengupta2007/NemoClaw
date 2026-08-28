@@ -430,11 +430,7 @@ describe("rebuild destroy phase", () => {
       scrubbedAdapterEntries: [],
     });
     mocks.runOpenshell
-      .mockReturnValueOnce({
-        status: 9,
-        stdout: "",
-        stderr: "delete interrupted",
-      })
+      .mockReturnValueOnce({ status: 9, stdout: "", stderr: "delete interrupted" })
       .mockReturnValueOnce({
         status: 1,
         stdout: "",
@@ -445,11 +441,7 @@ describe("rebuild destroy phase", () => {
 
     const result = await runRebuildDestroyPhase({
       sandboxName: "alpha",
-      sandboxEntry: {
-        name: "alpha",
-        agent: "openclaw",
-        gatewayName: "nemoclaw",
-      },
+      sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
       staleRecovery: false,
       recreateJournal: stubRecreateJournal(),
       backupManifest: null,
@@ -559,11 +551,7 @@ describe("rebuild destroy phase", () => {
       scrubbedAdapterEntries: [],
     });
     mocks.runOpenshell
-      .mockReturnValueOnce({
-        status: 9,
-        stdout: "",
-        stderr: "delete interrupted",
-      })
+      .mockReturnValueOnce({ status: 9, stdout: "", stderr: "delete interrupted" })
       .mockReturnValueOnce(probe);
     const onDeleted = vi.fn();
     const onDeleteStateAmbiguous = vi.fn();
@@ -572,11 +560,7 @@ describe("rebuild destroy phase", () => {
     await expect(
       runRebuildDestroyPhase({
         sandboxName: "alpha",
-        sandboxEntry: {
-          name: "alpha",
-          agent: "openclaw",
-          gatewayName: "nemoclaw",
-        },
+        sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
         staleRecovery: false,
         recreateJournal: stubRecreateJournal(),
         backupManifest: null,
@@ -612,16 +596,8 @@ describe("rebuild destroy phase", () => {
       scrubbedAdapterEntries: [],
     });
     mocks.runOpenshell
-      .mockReturnValueOnce({
-        status: 9,
-        stdout: "",
-        stderr: "delete interrupted",
-      })
-      .mockReturnValueOnce({
-        status: 0,
-        stdout: "Phase: Terminating\n",
-        stderr: "",
-      });
+      .mockReturnValueOnce({ status: 9, stdout: "", stderr: "delete interrupted" })
+      .mockReturnValueOnce({ status: 0, stdout: "Phase: Terminating\n", stderr: "" });
     const onDeleted = vi.fn();
     const onDeleteStateAmbiguous = vi.fn();
     const relockShieldsIfNeeded = vi.fn(() => true);
@@ -629,11 +605,7 @@ describe("rebuild destroy phase", () => {
     await expect(
       runRebuildDestroyPhase({
         sandboxName: "alpha",
-        sandboxEntry: {
-          name: "alpha",
-          agent: "openclaw",
-          gatewayName: "nemoclaw",
-        },
+        sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
         staleRecovery: false,
         recreateJournal: stubRecreateJournal(),
         backupManifest: null,
@@ -668,18 +640,12 @@ describe("rebuild destroy phase", () => {
       scrubbedAdapterEntries: [],
     });
     mocks.runOpenshell
-      .mockReturnValueOnce({
-        status: 9,
-        stdout: "",
-        stderr: "delete interrupted",
-      })
+      .mockReturnValueOnce({ status: 9, stdout: "", stderr: "delete interrupted" })
       .mockReturnValueOnce({
         status: null,
         stdout: "",
         stderr: 'status: Internal, message: "sandbox has no spec"',
-        error: Object.assign(new Error("probe timed out"), {
-          code: "ETIMEDOUT",
-        }),
+        error: Object.assign(new Error("probe timed out"), { code: "ETIMEDOUT" }),
       });
     const onDeleted = vi.fn();
     const onDeleteStateAmbiguous = vi.fn();
@@ -688,11 +654,7 @@ describe("rebuild destroy phase", () => {
     await expect(
       runRebuildDestroyPhase({
         sandboxName: "alpha",
-        sandboxEntry: {
-          name: "alpha",
-          agent: "openclaw",
-          gatewayName: "nemoclaw",
-        },
+        sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
         staleRecovery: false,
         recreateJournal: stubRecreateJournal(),
         backupManifest: null,
@@ -771,9 +733,7 @@ describe("rebuild destroy phase", () => {
 
     let currentMs = 0;
     let attempts = 0;
-    const timeout = Object.assign(new Error("sandbox get timed out"), {
-      code: "ETIMEDOUT",
-    });
+    const timeout = Object.assign(new Error("sandbox get timed out"), { code: "ETIMEDOUT" });
     const probeFailures = [
       { status: null, error: timeout },
       { status: 1, stderr: "gateway transport unavailable" },
@@ -823,17 +783,11 @@ describe("rebuild destroy phase", () => {
     ["another sandbox", { status: 1, stderr: "sandbox beta not found" }],
     [
       "a missing gateway",
-      {
-        status: 1,
-        stderr: 'status: NotFound, message: "gateway nemoclaw not found"',
-      },
+      { status: 1, stderr: 'status: NotFound, message: "gateway nemoclaw not found"' },
     ],
     [
       "a missing provider",
-      {
-        status: 1,
-        stderr: 'status: NotFound, message: "provider alpha-mcp-github not found"',
-      },
+      { status: 1, stderr: 'status: NotFound, message: "provider alpha-mcp-github not found"' },
     ],
     [
       "a structured missing gateway",
@@ -873,11 +827,7 @@ describe("rebuild destroy phase", () => {
       agent: "openclaw",
       nimContainer: "nim-alpha",
     });
-    mocks.runOpenshell.mockReturnValue({
-      status: 0,
-      stdout: "deleted",
-      stderr: "",
-    });
+    mocks.runOpenshell.mockReturnValue({ status: 0, stdout: "deleted", stderr: "" });
     mocks.captureOpenshell.mockReturnValue({
       stdout: "",
       ...probe,
@@ -887,11 +837,7 @@ describe("rebuild destroy phase", () => {
     await expect(
       runRebuildDestroyPhase({
         sandboxName: "alpha",
-        sandboxEntry: {
-          name: "alpha",
-          agent: "openclaw",
-          gatewayName: "nemoclaw",
-        },
+        sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
         staleRecovery: false,
         recreateJournal: stubRecreateJournal(),
         backupManifest: null,
@@ -930,11 +876,7 @@ describe("rebuild destroy phase", () => {
 
     const result = await runRebuildDestroyPhase({
       sandboxName: "alpha",
-      sandboxEntry: {
-        name: "alpha",
-        agent: "openclaw",
-        gatewayName: "nemoclaw",
-      },
+      sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
       staleRecovery: false,
       recreateJournal,
       backupManifest: null,
@@ -975,11 +917,7 @@ describe("rebuild destroy phase", () => {
 
     await runRebuildDestroyPhase({
       sandboxName: "alpha",
-      sandboxEntry: {
-        name: "alpha",
-        agent: "openclaw",
-        gatewayName: "nemoclaw",
-      },
+      sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
       staleRecovery: false,
       recreateJournal,
       backupManifest: null,
@@ -1009,11 +947,7 @@ describe("rebuild destroy phase", () => {
     await expect(
       runRebuildDestroyPhase({
         sandboxName: "alpha",
-        sandboxEntry: {
-          name: "alpha",
-          agent: "openclaw",
-          gatewayName: "nemoclaw",
-        },
+        sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
         staleRecovery: false,
         recreateJournal,
         backupManifest: null,
@@ -1043,22 +977,14 @@ describe("rebuild destroy phase", () => {
     vi.mocked(recreateJournal.confirmDeleted).mockImplementation(() => {
       throw new Error("OpenShell still reports the journaled source after delete");
     });
-    mocks.runOpenshell.mockReturnValue({
-      status: 0,
-      stdout: "deleted",
-      stderr: "",
-    });
+    mocks.runOpenshell.mockReturnValue({ status: 0, stdout: "deleted", stderr: "" });
     const onDeleted = vi.fn();
     const onDeleteStateAmbiguous = vi.fn();
 
     await expect(
       runRebuildDestroyPhase({
         sandboxName: "alpha",
-        sandboxEntry: {
-          name: "alpha",
-          agent: "openclaw",
-          gatewayName: "nemoclaw",
-        },
+        sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
         staleRecovery: false,
         recreateJournal,
         backupManifest: null,
@@ -1080,11 +1006,7 @@ describe("rebuild destroy phase", () => {
   });
 
   it("marks accepted deletion as ambiguous when transport failures prevent confirmation", async () => {
-    mocks.runOpenshell.mockReturnValue({
-      status: 0,
-      stdout: "deleted",
-      stderr: "",
-    });
+    mocks.runOpenshell.mockReturnValue({ status: 0, stdout: "deleted", stderr: "" });
     mocks.captureOpenshell.mockReturnValue({
       status: 1,
       stdout: "",
@@ -1097,16 +1019,10 @@ describe("rebuild destroy phase", () => {
     await expect(
       runRebuildDestroyPhase({
         sandboxName: "alpha",
-        sandboxEntry: {
-          name: "alpha",
-          agent: "openclaw",
-          gatewayName: "nemoclaw",
-        },
+        sandboxEntry: { name: "alpha", agent: "openclaw", gatewayName: "nemoclaw" },
         staleRecovery: false,
         recreateJournal: stubRecreateJournal(),
-        backupManifest: {
-          backupPath: "/tmp/rebuild-backups/alpha/backup",
-        } as never,
+        backupManifest: { backupPath: "/tmp/rebuild-backups/alpha/backup" } as never,
         log: vi.fn(),
         bail: vi.fn((message: string): never => {
           throw new Error(message);
@@ -1124,10 +1040,7 @@ describe("rebuild destroy phase", () => {
     expect(mocks.captureOpenshell).toHaveBeenCalledTimes(3);
     expect(mocks.waitUntil).toHaveBeenCalledWith(
       expect.any(Function),
-      expect.objectContaining({
-        deadlineMs: expect.any(Number),
-        maxAttempts: 20,
-      }),
+      expect.objectContaining({ deadlineMs: expect.any(Number), maxAttempts: 20 }),
     );
     expect(mocks.removeSandboxRegistryEntryWithReceipt).not.toHaveBeenCalled();
     expect(mocks.listSandboxes).not.toHaveBeenCalled();

@@ -559,36 +559,29 @@ function installVerifiedSandboxCreateFixture(registry, options) {
     require.cache[registryPath].exports = registry;
   }
 
-  const policyVerificationPath = require.resolve(
+  const receiptPath = require.resolve(
     path.resolve(__dirname, "../../src/lib/onboard/sandbox-create/policy-verification.ts"),
   );
-  const policyVerification = require(policyVerificationPath);
+  const receipt = require(receiptPath);
   const apfPolicyRegistration = (input) => {
     if (options.apfInterceptorRequested !== true) {
       throw new Error("integration fixture received unexpected APF policy verification");
     }
     options.onVerifyCreatedPolicy?.(input);
-    return {
-      policyIdentity: {
-        hash: "fixture-policy",
-        activeVersion: 1,
-      },
-    };
+    return {};
   };
-  Object.defineProperties(policyVerification, {
+  Object.defineProperties(receipt, {
     verifyCreatedApfInterceptorPolicyRegistration: {
       configurable: true,
       enumerable: true,
       writable: true,
       value: apfPolicyRegistration,
     },
-    verifyCreatedSandboxInitialPolicy: {
+    verifyCreatedSandboxPolicyRegistration: {
       configurable: true,
       enumerable: true,
       writable: true,
-      value: () => ({
-        policyIdentity: { hash: "fixture-policy", activeVersion: 1 },
-      }),
+      value: () => ({}),
     },
     revalidateCreatedSandboxPolicyRegistration: {
       configurable: true,
@@ -597,7 +590,7 @@ function installVerifiedSandboxCreateFixture(registry, options) {
       value: (input) => input.registration,
     },
   });
-  require.cache[policyVerificationPath].exports = policyVerification;
+  require.cache[receiptPath].exports = receipt;
   const prepareCreateIntent = () => {
     const onboardSession = require(
       path.resolve(__dirname, "../../src/lib/state/onboard-session.ts"),
@@ -683,10 +676,7 @@ function installVerifiedSandboxCreateFixture(registry, options) {
 function sandboxCreateArgsWithVerifiedReservation(args, fixture) {
   const createArgs = [...args];
   while (createArgs.length < 16) createArgs.push(null);
-  createArgs[14] = {
-    sessionId: fixture.sessionId,
-    selection: fixture.selection,
-  };
+  createArgs[14] = { sessionId: fixture.sessionId, selection: fixture.selection };
   const fixtureIntent = fixture.prepareCreateIntent();
   const requestedIntent = createArgs[15];
   createArgs[15] =
@@ -701,8 +691,7 @@ function sandboxCreateArgsWithVerifiedReservation(args, fixture) {
   return createArgs;
 }
 
-function managedSandboxPolicyReceiptFixture(entry, options = {}) {
-  const sandboxName = options.sandboxName || entry.name;
+function sandboxLifecycleFixture(entry, options = {}) {
   const gatewayName = options.gatewayName || "nemoclaw";
   const gatewayPort = options.gatewayPort || 8080;
   const lifecycleGeneration = options.lifecycleGeneration || "123e4567-e89b-42d3-a456-426614174983";
@@ -711,26 +700,12 @@ function managedSandboxPolicyReceiptFixture(entry, options = {}) {
     .createHash("sha256")
     .update(sandboxId)
     .digest("hex");
-  const policyHash = options.policyHash || "fixture-policy";
-  const policyVersion = options.policyVersion || 1;
   return {
     ...entry,
     gatewayName,
     gatewayPort,
     lifecycleGeneration,
     lifecycleLiveIdentityFingerprint: sandboxIdentityFingerprint,
-    policyAuthority: "nemoclaw-managed",
-    policyCreationReceipt: {
-      schemaVersion: 1,
-      origin: "sandbox-create",
-      gatewayName,
-      gatewayPort,
-      sandboxName,
-      lifecycleGeneration,
-      sandboxIdentityFingerprint,
-      policyHash,
-      policyVersion,
-    },
   };
 }
 
@@ -1047,10 +1022,7 @@ function mockManagedImageBootstrap() {
           bootstrapIdentity,
           input.plan.intendedWorkloadArgv,
         );
-        const createReceipt = await input.launch({
-          heldWorkloadArgv,
-          bootstrapIdentity,
-        });
+        const createReceipt = await input.launch({ heldWorkloadArgv, bootstrapIdentity });
         return {
           schemaVersion: 1,
           sandbox: createReceipt.sandbox,
@@ -1075,11 +1047,7 @@ function mockManagedImageBootstrap() {
         };
       },
       async discoverHeldWorkload(input) {
-        return {
-          sandbox: input.sandbox,
-          runtimeId,
-          bootstrapIdentity: input.bootstrapIdentity,
-        };
+        return { sandbox: input.sandbox, runtimeId, bootstrapIdentity: input.bootstrapIdentity };
       },
       async inspectHeldWorkload({ handle, discovered }) {
         return {
@@ -1178,7 +1146,7 @@ module.exports = {
   mockCreatedSandboxIdentityList,
   mockStructuredOpenShellCaptureFromRunner,
   installVerifiedSandboxCreateFixture,
-  managedSandboxPolicyReceiptFixture,
+  sandboxLifecycleFixture,
   mockOnboardRunCapture,
   mockStandaloneGatewayTeardownAuthority,
   normalizeCommand,

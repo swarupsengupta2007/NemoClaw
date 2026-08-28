@@ -29,7 +29,7 @@ import {
   normalizeDcodeAutoApprovalMode,
 } from "../../onboard/dcode-auto-approval";
 import { resolveSandboxGatewayName } from "../../onboard/gateway-binding";
-import { getGatewayPresets } from "../../policy";
+import { getAppliedPresets } from "../../policy";
 import { redact } from "../../security/redact";
 import * as registry from "../../state/registry";
 import {
@@ -164,9 +164,7 @@ export interface SandboxStatusReport {
   portableLifecyclePhase?: "pending" | "configuring" | "active";
   gatewayState: string;
   inferenceHealth: ProviderHealthStatus | null;
-  rpcIssue: {
-    kind: "image_drift" | "host_process_drift" | "protobuf_mismatch";
-  } | null;
+  rpcIssue: { kind: "image_drift" | "host_process_drift" | "protobuf_mismatch" } | null;
   hostGpuDetected: boolean;
   sandboxGpuEnabled: boolean;
   sandboxGpuMode: string | null;
@@ -295,6 +293,7 @@ interface CollectSandboxStatusSnapshotDeps {
   recoverSandboxProcesses?: RecoverSandboxProcesses;
   reconcile?: ReconcileSandboxGatewayState;
   getSandboxStatusPreflightImpl?: typeof getSandboxStatusPreflight;
+  getAppliedPresets?: typeof getAppliedPresets;
 }
 
 function sanitizedStatusDetail(error: unknown): string {
@@ -516,10 +515,7 @@ export async function collectSandboxStatusSnapshot(
   const currentProvider = sb ? sb.provider || "unknown" : (live && live.provider) || "unknown";
   const routeDriftPlan =
     sb && sb.provider && sb.model
-      ? planInferenceRouteReconcile(live, {
-          provider: sb.provider,
-          model: sb.model,
-        })
+      ? planInferenceRouteReconcile(live, { provider: sb.provider, model: sb.model })
       : null;
   const routeDrift =
     routeDriftPlan && routeDriftPlan.kind === "diverged"
@@ -722,7 +718,7 @@ async function buildSandboxStatusReport(
   );
   const sandboxGpuEnabled = sb ? (sb.sandboxGpuEnabled ?? sb.gpuEnabled === true) : false;
   const hostMounts = normalizeSandboxStatusHostMounts(sb?.hostMounts);
-  const policies = sb ? (getGatewayPresets(sandboxName, 5_000) ?? []) : [];
+  const policies = sb ? (deps.getAppliedPresets ?? getAppliedPresets)(sandboxName) : [];
   const agent = resolveSandboxStatusAgent(sb?.agent || "openclaw");
   return {
     schemaVersion: 1,

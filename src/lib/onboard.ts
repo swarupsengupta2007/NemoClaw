@@ -2634,7 +2634,6 @@ const onboardRuntimeBoundary = new OnboardRuntimeBoundary({
 });
 const sandboxCancelRollback = installSandboxCancelRollback({ recordRecovery }); // #4614
 const {
-  getAppliedPolicyPresets,
   arePolicyPresetsApplied,
   computeSetupPresetSuggestions,
   filterSetupPolicyPresets,
@@ -2660,8 +2659,6 @@ const {
   withSandboxMutationLock: sandboxMutationLock.withSandboxMutationLock,
   waitForSandboxReady,
   waitForSandboxControlPlaneReady: finalizationHandlerDeps.waitForSandboxControlPlaneReady,
-  setPolicyTier: () => true,
-  getRecordedPolicyTier: () => null,
   parsePolicyPresetEnv,
   env: process.env,
 });
@@ -2988,9 +2985,7 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
       };
       type InitialOnboardFlowContext = typeof initialFlowContext;
       const policyRequirementBindings =
-        sandboxCreateOrchestration.createOnboardPolicyRequirementBindings(
-          sandboxCreateOrchestrationRuntime,
-        );
+        sandboxCreateOrchestration.createOnboardPolicyRequirementBindings();
       const [preflightPhase, gatewayPhase]: readonly [
         import("./onboard/machine/sequence-runner").OnboardSequencePhase<InitialOnboardFlowContext>,
         import("./onboard/machine/sequence-runner").OnboardSequencePhase<InitialOnboardFlowContext>,
@@ -3032,7 +3027,6 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
         assertGatewayReadiness: () =>
           onboardPreflightGatewayAuthority.collectGatewayReadiness().then(() => undefined),
         gatewayName: GATEWAY_NAME,
-        bindPolicyAuthority: policyRequirementBindings.bindPolicyAuthority,
         recreateSandbox: isRecreateSandbox,
         requiresBindMounts: effectiveHostMounts.length > 0,
         gatewayDeps: {
@@ -3360,7 +3354,6 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
         policiesDeps: {
           loadSession: onboardSession.loadSession,
           getActiveSandbox: (name) => registry.getSandbox(name),
-          getAppliedPolicyPresets,
           mergePolicyMessagingChannels,
           detectUnconfiguredMessagingChannels:
             messagingChannelSetup.detectUnconfiguredMessagingChannels,
@@ -3376,7 +3369,6 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
           recordStateSkipped,
           startRecordedStep,
           setupPoliciesWithSelection,
-          updateSession: onboardSession.updateSession,
           recordStepComplete,
           toSessionUpdates: (updates) =>
             toSessionUpdates(updates as Parameters<typeof toSessionUpdates>[0]),

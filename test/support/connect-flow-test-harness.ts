@@ -95,9 +95,7 @@ export type ConnectHarnessOptions = {
     mcpReconciliationRefused?: boolean;
     mcpReconciliationReason?: string;
   };
-  portableRecoveryResult?: {
-    kind: "not-installed" | "already-running" | "recovered";
-  };
+  portableRecoveryResult?: { kind: "not-installed" | "already-running" | "recovered" };
   portableReceiptDisposition?:
     | { kind: "absent" }
     | { kind: "openclaw" }
@@ -119,12 +117,7 @@ export type ConnectHarnessOptions = {
   sttyThrows?: boolean;
   withGatewayRouteMutationLock?: GatewayRouteMutationLock;
   readinessDecision?:
-    | {
-        kind: "accepted";
-        category: "accepted";
-        agent: unknown;
-        sb: SandboxEntry;
-      }
+    | { kind: "accepted"; category: "accepted"; agent: unknown; sb: SandboxEntry }
     | {
         kind: "fallback";
         category: string;
@@ -227,9 +220,7 @@ export function createConnectHarness(options: ConnectHarnessOptions = {}): Conne
   vi.spyOn(gatewayState, "assertHermesPortableLifecycleForConnect").mockImplementation(
     () => undefined,
   );
-  const requestedPortableDisposition = options.portableReceiptDisposition ?? {
-    kind: "absent",
-  };
+  const requestedPortableDisposition = options.portableReceiptDisposition ?? { kind: "absent" };
   const portableDisposition =
     requestedPortableDisposition.kind === "hermes"
       ? {
@@ -371,31 +362,18 @@ export function createConnectHarness(options: ConnectHarnessOptions = {}): Conne
   const runSetupDnsProxySpy = vi.spyOn(dns, "runSetupDnsProxy").mockReturnValue({ exitCode: 0 });
   const applyVmDnsMonkeypatchSpy = vi
     .spyOn(vmDnsMonkeypatch, "applyOpenShellVmDnsMonkeypatch")
-    .mockReturnValue({
-      attempted: true,
-      changed: true,
-      ok: true,
-      status: "applied",
-    });
+    .mockReturnValue({ attempted: true, changed: true, ok: true, status: "applied" });
   vi.spyOn(runtime, "getOpenshellBinary").mockReturnValue("openshell");
   vi.spyOn(resolve, "resolveOpenshell").mockReturnValue("/usr/bin/openshell");
   vi.spyOn(sandboxSession, "getActiveSandboxSessions").mockReturnValue({
     detected: true,
     sessions: [{ pid: 1 }, { pid: 2 }],
   });
-  vi.spyOn(sandboxVersion, "checkAgentVersion").mockReturnValue({
-    isStale: false,
-  });
+  vi.spyOn(sandboxVersion, "checkAgentVersion").mockReturnValue({ isStale: false });
   vi.spyOn(sandboxVersion, "formatStalenessWarning").mockReturnValue([]);
   const checkAndRecoverSpy = vi
     .spyOn(processRecovery, "checkAndRecoverSandboxProcesses")
-    .mockReturnValue(
-      options.processCheck ?? {
-        checked: true,
-        wasRunning: true,
-        recovered: false,
-      },
-    );
+    .mockReturnValue(options.processCheck ?? { checked: true, wasRunning: true, recovered: false });
   const recoverPortableDemoLifecycleSpy = vi
     .spyOn(gatewayState, "recoverPortableDemoSandboxLifecycleForConnect")
     .mockReturnValue(options.portableRecoveryResult ?? { kind: "not-installed" });
@@ -420,10 +398,7 @@ export function createConnectHarness(options: ConnectHarnessOptions = {}): Conne
   vi.spyOn(platform, "isWsl").mockImplementation((...args: unknown[]) =>
     typeof options.isWsl === "boolean"
       ? options.isWsl
-      : realIsWsl({
-          platform: "linux",
-          ...((args[0] as WslDetectionOptions | undefined) ?? {}),
-        }),
+      : realIsWsl({ platform: "linux", ...((args[0] as WslDetectionOptions | undefined) ?? {}) }),
   );
   const primaryRegistryEntry: SandboxEntry = {
     name: "alpha",

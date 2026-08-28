@@ -81,18 +81,8 @@ describe("rebuild target gateway preflight", () => {
   it("health-checks and pins the sandbox's persisted gateway", async () => {
     const recover = vi.spyOn(gatewayRuntime, "recoverNamedGatewayRuntime").mockResolvedValue({
       recovered: true,
-      before: {
-        state: "connected_other",
-        status: "",
-        gatewayInfo: "",
-        activeGateway: null,
-      },
-      after: {
-        state: "healthy_named",
-        status: "",
-        gatewayInfo: "",
-        activeGateway: null,
-      },
+      before: { state: "connected_other", status: "", gatewayInfo: "", activeGateway: null },
+      after: { state: "healthy_named", status: "", gatewayInfo: "", activeGateway: null },
       attempted: true,
     });
 
@@ -112,18 +102,8 @@ describe("rebuild target gateway preflight", () => {
   it("fails closed when the target gateway cannot become healthy", async () => {
     vi.spyOn(gatewayRuntime, "recoverNamedGatewayRuntime").mockResolvedValue({
       recovered: false,
-      before: {
-        state: "connected_other",
-        status: "",
-        gatewayInfo: "",
-        activeGateway: null,
-      },
-      after: {
-        state: "missing_named",
-        status: "",
-        gatewayInfo: "",
-        activeGateway: null,
-      },
+      before: { state: "connected_other", status: "", gatewayInfo: "", activeGateway: null },
+      after: { state: "missing_named", status: "", gatewayInfo: "", activeGateway: null },
       attempted: true,
     });
 
@@ -158,10 +138,9 @@ describe("rebuild agent base image preflight", () => {
   });
 
   function mockBaseImagePreflight(imageRef: string) {
-    const loadAgent = vi.spyOn(agentDefs, "loadAgent").mockReturnValue({
-      name: "hermes",
-      displayName: "Hermes Agent",
-    } as never);
+    const loadAgent = vi
+      .spyOn(agentDefs, "loadAgent")
+      .mockReturnValue({ name: "hermes", displayName: "Hermes Agent" } as never);
     const ensureAgentBaseImage = vi
       .spyOn(agentOnboard, "ensureAgentBaseImage")
       .mockReturnValue({ imageTag: imageRef, built: true });
@@ -525,10 +504,7 @@ describe("rebuild agent base image preflight", () => {
       resolutionMetadata,
       resolutionMetadata,
     );
-    expect(result.trustedLocalOverride).toEqual({
-      ref: canonicalRef,
-      provenance,
-    });
+    expect(result.trustedLocalOverride).toEqual({ ref: canonicalRef, provenance });
   });
 
   it("disposes a temporary recreate handoff at most once (#7144)", () => {

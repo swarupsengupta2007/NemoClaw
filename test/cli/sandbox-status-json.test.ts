@@ -116,7 +116,6 @@ describe("CLI sandbox status JSON output", testTimeoutOptions(20_000), () => {
       model: "configured-model",
       provider: "configured-provider",
       gpuEnabled: true,
-      policies: [],
       hostGpuDetected: true,
       sandboxGpuEnabled: true,
       sandboxGpuMode: "passthrough",
@@ -201,7 +200,6 @@ describe("CLI sandbox status JSON output", testTimeoutOptions(20_000), () => {
       sandboxGpuDevice: "0",
       openshellDriver: "docker",
       openshellVersion: "0.0.44",
-      policies: [],
       rpcIssue: null,
     });
     expect(typeof parsed.openshellDriver).toBe("string");

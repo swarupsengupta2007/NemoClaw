@@ -13,7 +13,7 @@ import {
   managedPolicyMetadata,
   managedRegistrationSource,
   SANDBOX_ID,
-} from "../../helpers/managed-policy-receipt-fixture";
+} from "../../helpers/live-policy-fixture";
 
 const REPO_ROOT = path.join(import.meta.dirname, "../../..");
 const POLICIES_PATH = JSON.stringify(path.join(REPO_ROOT, "src", "lib", "policy", "index.ts"));
@@ -37,7 +37,6 @@ function runHermesPermissivePolicy(policySetStatus: number): {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-policy-permissive-"));
   const fakeOpenshell = path.join(tmpDir, "openshell");
   const policyOut = path.join(tmpDir, "policy.yaml");
-  const livePolicyOut = path.join(tmpDir, "live-policy.yaml");
   const stagedRecord = path.join(tmpDir, "staged.txt");
   const script = String.raw`
 const registry = require(${REGISTRY_PATH});
@@ -58,8 +57,8 @@ if [ "$1 $2" = "policy get" ]; then
     printf '%s\n' ${JSON.stringify(managedPolicyMetadata("hermes-sandbox"))}
     exit 0
   fi
-  if [ -f ${JSON.stringify(livePolicyOut)} ]; then
-    cat ${JSON.stringify(livePolicyOut)}
+  if [ -f ${JSON.stringify(policyOut)} ]; then
+    cat ${JSON.stringify(policyOut)}
   else
     printf 'Version: 1\nHash: fixture-policy\n---\nversion: 1\n\nnetwork_policies: {}\n'
   fi
@@ -78,7 +77,6 @@ if [ "$1 $2" = "policy set" ]; then
   printf '%s\n%s\n' "$policy_file" "$mode" > ${JSON.stringify(stagedRecord)}
   cp "$policy_file" ${JSON.stringify(policyOut)}
   if [ "${policySetStatus}" -eq 0 ]; then
-    cp "$policy_file" ${JSON.stringify(livePolicyOut)}
     printf 'Policy version 2 submitted\nPolicy version 2 loaded\n'
     exit 0
   fi

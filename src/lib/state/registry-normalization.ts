@@ -7,33 +7,27 @@ import { normalizePendingSandboxCreateVerification } from "./registry/pending-cr
 
 export { normalizePendingSandboxCreateVerification };
 
-const RESERVATION_SESSION_CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
+const POLICY_SHADOW_FIELDS = [
+  "baselineExclusions",
+  "baselineExclusionTransition",
+  "customPolicies",
+  "policies",
+  "policyAuthority",
+  "policyCreationReceipt",
+  "policyPresetsFinalized",
+  "policyTier",
+] as const;
 
-/**
- * Drop legacy policy-shadow fields without validating or replaying them.
- * OpenShell is the durable policy store; an old or malformed local shadow must
- * neither authorize nor block an unrelated registry command.
- */
-export function normalizeSandboxEntry(entry: SandboxEntry): SandboxEntry {
-  const legacy = entry as SandboxEntry & Record<string, unknown>;
-  const {
-    policies: _policies,
-    customPolicies: _customPolicies,
-    baselineExclusions: _baselineExclusions,
-    baselineExclusionTransition: _baselineExclusionTransition,
-    policyPresetsFinalized: _policyPresetsFinalized,
-    policyTier: _policyTier,
-    policyAuthority: _policyAuthority,
-    policyCreationReceipt: _policyCreationReceipt,
-    pendingPolicyVerification: _pendingPolicyVerification,
-    pendingCreateVerification,
-    ...rest
-  } = legacy;
-  const checkpoint = normalizePendingSandboxCreateVerification(pendingCreateVerification);
-  return {
-    ...(rest as SandboxEntry),
-    ...(checkpoint ? { pendingCreateVerification: checkpoint } : {}),
-  };
+/** Remove legacy policy shadow state without interpreting or replaying it. */
+export function normalizeSandboxPolicyAttribution(entry: SandboxEntry): SandboxEntry {
+  const result = { ...entry } as SandboxEntry & Record<string, unknown>;
+  for (const field of POLICY_SHADOW_FIELDS) delete result[field];
+  if (result.pendingCreateVerification !== undefined) {
+    result.pendingCreateVerification = normalizePendingSandboxCreateVerification(
+      result.pendingCreateVerification,
+    );
+  }
+  return result;
 }
 
 export function parseSandboxRegistryEntries(value: unknown): Array<[string, SandboxEntry]> {

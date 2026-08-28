@@ -17,7 +17,7 @@ import {
   POLICY_VERSION,
   SANDBOX_ID,
   SANDBOX_IDENTITY,
-} from "../../helpers/managed-policy-receipt-fixture";
+} from "../../helpers/live-policy-fixture";
 
 const requireForTest = createRequire(import.meta.url);
 const YAML = requireForTest("yaml");
@@ -28,9 +28,9 @@ const policies = requireForTest(
 const resolveOpenshellModule = requireForTest(
   path.join(REPO_ROOT, "src", "lib", "adapters", "openshell", "resolve.ts"),
 ) as { resolveOpenshell: (...args: unknown[]) => string | null };
-const policyAuthorityModule = requireForTest(
-  path.join(REPO_ROOT, "src", "lib", "adapters", "openshell", "policy-authority.ts"),
-) as typeof import("../../../src/lib/adapters/openshell/policy-authority");
+const policyStateModule = requireForTest(
+  path.join(REPO_ROOT, "src", "lib", "adapters", "openshell", "policy-state.ts"),
+) as typeof import("../../../src/lib/adapters/openshell/policy-state");
 const registryForTest = requireForTest(
   path.join(REPO_ROOT, "src", "lib", "state", "registry.ts"),
 ) as typeof import("../../../src/lib/state/registry");
@@ -48,12 +48,12 @@ function requirePresetContent(content: string | null): string {
 
 describe("policies", () => {
   beforeEach(() => {
-    vi.spyOn(policyAuthorityModule, "inspectSandboxPolicyAuthority").mockReturnValue({
-      authority: "owner-unknown",
+    vi.spyOn(policyStateModule, "inspectSandboxPolicy").mockReturnValue({
+      policySource: "sandbox",
       effectivePolicy: {},
       policyIdentity: { hash: POLICY_HASH, activeVersion: POLICY_VERSION },
     });
-    vi.spyOn(policyAuthorityModule, "inspectOpenShellSandboxIdentityFingerprint").mockReturnValue(
+    vi.spyOn(policyStateModule, "inspectOpenShellSandboxIdentityFingerprint").mockReturnValue(
       SANDBOX_IDENTITY,
     );
   });
@@ -173,10 +173,9 @@ const fs = require("node:fs");
 const registry = require(${REGISTRY_PATH});
 const policies = require(${POLICIES_PATH});
 ${managedRegistrationSource("test-sandbox")}
-const result = policies.applyPresets("test-sandbox", ["github", "pypi"]);
+const result = policies.applyPresets("test-sandbox", ["npm", "pypi"]);
 process.stdout.write("\n__RESULT__" + JSON.stringify({
   result,
-  applied: policies.getAppliedPresets("test-sandbox"),
   calls: fs.readFileSync(process.env.CALLS_PATH, "utf-8").trim().split("\n").filter(Boolean),
   policy: fs.readFileSync(process.env.POLICY_OUT, "utf-8"),
   registry: registry.getSandbox("test-sandbox"),
@@ -234,18 +233,17 @@ exit 1
           },
         });
 
-        expect(result.status, result.stderr).toBe(0);
+        expect(result.status).toBe(0);
         const payload = parseResultPayload(result.stdout);
         expect(payload.result).toBe(true);
         const policyGets = payload.calls.filter((call: string) => call.startsWith("policy get "));
-        expect(policyGets.length).toBeGreaterThanOrEqual(2);
-        expect(policyGets.every((call: string) => !call.includes("--output json"))).toBe(true);
+        expect(policyGets.some((call: string) => call.includes("--output json"))).toBe(true);
+        expect(policyGets.some((call: string) => !call.includes("--output json"))).toBe(true);
         expect(payload.calls.filter((call: string) => call.startsWith("policy set "))).toHaveLength(
           1,
         );
-        expect(payload.policy).toContain("github:");
+        expect(payload.policy).toContain("npm_yarn:");
         expect(payload.policy).toContain("pypi:");
-        expect(payload.applied).toEqual(["github", "pypi"]);
         expect(payload.registry).not.toHaveProperty("policies");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -264,7 +262,6 @@ ${managedRegistrationSource("hermes-sandbox", "hermes")}
 const result = policies.applyPresets("hermes-sandbox", ["discord"]);
 process.stdout.write("\n__RESULT__" + JSON.stringify({
   result,
-  applied: policies.getAppliedPresets("hermes-sandbox"),
   policy: fs.readFileSync(process.env.POLICY_OUT, "utf-8"),
   registry: registry.getSandbox("hermes-sandbox"),
 }));
@@ -338,11 +335,7 @@ exit 1
           method: "PATCH",
           path: "/api/v*/channels/*/messages/*",
         });
-        expect(mutationRules).not.toContainEqual({
-          method: "PATCH",
-          path: "/**",
-        });
-        expect(payload.applied).toEqual(["discord"]);
+        expect(mutationRules).not.toContainEqual({ method: "PATCH", path: "/**" });
         expect(payload.registry).not.toHaveProperty("policies");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -361,7 +354,6 @@ ${managedRegistrationSource("hermes-sandbox", "hermes")}
 const result = policies.applyPresets("hermes-sandbox", ["wechat"]);
 process.stdout.write("\n__RESULT__" + JSON.stringify({
   result,
-  applied: policies.getAppliedPresets("hermes-sandbox"),
   policy: fs.readFileSync(process.env.POLICY_OUT, "utf-8"),
   registry: registry.getSandbox("hermes-sandbox"),
 }));
@@ -424,7 +416,6 @@ exit 1
         const binaries = wechatPolicy.binaries.map((entry: { path: string }) => entry.path);
         expect(binaries).toContain("/usr/bin/python3*");
         expect(binaries).toContain("/opt/hermes/.venv/bin/python");
-        expect(payload.applied).toEqual(["wechat"]);
         expect(payload.registry).not.toHaveProperty("policies");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -452,7 +443,7 @@ exit 1
       vi.stubEnv("NEMOCLAW_OPENSHELL_BIN", fakeOpenshell);
       try {
         try {
-          policies.applyPreset("test-sandbox", "github");
+          policies.applyPreset("test-sandbox", "npm");
         } catch {
           /* applyPreset may throw if sandbox not running — we only care about the log */
         }
@@ -723,7 +714,7 @@ exit 1
     // catch the real-world bug, spy on this process's mkdtempSync calls:
     // if the assertion fires before mkdtempSync, no nemoclaw-policy-* dir
     // should be requested.
-    it("returns false without creating temp dirs when OpenShell becomes unresolvable", () => {
+    it("applyPreset does not create temp dirs before the openshell resolvability check", () => {
       const policyTempPrefix = path.join(os.tmpdir(), "nemoclaw-policy-");
 
       const resolveSpy = vi
@@ -741,8 +732,8 @@ exit 1
       }) as never);
 
       try {
-        expect(policies.applyPreset("my-assistant", "npm")).toBe(false);
-        expect(exitSpy).not.toHaveBeenCalled();
+        expect(() => policies.applyPreset("my-assistant", "npm")).toThrow(/__test_exit__/);
+        expect(exitSpy).toHaveBeenCalledWith(1);
         // No `nemoclaw-policy-*` temp dir should have been created before
         // the resolvability check exited.
         expect(
@@ -772,7 +763,6 @@ exit 1
     let origHome: string | undefined;
     let resolveSpy: ReturnType<typeof vi.spyOn>;
     let savedGetSandbox: any;
-    let savedAddCustomPolicy: any;
 
     beforeEach(() => {
       tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-issue4586-"));
@@ -785,9 +775,7 @@ exit 1
         .spyOn(resolveOpenshellModule, "resolveOpenshell")
         .mockReturnValue(fakeOpenshell);
       savedGetSandbox = registryModule.getSandbox;
-      savedAddCustomPolicy = registryModule.addCustomPolicy;
       registryModule.getSandbox = (name: string) => managedSandboxEntry(name);
-      registryModule.addCustomPolicy = () => true;
     });
 
     afterEach(() => {
@@ -795,7 +783,6 @@ exit 1
       else process.env.HOME = origHome;
       resolveSpy.mockRestore();
       registryModule.getSandbox = savedGetSandbox;
-      registryModule.addCustomPolicy = savedAddCustomPolicy;
       fs.rmSync(tmpHome, { recursive: true, force: true });
     });
 
@@ -859,7 +846,6 @@ network_policies:
     let origHome: string | undefined;
     let resolveSpy: ReturnType<typeof vi.spyOn>;
     let savedGetSandbox: any;
-    let savedAddCustomPolicy: any;
     let savedUpdateSandbox: any;
 
     beforeEach(() => {
@@ -893,7 +879,6 @@ exit 0
         .spyOn(resolveOpenshellModule, "resolveOpenshell")
         .mockReturnValue(fakeOpenshell);
       savedGetSandbox = registryModule.getSandbox;
-      savedAddCustomPolicy = registryModule.addCustomPolicy;
       savedUpdateSandbox = registryModule.updateSandbox;
     });
 
@@ -902,17 +887,14 @@ exit 0
       else process.env.HOME = origHome;
       resolveSpy.mockRestore();
       registryModule.getSandbox = savedGetSandbox;
-      registryModule.addCustomPolicy = savedAddCustomPolicy;
       registryModule.updateSandbox = savedUpdateSandbox;
       fs.rmSync(tmpHome, { recursive: true, force: true });
     });
 
-    it("refuses a custom preset when policy authority cannot be recorded (#9833)", () => {
+    it("refuses a custom preset when sandbox policy state cannot be located", () => {
       // The sandbox is ready on the gateway but missing from the local
       // registry, so the first observed authority cannot be persisted.
       registryModule.getSandbox = () => null;
-      const addSpy = vi.fn(() => false);
-      registryModule.addCustomPolicy = addSpy;
       const errors: string[] = [];
       const errSpy = vi.spyOn(console, "error").mockImplementation((...a: unknown[]) => {
         errors.push(a.map((x) => String(x)).join(" "));
@@ -926,17 +908,16 @@ exit 0
           { custom: { sourcePath: SOURCE_PATH } },
         );
         expect(result).toBe(false);
-        expect(addSpy).not.toHaveBeenCalled();
         const combined = errors.join("\n");
         expect(combined).toContain("my-assistant");
-        expect(combined).toContain("policy authority is unavailable");
+        expect(combined).toContain("policy state is unavailable");
       } finally {
         errSpy.mockRestore();
         logSpy.mockRestore();
       }
     });
 
-    it("refuses a built-in preset when policy authority cannot be recorded (#9833)", () => {
+    it("refuses a built-in preset when sandbox policy state cannot be located", () => {
       registryModule.getSandbox = () => null;
       const updateSpy = vi.fn(() => true);
       registryModule.updateSandbox = updateSpy;
@@ -951,22 +932,20 @@ exit 0
         expect(updateSpy).not.toHaveBeenCalled();
         const combined = errors.join("\n");
         expect(combined).toContain("my-assistant");
-        expect(combined).toContain("policy authority is unavailable");
+        expect(combined).toContain("policy state is unavailable");
       } finally {
         errSpy.mockRestore();
         logSpy.mockRestore();
       }
     });
 
-    it("applies a well-formed custom preset without recording a registry shadow (#9406)", () => {
+    it("applies a well-formed custom preset without recording a policy copy", () => {
       let sandbox: Record<string, unknown> = managedSandboxEntry("my-assistant");
       registryModule.getSandbox = () => sandbox;
       registryModule.updateSandbox = (_name: string, updates: Record<string, unknown>) => {
         sandbox = { ...sandbox, ...updates };
         return true;
       };
-      const addSpy = vi.fn(() => true);
-      registryModule.addCustomPolicy = addSpy;
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
       const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
       try {
@@ -977,8 +956,6 @@ exit 0
           { custom: { sourcePath: SOURCE_PATH } },
         );
         expect(result).toBe(true);
-        expect(addSpy).not.toHaveBeenCalled();
-        expect(policies.getAppliedPresets("my-assistant")).toContain("slack-files-upload");
       } finally {
         logSpy.mockRestore();
         errSpy.mockRestore();

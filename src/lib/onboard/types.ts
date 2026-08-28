@@ -72,6 +72,8 @@ export interface SandboxCreateIntent {
   readonly compatibleEndpointReasoning?: "true" | "false";
   /** Provenance for the endpoint recorded with the created sandbox. */
   readonly endpointSource?: import("../inference/selection").InferenceEndpointSource | null;
+  /** Internal authoritative rebuild tier used before replacement registration completes. */
+  readonly policyTier?: string | null;
   /** Gateway-level extra providers reconciled immediately before sandbox creation. */
   readonly extraProviders?: readonly string[];
   /** Internal OpenClaw resume authority for exact registered provider reuse. */
@@ -86,14 +88,12 @@ export interface SandboxCreateIntent {
   readonly recreateJournalTargetIntentFingerprint?: string;
   /** Validated non-secret Hermes environment assignments carried by a rebuild. */
   readonly rebuildPreservedEnv?: readonly import("../state/preserved-env").PreservedEnvFile[];
-  /** Built-in policy presets owned by the outer authoritative rebuild lifecycle. */
-  readonly rebuildPolicyPresets?: readonly string[];
+  /** Bounded live OpenShell policy handoff for one active rebuild. */
+  readonly rebuildPolicySourcePath?: string;
 }
 
-/** Ephemeral live-policy observation proved inside one exact post-create identity gate. */
-export interface VerifiedSandboxPolicyRegistration {
-  readonly policyIdentity: import("../policy/merge").OpenShellPolicyIdentity;
-}
+/** Live OpenShell policy observation captured inside one create transaction. */
+export interface VerifiedSandboxPolicyRegistration {}
 
 /** Exact sandbox and policy result retained from the immediate create gate. */
 export interface VerifiedSandboxPolicyBoundary {
@@ -164,8 +164,8 @@ export type OnboardOptions = {
   managedWorkloadRebuild?: import("./workload/rebuild").ManagedWorkloadRebuildHandoff;
   /** Internal validated non-secret Hermes environment assignments carried by a rebuild. */
   rebuildPreservedEnv?: readonly import("../state/preserved-env").PreservedEnvFile[];
-  /** Internal authoritative policy selection carried across sandbox recreation. */
-  rebuildPolicyPresets?: readonly string[];
+  /** Bounded live OpenShell policy handoff for one active rebuild. */
+  rebuildPolicySourcePath?: string;
   /** Internal hint for resolving the sandbox base image without repeating remote discovery. */
   baseImageResolutionHint?:
     | import("../sandbox-base-image").SandboxBaseImageResolutionMetadata
@@ -193,6 +193,8 @@ export type OnboardOptions = {
   /** Internal provenance for an authoritative observability value. */
   observabilityRequestedExplicitly?: boolean;
   dcodeAutoApprovalMode?: import("./dcode-auto-approval").DcodeAutoApprovalMode | null;
+  /** Internal authoritative rebuild tier; never exposed as an onboard CLI option. */
+  policyTier?: string | null;
   controlUiPort?: number | null;
   gpu?: boolean;
   noGpu?: boolean;

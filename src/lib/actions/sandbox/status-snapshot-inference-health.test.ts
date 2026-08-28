@@ -31,14 +31,8 @@ function snapshotDeps(
     suppressInferenceProbe: false,
     deps: {
       getSandbox: () => sandbox,
-      listSandboxes: () => ({
-        sandboxes: [sandbox],
-        defaultSandbox: sandbox.name,
-      }),
-      reconcile: async () => ({
-        state: "present" as const,
-        output: "Phase: Ready",
-      }),
+      listSandboxes: () => ({ sandboxes: [sandbox], defaultSandbox: sandbox.name }),
+      reconcile: async () => ({ state: "present" as const, output: "Phase: Ready" }),
       // The live-route RPC lookup is independent of the authoritative
       // inference.local gateway probe under test; throwing here just leaves
       // liveRoute/routeDrift null without needing a fabricated exec transcript.
@@ -90,9 +84,7 @@ describe("collectSandboxStatusSnapshot inference route health", () => {
       deps: { ...options.deps, recoverSandboxProcesses },
     });
 
-    expect(recoverSandboxProcesses).toHaveBeenCalledWith("alpha", {
-      quiet: true,
-    });
+    expect(recoverSandboxProcesses).toHaveBeenCalledWith("alpha", { quiet: true });
     expect(order).toEqual(["reconcile", "recover-agent-and-forward", "probe-inference"]);
   });
 
@@ -236,10 +228,7 @@ describe("collectSandboxStatusSnapshot inference route health", () => {
     expect(probeSandboxInferenceInvocationImpl).toHaveBeenCalledTimes(3);
     expect(delayInferenceRecoveryProbe).toHaveBeenCalledTimes(2);
     expect(delayInferenceRecoveryProbe).toHaveBeenCalledWith(2_000);
-    expect(snapshot.inferenceHealth).toMatchObject({
-      ok: false,
-      failureLabel: "unhealthy",
-    });
+    expect(snapshot.inferenceHealth).toMatchObject({ ok: false, failureLabel: "unhealthy" });
   });
 
   it("reports the inference route as unreachable after all post-recovery probes", async () => {
@@ -277,10 +266,7 @@ describe("collectSandboxStatusSnapshot inference route health", () => {
 
     expect(probeSandboxInferenceGatewayHealthImpl).toHaveBeenCalledTimes(3);
     expect(delayInferenceRecoveryProbe).toHaveBeenCalledTimes(2);
-    expect(snapshot.inferenceHealth).toMatchObject({
-      ok: false,
-      failureLabel: "unreachable",
-    });
+    expect(snapshot.inferenceHealth).toMatchObject({ ok: false, failureLabel: "unreachable" });
   });
 
   it("does not mutate the agent or host forward during an ordinary present status lookup", async () => {
@@ -572,10 +558,7 @@ describe("collectSandboxStatusSnapshot inference route health", () => {
       }),
     );
 
-    expect(snapshot.inferenceHealth).toMatchObject({
-      ok: false,
-      failureLabel: "unauthorized",
-    });
+    expect(snapshot.inferenceHealth).toMatchObject({ ok: false, failureLabel: "unauthorized" });
     expect(snapshot.inferenceHealth?.subprobes).toContainEqual({
       ...providerHealth,
       probeLabel: "upstream",
@@ -599,10 +582,7 @@ describe("collectSandboxStatusSnapshot inference route health", () => {
     });
 
     expect(probeSandboxInferenceInvocationImpl).not.toHaveBeenCalled();
-    expect(snapshot.inferenceHealth).toMatchObject({
-      ok: false,
-      failureLabel: "unreachable",
-    });
+    expect(snapshot.inferenceHealth).toMatchObject({ ok: false, failureLabel: "unreachable" });
   });
 
   it("reports an OpenClaw sandbox with a 404 models route as not ready (#10080)", async () => {
@@ -616,10 +596,7 @@ describe("collectSandboxStatusSnapshot inference route health", () => {
 
     const snapshot = await collectSandboxStatusSnapshot("alpha", snapshotDeps(gateway));
 
-    expect(snapshot.inferenceHealth).toMatchObject({
-      ok: false,
-      failureLabel: "unreachable",
-    });
+    expect(snapshot.inferenceHealth).toMatchObject({ ok: false, failureLabel: "unreachable" });
     expect(snapshot.inferenceHealth?.okLabel).toBeUndefined();
   });
 

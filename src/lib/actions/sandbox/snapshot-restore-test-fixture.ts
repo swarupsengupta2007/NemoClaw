@@ -26,28 +26,6 @@ export type SandboxRecord = {
   pendingRouteReservation?: true;
   reservationSessionId?: string;
   agent?: string | null;
-  baselineExclusionTransition?: {
-    id: string;
-    operation: "exclude" | "restore";
-    exclusion: {
-      version: 1;
-      agent: string;
-      key: string;
-      digest: string;
-      acknowledgedAt?: string;
-      appliedAgentVersion?: string | null;
-    };
-    startedAt: string;
-    targetLiveDigest: string | null;
-  };
-  baselineExclusions?: Array<{
-    version: 1;
-    agent: string;
-    key: string;
-    digest: string;
-    acknowledgedAt?: string;
-    appliedAgentVersion?: string | null;
-  }>;
   fromDockerfile?: string | null;
   gatewayName?: string | null;
   gatewayPort?: number | null;
@@ -93,20 +71,23 @@ export function openshellResponses(
   const sandboxName = String(args.at(-1) ?? "sandbox");
   const result =
     responses[command] ??
-    (command === "sandbox get"
-      ? {
-          status: 0,
-          output: `Name: ${sandboxName}\nId: ${sandboxName}-live-id\nPhase: Ready\n`,
-        }
-      : {
-          status: 0,
-          output: "",
-        });
+    (command === "policy get"
+      ? { status: 0, output: "version: 1\nnetwork_policies: {}\n" }
+      : command === "sandbox get"
+        ? {
+            status: 0,
+            output: `Name: ${sandboxName}\nId: ${sandboxName}-live-id\nPhase: Ready\n`,
+          }
+        : {
+            status: 0,
+            output: "",
+          });
   return captureOpenshellStreams(args, result);
 }
 
 export function defaultOpenshellResponses(args: string[]): OpenshellCaptureResult {
   return openshellResponses(args, {
+    "policy get": { status: 0, output: "version: 1\nnetwork_policies: {}\n" },
     "sandbox exec": { status: 0, output: dcodeProbeOutput("no-runtime") },
     "sandbox list": {
       status: 0,
@@ -168,23 +149,7 @@ export const dockerInspectMock = vi.fn(() => ({ status: 0, stdout: "true\n" }));
 export const establishRestoredSandboxGatewayPairingMock = vi.fn();
 export const findBackupMock = vi.fn();
 export const getAppliedPresetsMock = vi.fn(() => [] as string[]);
-export const getCustomPoliciesMock = vi.fn(
-  () => [] as Array<{ name: string; content: string; sourcePath?: string }>,
-);
 export const getLatestBackupMock = vi.fn(() => null as Record<string, unknown> | null);
-export const inspectPolicyRecoveryBoundaryMock = vi.fn(() => ({
-  gatewayName: "nemoclaw",
-}));
-export const buildPolicyGetCommandMock = vi.fn((sandboxName: string, gatewayName: string) => [
-  "policy",
-  "get",
-  "-g",
-  gatewayName,
-  sandboxName,
-]);
-export const livePolicyDocument = "version: 1\nnetwork_policies:\n  host-owned: {}";
-export const parseCurrentPolicyMock = vi.fn((raw: string) => raw.trim() || null);
-export const runCaptureMock = vi.fn(() => livePolicyDocument);
 export const applyPresetMock = vi.fn((_sandbox: string, _preset: string) => true);
 export const applyPresetContentMock = vi.fn(
   (_sandbox: string, _name: string, _content: string, _options?: unknown) => true,
@@ -209,11 +174,7 @@ export const waitForRestoredSandboxGatewaySupervisorMock = vi.fn(() => true);
 export const prepareInitialSandboxCreatePolicyMock = vi.fn(
   (
     policyPath: string,
-  ): {
-    policyPath: string;
-    appliedPresets: string[];
-    cleanup?: () => boolean;
-  } => ({
+  ): { policyPath: string; appliedPresets: string[]; cleanup?: () => boolean } => ({
     policyPath,
     appliedPresets: [],
   }),
@@ -273,10 +234,7 @@ vi.mock("../../credentials/store", () => ({
 }));
 
 vi.mock("../../domain/sandbox/destroy", () => ({
-  getSandboxDeleteOutcome: vi.fn(() => ({
-    alreadyGone: false,
-    gatewayUnreachable: false,
-  })),
+  getSandboxDeleteOutcome: vi.fn(() => ({ alreadyGone: false, gatewayUnreachable: false })),
 }));
 
 vi.mock("../../inference/nim", () => ({
@@ -287,12 +245,10 @@ vi.mock("../../inference/nim", () => ({
 vi.mock("../../policy", () => ({
   applyPreset: applyPresetMock,
   applyPresetContent: applyPresetContentMock,
-  buildPolicyGetCommand: buildPolicyGetCommandMock,
   getAppliedPresets: getAppliedPresetsMock,
   getPresetContentGatewayState: getPresetContentGatewayStateMock,
-  inspectPolicyRecoveryBoundary: inspectPolicyRecoveryBoundaryMock,
   loadPresetForSandbox: loadPresetForSandboxMock,
-  parseCurrentPolicy: parseCurrentPolicyMock,
+  parseCurrentPolicy: (raw: unknown) => String(raw),
   removePreset: removePresetMock,
   resolveAgentBaselinePolicy: resolveAgentBaselinePolicyMock,
 }));
@@ -300,7 +256,6 @@ vi.mock("../../policy", () => ({
 vi.mock("../../runner", () => ({
   ROOT: "/repo",
   run: vi.fn(() => ({ status: 0 })),
-  runCapture: runCaptureMock,
   shellQuote: (value: string) => `'${value}'`,
   validateName: vi.fn((value: string) => value),
 }));
@@ -348,9 +303,7 @@ vi.mock("../../state/gateway", () => ({
 }));
 
 vi.mock("../../state/registry", () => ({
-  getBaselineExclusions: vi.fn(() => []),
   getConfiguredMessagingChannelsFromEntry: vi.fn(() => []),
-  getCustomPolicies: getCustomPoliciesMock,
   getDisabledMessagingChannelsFromEntry: vi.fn(() => []),
   getSandbox: getSandboxMock,
   isRouteOnlySandboxReservation: (entry: SandboxRecord) =>
@@ -415,20 +368,7 @@ export function resetSnapshotRestoreMocks(): void {
   establishRestoredSandboxGatewayPairingMock.mockReset();
   findBackupMock.mockReturnValue({ match: null });
   getAppliedPresetsMock.mockReturnValue([]);
-  getCustomPoliciesMock.mockReturnValue([]);
   getLatestBackupMock.mockReturnValue(null);
-  inspectPolicyRecoveryBoundaryMock.mockReturnValue({
-    gatewayName: "nemoclaw",
-  });
-  buildPolicyGetCommandMock.mockImplementation((sandboxName, gatewayName) => [
-    "policy",
-    "get",
-    "-g",
-    gatewayName,
-    sandboxName,
-  ]);
-  parseCurrentPolicyMock.mockImplementation((raw) => raw.trim() || null);
-  runCaptureMock.mockReturnValue(livePolicyDocument);
   applyPresetMock.mockReturnValue(true);
   applyPresetContentMock.mockReturnValue(true);
   removePresetMock.mockReturnValue(true);
@@ -451,10 +391,7 @@ export function resetSnapshotRestoreMocks(): void {
   registerSandboxMock.mockReset();
   reserveSandboxInferenceRouteMock.mockReset().mockReturnValue(true);
   removeSandboxMock.mockReset();
-  removeSandboxRegistryEntryOutcomeMock.mockReturnValue({
-    status: "complete",
-    removed: true,
-  });
+  removeSandboxRegistryEntryOutcomeMock.mockReturnValue({ status: "complete", removed: true });
   updateSandboxMock.mockReset().mockReturnValue(true);
   finalizePendingSandboxRegistrationMock.mockReset().mockReturnValue(true);
   restoreSandboxStateMock.mockReturnValue({

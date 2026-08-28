@@ -325,7 +325,6 @@ registry.getSandbox = (name) =>
         provider: "hermes-provider",
         model: "moonshotai/kimi-k2.6",
         hermesToolGateways: [],
-        policies: ["nous-web"],
       }
     : null;
 registry.reserveSandboxInferenceRoute = (name, updates) => {
@@ -404,7 +403,6 @@ const resumeSession = onboardSession.createSession({
   credentialEnv: "NOUS_API_KEY",
   hermesAuthMethod: "api_key",
   hermesToolGateways: [],
-  policyPresets: ["nous-web"],
   metadata: { gatewayName: "nemoclaw", fromDockerfile: null },
   steps: {
     preflight: complete(),

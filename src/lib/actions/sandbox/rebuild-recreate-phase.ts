@@ -54,6 +54,7 @@ export interface RebuildRecreatePhaseInput {
   rebuildsHermesSandbox: boolean;
   hermesToolGateways: string[];
   hasHermesToolGateways: boolean;
+  policySourcePath?: string;
   credentialEnv: string | null;
   baseImagePreflight: RebuildAgentBaseImagePreflight;
   recoveryRecreate: boolean;
@@ -88,6 +89,7 @@ export async function runRebuildRecreatePhase(input: RebuildRecreatePhaseInput):
     rebuildsHermesSandbox,
     hermesToolGateways: rebuildHermesToolGateways,
     hasHermesToolGateways: hasRebuildHermesToolGateways,
+    policySourcePath: rebuildPolicySourcePath,
     credentialEnv: rebuildCredentialEnv,
     baseImagePreflight: rebuildBaseImagePreflight,
     recoveryRecreate,
@@ -100,6 +102,9 @@ export async function runRebuildRecreatePhase(input: RebuildRecreatePhaseInput):
     log,
     bail,
   } = input;
+  if (!rebuildPolicySourcePath) {
+    return input.bail("Rebuild has no captured OpenShell policy source.");
+  }
   console.log("");
   console.log("  Creating new sandbox with current image...");
 
@@ -206,7 +211,6 @@ export async function runRebuildRecreatePhase(input: RebuildRecreatePhaseInput):
     s.toolDisclosure = rebuildDurableConfig.toolDisclosure;
     s.observabilityEnabled = recreateOptions.observabilityEnabled;
     s.observabilityRequestedExplicitly = recreateOptions.observabilityRequestedExplicitly;
-    delete (s as Session & { policyPresets?: unknown }).policyPresets;
     // The journal outlives this reset, but the retired session owns its effect
     // receipts and bindings. Rebind only the values the journal invariant needs.
     s.checkpoint = {
@@ -269,7 +273,7 @@ export async function runRebuildRecreatePhase(input: RebuildRecreatePhaseInput):
     await rebuildOnboardDependencies.onboard({
       ...recreateOptions,
       rebuildGatewayAuthority,
-      rebuildPolicyPresets: [],
+      rebuildPolicySourcePath,
       ...(rebuildsHermesSandbox && backupManifest?.preservedEnv
         ? { rebuildPreservedEnv: backupManifest.preservedEnv }
         : {}),

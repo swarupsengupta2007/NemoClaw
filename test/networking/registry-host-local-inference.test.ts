@@ -58,17 +58,6 @@ function prepareVerifiedCreate(
     authority,
     registry.getSandbox(name),
   );
-  const policyCreationReceipt = {
-    schemaVersion: 1 as const,
-    origin: "sandbox-create" as const,
-    gatewayName: route.gatewayName,
-    gatewayPort: route.gatewayPort,
-    sandboxName: name,
-    lifecycleGeneration: LIFECYCLE_GENERATION,
-    sandboxIdentityFingerprint: SANDBOX_IDENTITY_FINGERPRINT,
-    policyHash: "sha256:host-local-fixture",
-    policyVersion: 1,
-  };
   const checkpoint = {
     schemaVersion: 1 as const,
     state: "verified-create" as const,
@@ -78,8 +67,6 @@ function prepareVerifiedCreate(
     lifecycleGeneration: LIFECYCLE_GENERATION,
     sandboxIdentityFingerprint: SANDBOX_IDENTITY_FINGERPRINT,
     route: "none" as const,
-    policyHash: policyCreationReceipt.policyHash,
-    policyVersion: policyCreationReceipt.policyVersion,
   };
   registry.recordPendingSandboxCreateVerification(reservation, checkpoint);
   return {
@@ -87,7 +74,6 @@ function prepareVerifiedCreate(
     registration: {
       lifecycleGeneration: LIFECYCLE_GENERATION,
       lifecycleLiveIdentityFingerprint: SANDBOX_IDENTITY_FINGERPRINT,
-      policyCreationReceipt,
     },
     reservation,
   };
@@ -117,10 +103,7 @@ describe("registry host-local inference authority", () => {
       JSON.stringify({
         defaultSandbox: "alpha",
         sandboxes: {
-          alpha: {
-            name: "alpha",
-            hostLocalInferenceReceipt: '{"providerId": "mxc"}\n',
-          },
+          alpha: { name: "alpha", hostLocalInferenceReceipt: '{"providerId": "mxc"}\n' },
         },
       }),
     );
@@ -211,9 +194,7 @@ describe("registry host-local inference authority", () => {
         { verifiedCreate: verified },
       ),
     ).toThrow(
-      label === "gateway port"
-        ? /verified create checkpoint \(gateway port\)/u
-        : /reservation changed/u,
+      label === "gateway port" ? /Cannot publish a sandbox registration/u : /reservation changed/u,
     );
   });
 
@@ -306,7 +287,6 @@ describe("registry host-local inference authority", () => {
         hostLocalInferenceProvenance: undefined,
       }),
     ).toBe(false);
-    expect(registry.updateSandbox("llama-stable", { observabilityEnabled: true })).toBe(true);
     expect(registry.getSandbox("llama-stable")).toMatchObject(route);
   });
 

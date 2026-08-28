@@ -36,6 +36,7 @@ export type CompleteSandboxCreateIntentInput<Agent, ResourceProfile> = {
   hermesToolGateways: readonly string[];
   extraProviders: readonly string[];
   staleExtraProviders: readonly string[];
+  policyTier?: string | null;
   /** Internal OpenClaw resume authority for exact registered provider reuse. */
   reuseRegisteredCredentials?: boolean;
 };
@@ -165,7 +166,7 @@ export function createSandboxCreateIntentResolver<
       sandboxGpuLogMessage,
       extraPlaceholderKeys: messaging.extraPlaceholderKeys,
       agentName: input.agent?.name,
-      policyTier: resolveSandboxCreatePolicyTier(),
+      policyTier: resolveSandboxCreatePolicyTier(input.policyTier),
     });
   }
 

@@ -20,8 +20,6 @@ export type SandboxCreateMessagingProviderRequest = {
   readonly channel: string | null;
 };
 
-export type InitialPolicyDelivery = "supplied" | "apf-interceptor";
-
 export type SandboxCreatePolicyRequest = {
   readonly basePolicyPath: string;
   readonly activeMessagingChannels: readonly string[];
@@ -88,13 +86,13 @@ export type ResolveSandboxCreateIntentInput = {
   sandboxGpuLogMessage: string | null;
   extraPlaceholderKeys?: readonly string[];
   agentName?: string | null;
-  policyTier: string | null;
+  policyTier?: string | null;
 };
 
 export type MaterializeSandboxCreatePlanInput = {
   intent: SandboxCreateIntent;
   fromRef: string;
-  initialPolicyDelivery: InitialPolicyDelivery;
+  policylessCreate?: boolean;
   /** Keep provider mutations and attachments behind the exact post-create policy gate. */
   deferSandboxEffectsUntilPolicyVerification?: boolean;
   managedStateMount?: ManagedHermesStateVolumeMount | null;

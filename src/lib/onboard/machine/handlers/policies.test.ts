@@ -3,64 +3,74 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createPolicyHandlerDeps, basePolicyHandlerOptions } from "./policies-test-fixture";
 import { handlePoliciesState } from "./policies";
-import { basePolicyHandlerOptions, createPolicyHandlerDeps } from "./policies-test-fixture";
 
-describe("handlePoliciesState live policy boundary", () => {
-  it("stops before policy-dependent effects when the live policy is unreadable", async () => {
+describe("policy state handler", () => {
+  it("resumes from the live OpenShell preset selection", async () => {
+    const prepare = vi.fn(() => ({
+      policyPresets: ["npm"],
+      livePolicyPresetsNeedUpdate: false,
+      disabledMessagingPolicyPresetApplied: false,
+      suppressedAgentRequiredPresetsLive: false,
+    }));
     const { deps, calls } = createPolicyHandlerDeps({
-      getAppliedPolicyPresets: vi.fn(() => {
-        throw new Error("live policy unavailable");
-      }),
-    });
-
-    await expect(handlePoliciesState(basePolicyHandlerOptions(deps))).rejects.toThrow(
-      "live policy unavailable",
-    );
-    expect(calls.smoke).not.toHaveBeenCalled();
-    expect(calls.startStep).not.toHaveBeenCalled();
-    expect(calls.setupPolicies).not.toHaveBeenCalled();
-  });
-
-  it("resumes from the applied live preset set without writing a session shadow", async () => {
-    const updateSession = vi.fn();
-    const { deps, calls } = createPolicyHandlerDeps({
-      getAppliedPolicyPresets: vi.fn(() => ["npm"]),
       arePolicyPresetsApplied: vi.fn(() => true),
-      updateSession,
+      preparePolicyPresetResumeSelection: prepare,
     });
-
     const result = await handlePoliciesState({
       ...basePolicyHandlerOptions(deps),
       resume: true,
     });
-
-    expect(calls.prepareResume).toHaveBeenCalledWith(
+    expect(prepare).toHaveBeenCalledWith(
       "my-assistant",
-      expect.objectContaining({ recordedPolicyPresets: ["npm"] }),
+      expect.not.objectContaining({ recordedPolicyPresets: expect.anything() }),
     );
+    expect(calls.skipped).toHaveBeenCalledWith("policies", "npm");
     expect(calls.setupPolicies).not.toHaveBeenCalled();
-    expect(updateSession).not.toHaveBeenCalled();
     expect(result.appliedPolicyPresets).toEqual(["npm"]);
+    expect(result.session).not.toHaveProperty("policyPresets");
   });
 
-  it("passes the live applied set into reconciliation and records no durable policy fields", async () => {
-    const setupPolicies = vi.fn(async () => ["npm", "github"]);
+  it("passes the observed selection to reconciliation on resume", async () => {
     const { deps, calls } = createPolicyHandlerDeps({
-      getAppliedPolicyPresets: vi.fn(() => ["npm"]),
-      setupPoliciesWithSelection: setupPolicies,
+      preparePolicyPresetResumeSelection: vi.fn(() => ({
+        policyPresets: ["npm", "github"],
+        livePolicyPresetsNeedUpdate: true,
+        disabledMessagingPolicyPresetApplied: false,
+        suppressedAgentRequiredPresetsLive: false,
+      })),
     });
-
-    const result = await handlePoliciesState(basePolicyHandlerOptions(deps));
-
-    expect(setupPolicies).toHaveBeenCalledWith(
+    await handlePoliciesState({ ...basePolicyHandlerOptions(deps), resume: true });
+    expect(calls.setupPolicies).toHaveBeenCalledWith(
       "my-assistant",
-      expect.objectContaining({ selectedPresets: ["npm"] }),
+      expect.objectContaining({ selectedPresets: ["npm", "github"] }),
+    );
+  });
+
+  it("starts a fresh selection without a shadow preset list", async () => {
+    const { deps, calls } = createPolicyHandlerDeps();
+    await handlePoliciesState(basePolicyHandlerOptions(deps));
+    expect(calls.setupPolicies).toHaveBeenCalledWith(
+      "my-assistant",
+      expect.objectContaining({ selectedPresets: null }),
     );
     expect(calls.complete).toHaveBeenCalledWith(
       "policies",
       expect.not.objectContaining({ policyPresets: expect.anything() }),
     );
-    expect(result.appliedPolicyPresets).toEqual(["npm", "github"]);
+  });
+
+  it("merges live messaging channels into policy requirements", async () => {
+    const { deps, calls } = createPolicyHandlerDeps();
+    await handlePoliciesState({
+      ...basePolicyHandlerOptions(deps),
+      selectedMessagingChannels: [],
+    });
+    expect(calls.mergeChannels).toHaveBeenCalled();
+    expect(calls.setupPolicies).toHaveBeenCalledWith(
+      "my-assistant",
+      expect.objectContaining({ enabledChannels: ["telegram"] }),
+    );
   });
 });

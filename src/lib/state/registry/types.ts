@@ -11,6 +11,7 @@ import type { OpenClawImagePluginInstall } from "../openclaw-plugin-restore";
 import type { SandboxMcpState } from "../registry-mcp";
 import type { SandboxMessagingState } from "../registry-messaging";
 
+/** Bounded identity checkpoint for one incomplete sandbox create. */
 export interface PendingSandboxCreateVerification {
   readonly schemaVersion: 1;
   readonly state: "verified-create";
@@ -21,9 +22,8 @@ export interface PendingSandboxCreateVerification {
   readonly sandboxIdentityFingerprint: string;
   readonly createAttemptNonce?: string;
   readonly route: "none" | "native" | "compatibility";
-  readonly policyHash: string;
-  readonly policyVersion: number;
 }
+
 // Outcome of the last live sandbox GPU proof run during onboarding/recovery.
 // `status` separates a configured-but-unverified GPU from one whose CUDA
 // usability was actually proven (`verified`) or actively failed a live proof
@@ -89,7 +89,7 @@ export interface SandboxEntry extends Partial<InferenceSelection> {
   hostMounts?: SandboxHostMount[];
   openshellDriver?: string | null;
   openshellVersion?: string | null;
-  /** Bounded create checkpoint removed when sandbox registration publishes. */
+  /** Verified create boundary retained until final registration publishes atomically. */
   pendingCreateVerification?: PendingSandboxCreateVerification;
   webSearchEnabled?: boolean;
   /** Selected disclosure preference; model compatibility safeguards may downgrade runtime behavior. */

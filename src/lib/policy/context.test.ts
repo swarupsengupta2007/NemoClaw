@@ -4,122 +4,106 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock(".", () => ({
-  getCustomPresetContent: vi.fn(),
   getGatewayPresets: vi.fn(),
   getPresetEndpoints: vi.fn(),
-  isAgentBasePreset: vi.fn(),
   listCustomPresets: vi.fn(),
   listPresets: vi.fn(),
   loadPresetForSandbox: vi.fn(),
 }));
 
 import * as policies from ".";
-import { buildPolicyContext, renderPolicyContextMarkdown } from "./context-builder";
+import { buildPolicyContext, renderPolicyContextMarkdown } from "./context";
 
-const SANDBOX = "alpha";
-const SLACK = `preset:
-  name: slack
-  description: Slack API access
-network_policies:
-  slack:
-    endpoints:
-      - host: api.slack.com
-        port: 443
-`;
-const CUSTOM = `network_policies:
-  nemoclaw_custom.internal-tools.0:
-    endpoints:
-      - host: public.example.com
-        port: 443
-      - host: 127.0.0.1
-        port: 443
-`;
-
-describe("live policy context", () => {
-  beforeEach(() => {
-    vi.mocked(policies.getGatewayPresets).mockReset();
-    vi.mocked(policies.getGatewayPresets).mockReturnValue(["slack"]);
-    vi.mocked(policies.listPresets).mockReset();
-    vi.mocked(policies.listPresets).mockReturnValue([
-      { file: "slack.yaml", name: "slack", description: "Slack API access" },
-      { file: "github.yaml", name: "github", description: "GitHub API access" },
-    ]);
-    vi.mocked(policies.listCustomPresets).mockReset();
-    vi.mocked(policies.listCustomPresets).mockReturnValue([]);
-    vi.mocked(policies.loadPresetForSandbox).mockReset();
-    vi.mocked(policies.loadPresetForSandbox).mockImplementation((_sandbox, name) =>
-      name === "slack" ? SLACK : null,
-    );
-    vi.mocked(policies.getCustomPresetContent).mockReset();
-    vi.mocked(policies.getCustomPresetContent).mockReturnValue(null);
-    vi.mocked(policies.getPresetEndpoints).mockReset();
-    vi.mocked(policies.getPresetEndpoints).mockImplementation((content) =>
-      [...content.matchAll(/host:\s*(\S+)/gu)].map((match) => match[1]),
-    );
-    vi.mocked(policies.isAgentBasePreset).mockReset();
-    vi.mocked(policies.isAgentBasePreset).mockReturnValue(false);
+beforeEach(() => {
+  vi.mocked(policies.listPresets).mockReturnValue([
+    { file: "npm.yaml", name: "npm", description: "npm registry" },
+    { file: "github.yaml", name: "github", description: "GitHub API" },
+  ]);
+  vi.mocked(policies.listCustomPresets).mockReturnValue([]);
+  vi.mocked(policies.loadPresetForSandbox).mockImplementation(
+    (_sandbox, name) =>
+      `preset:\n  name: ${name}\nnetwork_policies:\n  ${name}:\n    endpoints:\n      - host: ${name}.example.com\n`,
+  );
+  vi.mocked(policies.getPresetEndpoints).mockImplementation((content) => {
+    const match = /host:\s*(\S+)/u.exec(content);
+    return match ? [match[1]] : [];
   });
+});
 
-  it("derives active and unapplied built-ins only from current OpenShell policy", () => {
-    const context = buildPolicyContext(SANDBOX);
-
-    expect(context.tier).toBeNull();
+describe("policy context", () => {
+  it("derives active and inactive presets only from the live OpenShell view", () => {
+    vi.mocked(policies.getGatewayPresets).mockReturnValue(["npm"]);
+    const context = buildPolicyContext("alpha");
     expect(context.activePresets).toEqual([
-      expect.objectContaining({
-        name: "slack",
-        verification: "verified",
-        allowedHostCategories: ["api.slack.com"],
-      }),
+      expect.objectContaining({ name: "npm", verification: "verified" }),
     ]);
-    expect(context.knownUnappliedPresets.map(({ name }) => name)).toEqual(["github"]);
-    expect(context.baselineExclusions).toEqual([]);
-  });
-
-  it("identifies a live built-in that comes from the agent base policy", () => {
-    vi.mocked(policies.isAgentBasePreset).mockReturnValue(true);
-
-    expect(buildPolicyContext(SANDBOX).activePresets[0]?.verification).toBe("agent-base");
-  });
-
-  it("derives custom identity and scope from namespaced live rule keys", () => {
-    vi.mocked(policies.getGatewayPresets).mockReturnValue(["slack", "internal-tools"]);
-    vi.mocked(policies.listCustomPresets).mockReturnValue([
-      {
-        file: "internal-tools.yaml",
-        name: "internal-tools",
-        description: "custom preset",
-      },
+    expect(context.knownUnappliedPresets).toEqual([
+      expect.objectContaining({ name: "github", verification: "gateway-unavailable" }),
     ]);
-    vi.mocked(policies.getCustomPresetContent).mockReturnValue(CUSTOM);
-
-    const custom = buildPolicyContext(SANDBOX).activePresets.find(
-      ({ name }) => name === "internal-tools",
-    );
-    expect(custom).toMatchObject({
-      source: "custom",
-      verification: "verified",
-      allowedHostCategories: ["public.example.com"],
-    });
-    expect(custom?.redactedHostCount).toBe(1);
+    expect(context).not.toHaveProperty("baselineExclusions");
   });
 
-  it("reports unavailable live policy without reviving registry state", () => {
+  it("reports an unavailable gateway without falling back to registry state", () => {
     vi.mocked(policies.getGatewayPresets).mockReturnValue(null);
-
-    const context = buildPolicyContext(SANDBOX);
+    const context = buildPolicyContext("alpha");
     expect(context.activePresets).toEqual([]);
-    expect(context.knownUnappliedPresets.map(({ name }) => name)).toEqual(["github", "slack"]);
-    expect(context.approvalPath.add).toContain("policy add");
+    expect(context.knownUnappliedPresets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "npm", verification: "gateway-unavailable" }),
+      ]),
+    );
   });
 
-  it("renders the live result and no durable tier or exclusion claims", () => {
-    const markdown = renderPolicyContextMarkdown(buildPolicyContext(SANDBOX));
+  it("describes OpenShell as the enforcement owner", () => {
+    vi.mocked(policies.getGatewayPresets).mockReturnValue(["npm"]);
+    expect(renderPolicyContextMarkdown(buildPolicyContext("alpha"))).toContain(
+      "policy is enforced by the OpenShell gateway",
+    );
+  });
 
-    expect(markdown).toContain("`slack`");
-    expect(markdown).toContain("api.slack.com");
-    expect(markdown).toContain("status: verified");
-    expect(markdown).toContain("- no tier recorded");
-    expect(markdown).toContain("## Baseline exclusions\n- none");
-    expect(markdown).toContain("status comes from current OpenShell policy");
+  it("includes live custom presets as active without a registry activation list", () => {
+    vi.mocked(policies.listCustomPresets).mockReturnValue([
+      { file: "corp.yaml", name: "corp", description: "Corporate API" },
+    ]);
+    vi.mocked(policies.getGatewayPresets).mockReturnValue(["corp"]);
+    const context = buildPolicyContext("alpha");
+    expect(context.activePresets).toContainEqual(
+      expect.objectContaining({ name: "corp", source: "custom", verification: "verified" }),
+    );
+  });
+
+  it("redacts private and internal hosts while retaining public host stems", () => {
+    vi.mocked(policies.getGatewayPresets).mockReturnValue(["npm"]);
+    vi.mocked(policies.getPresetEndpoints).mockReturnValue([
+      "registry.npmjs.org",
+      "10.20.30.40",
+      "metadata.google.internal",
+    ]);
+    const [active] = buildPolicyContext("alpha").activePresets;
+    expect(active.allowedHostCategories).toEqual(["registry.npmjs.org"]);
+    expect(active.redactedHostCount).toBe(2);
+  });
+
+  it("skips the live OpenShell probe when requested", () => {
+    const gatewayProbe = vi.mocked(policies.getGatewayPresets);
+    const context = buildPolicyContext("alpha", { skipGatewayProbe: true });
+    expect(gatewayProbe).not.toHaveBeenCalled();
+    expect(context.activePresets).toEqual([]);
+    expect(context.knownUnappliedPresets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "npm", verification: "gateway-unavailable" }),
+      ]),
+    );
+  });
+
+  it("renders a redacted summary and preserves the convenience command surface", () => {
+    vi.mocked(policies.getGatewayPresets).mockReturnValue(["npm"]);
+    vi.mocked(policies.getPresetEndpoints).mockReturnValue(["registry.npmjs.org", "10.20.30.40"]);
+    const markdown = renderPolicyContextMarkdown(buildPolicyContext("alpha"));
+    expect(markdown).toContain("npmjs.org");
+    expect(markdown).not.toContain("10.20.30.40");
+    expect(markdown).toContain("nemoclaw alpha policy add <preset>");
+    expect(markdown).toContain("nemoclaw alpha policy remove <preset>");
+    expect(markdown).not.toContain("network_policies:");
   });
 });

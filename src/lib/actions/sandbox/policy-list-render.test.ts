@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Regression for #5967: `nemoclaw <sandbox> policy-list` must render `● discord`
-// (and any enabled messaging channel preset) when it is active in the live
-// OpenShell policy. This is the rendered marker the operator actually reads.
+// (and any enabled messaging channel preset) once it is active in OpenShell.
+// This is the reporter's observation step — the
+// rendered marker the operator actually reads — complementing the merge/persist
+// tests that cover the upstream state policy-list consumes.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +15,7 @@ vi.mock("../../policy", async (importOriginal) => {
     ...actual,
     listPresets: vi.fn(),
     listCustomPresets: vi.fn(),
+    getAppliedPresets: vi.fn(),
     getGatewayPresets: vi.fn(),
   };
 });
@@ -58,7 +61,10 @@ describe("listSandboxPolicies rendering (#5967)", () => {
   const lineFor = (preset: string) =>
     lines.find((line) => new RegExp(`[●○] ${preset}\\b`).test(line)) ?? "";
 
-  it("marks an enabled Discord preset applied when it is active in OpenShell", () => {
+  it("marks an enabled Discord preset applied (●) when it is in both registry and gateway", () => {
+    // The #5967 fix persists `discord` to registry.policies AND applies it to the
+    // gateway, so policy-list must render it as applied.
+    mocked.getAppliedPresets.mockReturnValue(["discord", "npm"]);
     mocked.getGatewayPresets.mockReturnValue(["discord", "npm"]);
 
     listSandboxPolicies("nemoclaw-5967");
@@ -70,7 +76,10 @@ describe("listSandboxPolicies rendering (#5967)", () => {
     expect(lineFor("slack")).not.toContain("● slack");
   });
 
-  it("renders Discord inactive when it is absent from the live policy", () => {
+  it("renders the pre-fix regression (○ discord) when Discord is dropped from registry and gateway", () => {
+    // Before the fix the explicit-selection path dropped discord from both the
+    // persisted registry list and the reconciled gateway set.
+    mocked.getAppliedPresets.mockReturnValue(["npm", "pypi"]);
     mocked.getGatewayPresets.mockReturnValue(["npm", "pypi"]);
 
     listSandboxPolicies("nemoclaw-5967");
@@ -79,12 +88,13 @@ describe("listSandboxPolicies rendering (#5967)", () => {
     expect(lineFor("discord")).not.toContain("● discord");
   });
 
-  it("does not infer applied state when the live policy is unreadable", () => {
-    mocked.getGatewayPresets.mockReturnValue(null);
+  it("does not invent local ownership when the two live policy views disagree", () => {
+    mocked.getAppliedPresets.mockReturnValue(["discord", "npm"]);
+    mocked.getGatewayPresets.mockReturnValue(["npm"]);
 
     listSandboxPolicies("nemoclaw-5967");
 
     expect(lineFor("discord")).toContain("○ discord");
-    expect(lines.join("\n")).toContain("applied state unavailable");
+    expect(lineFor("discord")).not.toContain("recorded locally");
   });
 });

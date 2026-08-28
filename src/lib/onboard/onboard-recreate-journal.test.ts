@@ -53,6 +53,7 @@ describe("non-resumed replacement target fingerprint (#7735)", () => {
     { toolDisclosure: "direct" },
     { sandboxGpuConfig: { sandboxGpuEnabled: true, mode: "all" } },
     { dcodeAutoApprovalMode: "thread-opt-in" },
+    { policyTier: "balanced" },
   ])("changes when a recorded replacement input changes [case %#]", (drift) => {
     expect(fingerprintOnboardRecreateTargetIntent({ ...BASE_INTENT, ...drift })).not.toBe(
       fingerprintOnboardRecreateTargetIntent(BASE_INTENT),
@@ -225,10 +226,7 @@ describe("non-resumed onboard replacement journal (#7735)", () => {
     runtime.confirmDeleted();
     runtime.advance("creating");
     mocks.captureOpenshell.mockReturnValue(livePresentProbe());
-    runtime.recordCreated({
-      state: "ready",
-      liveIdentityFingerprint: SANDBOX_FINGERPRINT,
-    });
+    runtime.recordCreated({ state: "ready", liveIdentityFingerprint: SANDBOX_FINGERPRINT });
 
     runtime.complete();
 
@@ -242,10 +240,7 @@ describe("non-resumed onboard replacement journal (#7735)", () => {
     first.confirmDeleted();
     first.advance("creating");
     mocks.captureOpenshell.mockReturnValue(replacementProbe());
-    first.recordCreated({
-      state: "ready",
-      liveIdentityFingerprint: REPLACEMENT_FINGERPRINT,
-    });
+    first.recordCreated({ state: "ready", liveIdentityFingerprint: REPLACEMENT_FINGERPRINT });
     first.advance("registry_committing");
     vi.spyOn(registry, "getSandbox").mockReturnValue({
       name: "alpha",
@@ -269,10 +264,7 @@ describe("non-resumed onboard replacement journal (#7735)", () => {
     first.confirmDeleted();
     first.advance("creating");
     mocks.captureOpenshell.mockReturnValue(replacementProbe());
-    first.recordCreated({
-      state: "ready",
-      liveIdentityFingerprint: REPLACEMENT_FINGERPRINT,
-    });
+    first.recordCreated({ state: "ready", liveIdentityFingerprint: REPLACEMENT_FINGERPRINT });
     first.advance("completed");
     vi.spyOn(registry, "getSandbox").mockReturnValue({
       name: "alpha",

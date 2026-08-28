@@ -130,9 +130,7 @@ function throwErrno(message: string, code: string): never {
   throw error;
 }
 function throwRegistryPermissionDenied(): never {
-  throw Object.assign(new Error("registry permission denied"), {
-    code: "EACCES",
-  });
+  throw Object.assign(new Error("registry permission denied"), { code: "EACCES" });
 }
 
 function readFileWithUnreadableRegistry(
@@ -432,10 +430,7 @@ describe("shields — unit logic", () => {
 
       fs.writeFileSync(
         path.join(stateDir, "shields-openclaw.json"),
-        JSON.stringify({
-          shieldsDown: false,
-          updatedAt: "2026-05-20T00:00:00Z",
-        }),
+        JSON.stringify({ shieldsDown: false, updatedAt: "2026-05-20T00:00:00Z" }),
         { mode: 0o600 },
       );
       expect(getShieldsPosture("openclaw", false)).toEqual(
@@ -556,9 +551,7 @@ describe("shields — unit logic", () => {
 
       const { shieldsStatus } = await loadShieldsModule();
 
-      shieldsStatus(sandboxName, true, {
-        inspectPolicyRecovery: readyPolicyRecovery,
-      });
+      shieldsStatus(sandboxName, true, { inspectPolicyRecovery: readyPolicyRecovery });
 
       expect(processKillSpy).not.toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalledWith(
@@ -567,17 +560,7 @@ describe("shields — unit logic", () => {
       expect(logSpy).toHaveBeenCalledWith("  Shields: DOWN (temporarily unlocked)");
     });
 
-    it("deadline composition removes an unproven MCP add from the restrictive policy", async () => {
-      const snapshot =
-        "version: 1\nnetwork_policies:\n  restrictive_baseline: {}\n  mcp_bridge_beta: {}\n";
-      const { composeDeadlineManagedMcpPolicies } = await import("./mcp-policy-transition");
-      const composition = composeDeadlineManagedMcpPolicies(snapshot, [], ["mcp_bridge_beta"]);
-
-      expect(composition.yaml).toContain("restrictive_baseline");
-      expect(composition.yaml).not.toContain("mcp_bridge_beta");
-    });
-
-    it("deadline restore refuses policy mutation without a bounded forward policy", async () => {
+    it("deadline restore refuses policy mutation when authority cannot be read (#9833)", async () => {
       const sandboxName = "openclaw";
       const processToken = "b".repeat(32);
       const snapshotPath = path.join(stateDir(), "policy-snapshot-unreadable-registry.yaml");
@@ -589,7 +572,6 @@ describe("shields — unit logic", () => {
       writeState(sandboxName, {
         shieldsDown: true,
         shieldsPolicySnapshotPath: snapshotPath,
-        shieldsManagedMcpPolicyKeys: ["mcp_bridge_alpha"],
       });
       writeMarker(sandboxName, {
         pid: 2_147_483_647,
@@ -620,13 +602,13 @@ describe("shields — unit logic", () => {
           deadlineAuthoritative: true,
           expiredTimerRecovery: true,
         }),
-      ).toThrow(/bounded forward policy/i);
+      ).toThrow(/policy state/i);
 
       expect(run).not.toHaveBeenCalled();
       expect(appliedPolicy).toBe("");
     });
 
-    it("auto-restore refuses before policy staging without a bounded forward policy", async () => {
+    it("auto-restore refuses before policy staging when authority is unavailable (#9833)", async () => {
       const sandboxName = "openclaw";
       const processToken = "d".repeat(32);
       const snapshotPath = path.join(stateDir(), "policy-snapshot-no-managed-mcp.yaml");
@@ -635,7 +617,6 @@ describe("shields — unit logic", () => {
       writeState(sandboxName, {
         shieldsDown: true,
         shieldsPolicySnapshotPath: snapshotPath,
-        shieldsManagedMcpPolicyKeys: [],
       });
       writeMarker(sandboxName, {
         pid: 2_147_483_647,
@@ -659,50 +640,10 @@ describe("shields — unit logic", () => {
           deadlineAuthoritative: true,
           expiredTimerRecovery: true,
         }),
-      ).toThrow(/bounded forward policy/i);
+      ).toThrow(/policy state is unavailable/i);
 
       expect(createTempDirectory).not.toHaveBeenCalled();
       expect(run).not.toHaveBeenCalled();
-    });
-
-    it("reuses the snapshot without staging when the snapshot and current policy have no managed MCP entries (#7952)", async () => {
-      const snapshotPath = "/state/policy-snapshot-no-managed-mcp.yaml";
-      const snapshotYaml = "version: 1\nnetwork_policies:\n  restrictive_baseline: {}\n";
-      const writeTempPolicy = vi.fn(() => {
-        throw new Error("policy staging is unavailable");
-      });
-      const { buildDeadlineRuntimeManagedMcpPolicy } = await import("./permissive-runtime");
-
-      const result = buildDeadlineRuntimeManagedMcpPolicy(snapshotPath, {
-        managedMcpPolicies: [],
-        snapshotManagedPolicyKeys: [],
-        readBasePolicy: () => snapshotYaml,
-        writeTempPolicy,
-      });
-
-      expect(result).toEqual({ path: snapshotPath, omissions: [] });
-      expect(writeTempPolicy).not.toHaveBeenCalled();
-    });
-
-    it("deadline restore reuses an unchanged snapshot without temporary storage when no managed MCP entries exist (#7952)", async () => {
-      const snapshotPath = path.join(stateDir(), "policy-snapshot-no-managed-mcp.yaml");
-      fs.mkdirSync(stateDir(), { recursive: true });
-      fs.writeFileSync(snapshotPath, "version: 1\nnetwork_policies:\n  restrictive_baseline: {}\n");
-      const createTempDirectory = vi.spyOn(fs, "mkdtempSync").mockImplementation(() => {
-        throw Object.assign(new Error("ENOSPC: simulated temporary storage full"), {
-          code: "ENOSPC",
-        });
-      });
-      const { buildDeadlineRuntimeManagedMcpPolicy } = await import("./permissive-runtime");
-
-      const result = buildDeadlineRuntimeManagedMcpPolicy(snapshotPath, {
-        managedMcpPolicies: [],
-        snapshotManagedPolicyKeys: [],
-        readBasePolicy: () => fs.readFileSync(snapshotPath, "utf-8"),
-      });
-
-      expect(result).toEqual({ path: snapshotPath, omissions: [] });
-      expect(createTempDirectory).not.toHaveBeenCalled();
     });
 
     it("shieldsStatus warns and stays DOWN when the restrictive snapshot is missing", async () => {
@@ -737,9 +678,7 @@ describe("shields — unit logic", () => {
 
       const { shieldsStatus } = await loadShieldsModule();
 
-      shieldsStatus(sandboxName, true, {
-        inspectPolicyRecovery: readyPolicyRecovery,
-      });
+      shieldsStatus(sandboxName, true, { inspectPolicyRecovery: readyPolicyRecovery });
 
       expect(logSpy).toHaveBeenCalledWith("  Shields: DOWN (temporarily unlocked)");
       expect(errorSpy).toHaveBeenCalledWith(
@@ -854,9 +793,7 @@ describe("shields — unit logic", () => {
       );
 
       const { shieldsStatus } = await loadShieldsModule();
-      shieldsStatus(sandboxName, true, {
-        inspectPolicyRecovery: readyPolicyRecovery,
-      });
+      shieldsStatus(sandboxName, true, { inspectPolicyRecovery: readyPolicyRecovery });
 
       expect(errorSpy).toHaveBeenCalledWith(
         "  Warning: auto-restore timer authority is expired, invalid, or no longer live; attempting inline restore.",

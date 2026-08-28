@@ -14,7 +14,7 @@ import {
   POLICY_HASH,
   POLICY_VERSION,
   SANDBOX_ID,
-} from "../../helpers/managed-policy-receipt-fixture";
+} from "../../helpers/live-policy-fixture";
 
 const REPO_ROOT = path.join(import.meta.dirname, "../../..");
 const POLICY_MODULE = JSON.stringify(path.join(REPO_ROOT, "src/lib/policy/index.ts"));
@@ -137,74 +137,75 @@ afterEach(() => {
 describe("preset no-op egress disclosure (#7179)", () => {
   it("repairs single-preset attribution without claiming or submitting new egress", () => {
     const { output, payload } = runScenario({
-      currentPolicy: policyWithPresets(["github"]),
-      presetNames: ["github"],
+      currentPolicy: policyWithPresets(["npm"]),
+      presetNames: ["npm"],
     });
 
-    expect(output).toContain(
-      "Preset 'github' is already effective; no new egress would be opened.",
-    );
+    expect(output).toContain("Preset 'npm' is already effective; no new egress would be opened.");
     expect(output).not.toContain("Effective egress that would be opened:");
     expect(payload.calls).toEqual([]);
+    expect(payload.registry).not.toHaveProperty("policies");
   });
 
   it("skips the gateway set when every batch preset already matches", () => {
     const { output, payload } = runScenario({
-      currentPolicy: policyWithPresets(["github", "pypi"]),
-      presetNames: ["github", "pypi"],
+      currentPolicy: policyWithPresets(["npm", "pypi"]),
+      presetNames: ["npm", "pypi"],
       batch: true,
     });
 
-    expect(output).toContain("Preset 'github' is already effective");
+    expect(output).toContain("Preset 'npm' is already effective");
     expect(output).toContain("Preset 'pypi' is already effective");
     expect(payload.calls).toEqual([]);
+    expect(payload.registry).not.toHaveProperty("policies");
   });
 
   it("discloses and submits only the absent part of a mixed batch", () => {
     const { output, payload } = runScenario({
-      currentPolicy: policyWithPresets(["github"]),
-      presetNames: ["github", "pypi"],
+      currentPolicy: policyWithPresets(["npm"]),
+      presetNames: ["npm", "pypi"],
       batch: true,
     });
 
-    expect(output).toContain("Preset 'github' is already effective");
+    expect(output).toContain("Preset 'npm' is already effective");
     expect(output).toContain("Effective egress that would be opened:");
     expect(output).toContain("policy 'pypi'");
     expect(payload.calls).toEqual(["policy set"]);
   });
 
   it("treats same-key drift as an effective-scope replacement", () => {
-    const drifted = policyWithPresets(["github"]).replace("api.github.com", "drift.example");
-    const { output, payload } = runScenario({ currentPolicy: drifted, presetNames: ["github"] });
+    const drifted = policyWithPresets(["npm"]).replace("registry.npmjs.org", "drift.example");
+    const { output, payload } = runScenario({ currentPolicy: drifted, presetNames: ["npm"] });
 
     expect(output).toContain(
       "Effective egress scope that would replace the current preset policy:",
     );
-    expect(output).not.toContain("Preset 'github' is already effective");
+    expect(output).not.toContain("Preset 'npm' is already effective");
     expect(payload.calls).toEqual(["policy set"]);
   });
 
   it("does not print a duplicate scope when the caller already disclosed it", () => {
     const { output, payload } = runScenario({
       currentPolicy: "version: 1\nnetwork_policies: {}\n",
-      presetNames: ["github"],
+      presetNames: ["npm"],
       suppressDisclosure: true,
     });
 
     expect(output).not.toContain("Effective egress");
-    expect(output).not.toContain("Preset 'github' is already effective");
+    expect(output).not.toContain("Preset 'npm' is already effective");
     expect(payload.calls).toEqual(["policy set"]);
+    expect(payload.registry).not.toHaveProperty("policies");
   });
 
   it("discloses again when the live policy changed after an earlier no-op preview (#7179)", () => {
     const { output, payload } = runScenario({
       currentPolicy: "version: 1\nnetwork_policies: {}\n",
-      presetNames: ["github"],
+      presetNames: ["npm"],
       disclosedPresetState: "match",
     });
 
     expect(output).toContain("Effective egress that would be opened:");
-    expect(output).not.toContain("Preset 'github' is already effective");
+    expect(output).not.toContain("Preset 'npm' is already effective");
     expect(payload.calls).toEqual(["policy set"]);
   });
 });

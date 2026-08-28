@@ -5,15 +5,18 @@ import { formatPresetProvenanceSuffix, type PresetProvenanceContext } from "./pr
 
 interface PolicyListPresetRowOptions {
   preset: { name: string; description: string };
-  inGateway: boolean | null;
+  observedInOpenShell: boolean | null;
   provenanceContext: PresetProvenanceContext;
 }
 
-/** Render one policy-list row from the live OpenShell policy state. */
+/** Render one policy-list row from current OpenShell state. */
 export function formatPolicyListPresetRow(options: PolicyListPresetRowOptions): string {
-  const { preset, inGateway, provenanceContext } = options;
-  const active = inGateway === true;
-  const marker = active ? "●" : "○";
-  const provenanceSuffix = formatPresetProvenanceSuffix(preset.name, provenanceContext, active);
+  const { preset, observedInOpenShell, provenanceContext } = options;
+  const marker = observedInOpenShell === true ? "●" : "○";
+
+  const provenanceSuffix = formatPresetProvenanceSuffix(preset.name, provenanceContext, {
+    active: marker === "●",
+    observedInOpenShell,
+  });
   return `    ${marker} ${preset.name}${provenanceSuffix} — ${preset.description}`;
 }

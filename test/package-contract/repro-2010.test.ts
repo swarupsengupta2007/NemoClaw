@@ -3,10 +3,11 @@
 
 /**
  * Reproduction test for issue #2010:
- *   policy-list shows telegram as not applied but OpenShell still allows traffic.
+ *   policy-list shows telegram as not applied but gateway still allows traffic.
  *
- * Tests getGatewayPresets() matching logic and policy-list rendering from the
- * sole live OpenShell authority via subprocesses.
+ * Tests getGatewayPresets() matching logic and sandboxPolicyList() discrepancy
+ * rendering via subprocesses, since the CJS policies module captures runCapture
+ * at require-time and cannot be spied on in-process.
  */
 
 import { spawnSync } from "node:child_process";
@@ -213,14 +214,19 @@ network_policies:
   });
 
   describe("sandboxPolicyList — CLI output via subprocess", () => {
-    function runPolicyList(gatewayPresets: string[] | null): string {
+    function runPolicyList(opts: {
+      registryPresets: string[];
+      gatewayPresets: string[] | null;
+    }): string {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-repro-2010-"));
       const script = `
 const registry = require(${JSON.stringify(REGISTRY_PATH)});
 const policies = require(${JSON.stringify(POLICIES_PATH)});
+const registryPresets = JSON.parse(process.env.TEST_REGISTRY_PRESETS || "[]");
 const gatewayPresets = process.env.TEST_GATEWAY_PRESETS ? JSON.parse(process.env.TEST_GATEWAY_PRESETS) : null;
-registry.getSandbox = (name) => (name === "test-sandbox" ? { name } : null);
+registry.getSandbox = (name) => (name === "test-sandbox" ? { name, policies: registryPresets } : null);
 registry.listSandboxes = () => ({ sandboxes: [{ name: "test-sandbox" }] });
+policies.getAppliedPresets = () => registryPresets;
 policies.getGatewayPresets = () => gatewayPresets;
 process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-list"];
 require(${JSON.stringify(CLI_PATH)});
@@ -249,7 +255,9 @@ require(${JSON.stringify(CLI_PATH)});
             ...process.env,
             HOME: tmpDir,
             PATH: `${binDir}:${process.env.PATH || ""}`,
-            TEST_GATEWAY_PRESETS: gatewayPresets === null ? "" : JSON.stringify(gatewayPresets),
+            TEST_GATEWAY_PRESETS:
+              opts.gatewayPresets === null ? "" : JSON.stringify(opts.gatewayPresets),
+            TEST_REGISTRY_PRESETS: JSON.stringify(opts.registryPresets),
           },
         });
         return (result.stdout || "") + (result.stderr || "");
@@ -258,24 +266,30 @@ require(${JSON.stringify(CLI_PATH)});
       }
     }
 
-    it("shows an active marker when the live policy has telegram", () => {
-      const output = runPolicyList(["telegram"]);
-      expect(output).toMatch(/●.*telegram/);
-      expect(output).not.toContain("missing from local state");
+    it("shows the live OpenShell preset without a registry-desync suffix", () => {
+      const output = runPolicyList({ registryPresets: [], gatewayPresets: ["telegram"] });
+      expect(output).toMatch(/●.*telegram.*user-added/);
       expect(output).toMatch(/○.*npm/);
     });
 
-    it("shows an inactive marker when the live policy lacks telegram", () => {
-      const output = runPolicyList([]);
+    it("ignores a legacy registry-only preset", () => {
+      const output = runPolicyList({ registryPresets: ["telegram"], gatewayPresets: [] });
       expect(output).toMatch(/○.*telegram/);
       expect(output).not.toContain("recorded locally");
     });
 
-    it("does not infer applied state when the live policy is unreachable", () => {
-      const output = runPolicyList(null);
+    it("shows ● with no suffix when both sources agree", () => {
+      const output = runPolicyList({ registryPresets: ["telegram"], gatewayPresets: ["telegram"] });
+      expect(output).toMatch(/●.*telegram/);
+      expect(output).not.toContain("active on gateway");
+      expect(output).not.toContain("recorded locally");
+    });
+
+    it("does not fall back to registry policy state when OpenShell is unreachable", () => {
+      const output = runPolicyList({ registryPresets: ["telegram"], gatewayPresets: null });
       expect(output).toMatch(/○.*telegram/);
-      expect(output).toContain("Could not query the live OpenShell policy");
-      expect(output).toContain("applied state unavailable");
+      expect(output).toContain("Could not query OpenShell");
+      expect(output).not.toContain("local state only");
     });
   });
 });

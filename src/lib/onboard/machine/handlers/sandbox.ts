@@ -38,7 +38,6 @@ import type {
   SessionUpdates,
 } from "../../../state/onboard-session";
 import { type SandboxEntry, type SandboxRemovalReceipt } from "../../../state/registry";
-import type { BaselineExclusionRequest } from "../../../policy/baseline-exclusion";
 import { getSandboxEntryInference } from "../../../state/registry-entry-view";
 import { toolDisclosureOrDefault } from "../../../tool-disclosure";
 import {
@@ -189,6 +188,7 @@ export interface SandboxStateOptions<
   apfInterceptorRequested?: boolean;
   /** Internal rebuild mode: null web-search state is an authoritative disable, not a prompt. */
   authoritativeResumeConfig?: boolean;
+  /** Internal rebuild tier that must govern create-time and resumed policy selection. */
   /** Keep provider and credential effects behind the exact post-create policy gate. */
   deferSandboxEffectsUntilPolicyVerification?: boolean;
   /** Endpoint source to preserve during an authoritative rebuild. */
@@ -199,7 +199,7 @@ export interface SandboxStateOptions<
   requestedObservabilityEnabled?: boolean | null;
   requestedDcodeAutoApprovalMode?: DcodeAutoApprovalMode | null;
   rebuildPreservedEnv?: readonly import("../../../state/preserved-env").PreservedEnvFile[];
-  rebuildPolicyPresets?: readonly string[];
+  rebuildPolicySourcePath?: string;
   hostMounts?: readonly import("../../../state/registry/types").SandboxHostMount[];
   recreateSandbox: (requested?: boolean) => boolean;
   gatewayName: string;
@@ -282,11 +282,7 @@ export interface SandboxStateOptions<
     ): Promise<WebSearchConfig | null>;
     startRecordedStep(
       stepName: string,
-      updates: {
-        sandboxName?: string | null;
-        provider?: string | null;
-        model?: string | null;
-      },
+      updates: { sandboxName?: string | null; provider?: string | null; model?: string | null },
     ): Promise<void>;
     getRecordedMessagingChannelsForResume(
       resume: boolean,
@@ -349,7 +345,6 @@ export interface SandboxStateOptions<
       extraProviders: readonly string[];
       staleExtraProviders: readonly string[];
       policyTier?: string | null;
-      baselineExclusions?: readonly BaselineExclusionRequest[];
       reuseRegisteredCredentials?: boolean;
       hostMounts?: readonly import("../../../state/registry/types").SandboxHostMount[];
     }): Promise<ResolvedSandboxCreateIntent>;
@@ -491,32 +486,6 @@ function compatibleEndpointReasoningForCreateIntent(
   value: string | null,
 ): Pick<SandboxCreateIntent, "compatibleEndpointReasoning"> {
   return value === "true" || value === "false" ? { compatibleEndpointReasoning: value } : {};
-}
-
-function rebuildPolicyPresetsForCreateIntent(
-  value: readonly string[] | undefined,
-  _session: Session | null,
-  _sandboxName: string,
-): Pick<SandboxCreateIntent, "rebuildPolicyPresets"> {
-  return Array.isArray(value) ? { rebuildPolicyPresets: [...value] } : {};
-}
-
-/** Replace a resumed create-plan snapshot with the outer rebuild's normalized built-ins. */
-function applyAuthoritativeRebuildPolicyPresets(
-  intent: ResolvedSandboxCreateIntent,
-  rebuildPolicyPresets: readonly string[] | undefined,
-): ResolvedSandboxCreateIntent {
-  if (!Array.isArray(rebuildPolicyPresets)) return intent;
-  return {
-    ...intent,
-    policy: {
-      ...intent.policy,
-      options: {
-        ...intent.policy.options,
-        additionalPresets: [...rebuildPolicyPresets],
-      },
-    },
-  };
 }
 
 function deferredSandboxEffectsIntent(enabled: boolean): {
@@ -926,7 +895,6 @@ class SandboxStateFlow<
     );
     const lightFingerprint = [
       typeof builtFingerprint === "string" ? builtFingerprint : sandboxName,
-      "default",
       ...apfCreateFingerprintFields(this.options.apfInterceptorRequested === true),
       this.options.provider,
       this.options.model,
@@ -946,6 +914,7 @@ class SandboxStateFlow<
     const {
       extraProviders: _extraProviders,
       staleExtraProviders: _staleExtraProviders,
+      policy: _policy,
       ...durableCreateIntent
     } = createIntent;
     return `${lightFingerprint}|${JSON.stringify(durableCreateIntent)}`;
@@ -1528,16 +1497,10 @@ class SandboxStateFlow<
 
   private checkpointMessaging(
     state: SandboxStepState<WebSearchConfig>,
-    messaging: {
-      plan: SandboxMessagingPlan | null;
-      selectedChannels: string[];
-    },
+    messaging: { plan: SandboxMessagingPlan | null; selectedChannels: string[] },
   ): SandboxStepState<WebSearchConfig> {
     if (!this.resumesSandboxPrompts) {
-      return {
-        ...state,
-        selectedMessagingChannels: messaging.selectedChannels,
-      };
+      return { ...state, selectedMessagingChannels: messaging.selectedChannels };
     }
     const session = this.deps.updateSession((current) => {
       current.messagingPlan = messaging.plan;
@@ -1831,29 +1794,21 @@ class SandboxStateFlow<
     deferSandboxEffectsUntilPolicyVerification: boolean,
   ): Promise<CompleteSandboxCreateIntent> {
     const reuseRegisteredCredentials = this.resumesSandboxPrompts && this.options.resume;
-    const rebuildPolicyPresetSelection = rebuildPolicyPresetsForCreateIntent(
-      this.options.rebuildPolicyPresets,
-      state.session,
+    const resolved = await this.deps.resolveSandboxCreateIntent({
       sandboxName,
-    );
-    const resolved = applyAuthoritativeRebuildPolicyPresets(
-      await this.deps.resolveSandboxCreateIntent({
-        sandboxName,
-        inferenceProvider: this.options.provider,
-        hostLocalInferenceRouteOnly: this.options.hostLocalInferenceRouteOnly === true,
-        enabledChannels: state.selectedMessagingChannels,
-        webSearchConfig: state.webSearchConfig,
-        agent: this.options.agent,
-        sandboxGpuConfig: this.options.sandboxGpuConfig,
-        resourceProfile,
-        hermesToolGateways,
-        extraProviders,
-        staleExtraProviders,
-        hostMounts: this.options.hostMounts,
-        ...(reuseRegisteredCredentials ? { reuseRegisteredCredentials: true } : {}),
-      }),
-      rebuildPolicyPresetSelection.rebuildPolicyPresets,
-    );
+      inferenceProvider: this.options.provider,
+      hostLocalInferenceRouteOnly: this.options.hostLocalInferenceRouteOnly === true,
+      enabledChannels: state.selectedMessagingChannels,
+      webSearchConfig: state.webSearchConfig,
+      agent: this.options.agent,
+      sandboxGpuConfig: this.options.sandboxGpuConfig,
+      resourceProfile,
+      hermesToolGateways,
+      extraProviders,
+      staleExtraProviders,
+      hostMounts: this.options.hostMounts,
+      ...(reuseRegisteredCredentials ? { reuseRegisteredCredentials: true } : {}),
+    });
     return {
       resolved,
       recreate: requiresSandboxRecreation(decision, this.options.recreateSandbox(false)),
@@ -1877,7 +1832,9 @@ class SandboxStateFlow<
         : {}),
       recreateJournalTargetIntentFingerprint:
         this.options.recreateJournalTargetIntentFingerprint ?? undefined,
-      ...rebuildPolicyPresetSelection,
+      ...(this.options.rebuildPolicySourcePath
+        ? { rebuildPolicySourcePath: this.options.rebuildPolicySourcePath }
+        : {}),
       extraProviders,
     };
   }
@@ -2556,7 +2513,7 @@ class SandboxStateFlow<
     // those providers are attached. For ordinary managed creation, register the
     // required providers first and let `sandbox create --provider` attach them
     // atomically with that policy. Keep APF-selected creation behind its strict
-    // post-create boundary because APF owns the initial policy.
+    // post-create boundary because APF contributes to the initial policy.
     const hasCreateTimeCredentialBindings =
       webSearchProviderBindings.length > 0 || messagingProviderBindings.length > 0;
     const deferCredentialProviderEffects =
@@ -2609,9 +2566,7 @@ class SandboxStateFlow<
       stateResult:
         this.options.apfInterceptorRequested === true
           ? completeOnboardMachine({}, metadata)
-          : branchTo(this.options.agent ? "agent_setup" : "openclaw", {
-              metadata,
-            }),
+          : branchTo(this.options.agent ? "agent_setup" : "openclaw", { metadata }),
     };
   }
 

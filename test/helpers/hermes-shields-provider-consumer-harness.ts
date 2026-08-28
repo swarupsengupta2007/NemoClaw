@@ -8,7 +8,7 @@ import path from "node:path";
 
 import { type MockInstance, vi } from "vitest";
 import type { SandboxEntry } from "../../src/lib/state/registry";
-import { managedPolicyMutationAuthority } from "./shields-flow-harness";
+import { managedPolicyMutationContext } from "./shields-flow-harness";
 
 const INDEX_MODULE = "./index.js";
 export const HERMES_PROVIDER_CAPABILITY_PATH =
@@ -185,10 +185,7 @@ export function createRetainedUnlockSimulation(
   readonly transition: (input: {
     readonly target: "locked" | "mutable";
     readonly rollback: string;
-  }) => {
-    readonly fence: Record<string, never>;
-    readonly proof: Record<string, never>;
-  };
+  }) => { readonly fence: Record<string, never>; readonly proof: Record<string, never> };
 } {
   let activeClaim = true;
   let livePosture: "locked" | "mutable" = "mutable";
@@ -289,16 +286,10 @@ export function createHermesShieldsProviderConsumerHarness(
         String(file),
         String(name),
       ]),
-    vi
-      .spyOn(policy, "inspectPolicyMutationBoundary")
-      .mockReturnValue(managedPolicyMutationAuthority),
-    vi
-      .spyOn(policy, "inspectPolicyRecoveryBoundary")
-      .mockReturnValue(managedPolicyMutationAuthority),
-    vi
-      .spyOn(policy, "recheckPolicyMutationBoundary")
-      .mockReturnValue(managedPolicyMutationAuthority),
-    vi.spyOn(policy, "verifyLivePolicyDocument").mockImplementation(() => undefined),
+    vi.spyOn(policy, "inspectPolicyMutationContext").mockReturnValue(managedPolicyMutationContext),
+    vi.spyOn(policy, "inspectPolicyMutationContext").mockReturnValue(managedPolicyMutationContext),
+    vi.spyOn(policy, "recheckPolicyMutationContext").mockReturnValue(managedPolicyMutationContext),
+    vi.spyOn(policy, "verifyAppliedPolicyDocument").mockImplementation(() => undefined),
     registrySpy,
     vi
       .spyOn(privilegedExec, "privilegedSandboxExecArgv")

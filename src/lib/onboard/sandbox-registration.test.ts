@@ -22,8 +22,9 @@ import { encodeManagedStartupProfile } from "./managed-startup/profile";
 
 const requireDist = createRequire(import.meta.url);
 const onboardSession = requireDist("../state/onboard-session.js");
-const { buildCreatedSandboxRegistryEntry, creationFidelity, registerCreatedSandbox, selection } =
-  requireDist("./sandbox-registration.ts") as typeof import("./sandbox-registration");
+const { buildCreatedSandboxRegistryEntry, registerCreatedSandbox, selection } = requireDist(
+  "./sandbox-registration.ts",
+) as typeof import("./sandbox-registration");
 
 const runtimeFields = {
   gpuEnabled: true,
@@ -124,10 +125,7 @@ describe("buildCreatedSandboxRegistryEntry", () => {
 
     expect(() =>
       registerCreatedSandbox({
-        ...createdRegistryEntryInput({
-          imageTag: workload.reference,
-          workload,
-        }),
+        ...createdRegistryEntryInput({ imageTag: workload.reference, workload }),
         registerSandbox,
       }),
     ).toThrow(/agent identity does not match its managed workload receipt/u);
@@ -226,12 +224,7 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       hermesToolGateways: ["filesystem"],
       hermesDashboardState: {
         enabled: true,
-        config: {
-          enabled: true,
-          port: 18790,
-          internalPort: 19123,
-          tuiEnabled: true,
-        },
+        config: { enabled: true, port: 18790, internalPort: 19123, tuiEnabled: true },
       },
       dashboardPort: 18789,
       lifecycleGeneration: "22222222-2222-4222-8222-222222222222",

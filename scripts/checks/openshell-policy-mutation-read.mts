@@ -68,29 +68,26 @@ export const MUTATION_READS: readonly AuditedPolicyReadFile[] = [
   {
     relativePath: "src/lib/policy/index.ts",
     expectedReads: [
+      ignoredBase("removePreset"),
       ignoredBase("readCurrentSandboxPolicy"),
       ignoredBase("applyPresetContent"),
       ignoredBase("applyPresets"),
-      ignoredBase("getCustomPresetContent"),
-      preservingBase("customPresetOwnsNetworkPolicyKey"),
-      ignoredFull("getGatewayPresets"),
+      ignoredFull("getGatewayPresets/readPolicy"),
       preservingBase("getPresetContentGatewayState/readPolicy"),
     ],
   },
   {
     relativePath: "nemoclaw/src/blueprint/runner.ts",
     expectedReads: [
-      unclassifiedBase("actionApply"),
-      unclassifiedFull("inspectBlueprintPolicyAuthority"),
-      unclassifiedFull("inspectBlueprintPolicyAuthority"),
+      unclassifiedBase("applyBlueprintPolicyAdditions"),
+      unclassifiedFull("inspectBlueprintPolicy"),
+      unclassifiedFull("inspectBlueprintPolicy"),
     ],
   },
   {
     relativePath: "src/lib/shields/index.ts",
     expectedReads: [
       preservingBase("applyShieldsPolicySnapshot"),
-      preservingBase("resolveExactManagedMcpPolicies"),
-      ignoredBase("resolveProvableManagedMcpPoliciesForDeadline"),
       ignoredBase("shieldsDownWithoutHostLock"),
     ],
   },
@@ -98,19 +95,19 @@ export const MUTATION_READS: readonly AuditedPolicyReadFile[] = [
 
 const NON_MUTATION_POLICY_READS: readonly AuditedPolicyReadFile[] = [
   {
-    relativePath: "src/lib/adapters/openshell/policy-authority.ts",
+    relativePath: "src/lib/adapters/openshell/policy-state.ts",
     expectedReads: [
       unclassifiedBase("captureSandboxBasePolicy"),
-      unclassifiedFull("inspectSandboxPolicyAuthority"),
+      unclassifiedFull("inspectSandboxPolicy"),
     ],
-  },
-  {
-    relativePath: "src/lib/actions/sandbox/rebuild-backup-phase.ts",
-    expectedReads: [preservingBase("captureLivePolicy")],
   },
   {
     relativePath: "src/lib/actions/sandbox/snapshot.ts",
     expectedReads: [preservingBase("prepareSnapshotClonePolicy")],
+  },
+  {
+    relativePath: "src/lib/onboard/experimental/hermes-portable-policy-state.ts",
+    expectedReads: [unclassifiedBase("proveHermesPortableLivePolicy")],
   },
   {
     relativePath: "src/lib/actions/sandbox/gateway-state.ts",
@@ -121,7 +118,7 @@ const NON_MUTATION_POLICY_READS: readonly AuditedPolicyReadFile[] = [
   },
   {
     relativePath: "src/lib/actions/sandbox/launch-readiness.ts",
-    expectedReads: [unclassifiedFull("captureLivePolicy")],
+    expectedReads: [unclassifiedFull("validateLivePolicy")],
   },
   {
     relativePath: "src/lib/policy/commands.ts",

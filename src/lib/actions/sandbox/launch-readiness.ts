@@ -283,10 +283,6 @@ function projectOptionalBoolean(value: unknown): boolean {
   return value;
 }
 
-export function launchReadinessPolicyDigest(content: string): string {
-  return launchReadinessDigest(parseAndValidateSandboxPolicy(content));
-}
-
 function projectWorkload(workload: SandboxWorkloadReceipt | undefined): unknown {
   if (!workload) return null;
   if (workload.kind === "legacy-dockerfile") {
@@ -632,17 +628,17 @@ function classifyReceipt(
   return read.kind === "valid" ? "config" : read.kind;
 }
 
-function captureLivePolicy(
+function validateLivePolicy(
   sandboxName: string,
   gatewayName: string,
   deps: LaunchReadinessDeps,
-): string {
+): void {
   const result = (
     deps.capture ?? ((args) => captureLaunchReadiness(args, { maxBuffer: LIVE_POLICY_MAX_BYTES }))
   )(["policy", "get", "-g", gatewayName, "--full", sandboxName]);
   if (result.status !== 0 || !result.output?.trim()) throw new LaunchReadinessEvidenceError();
   try {
-    return launchReadinessPolicyDigest(result.output);
+    parseAndValidateSandboxPolicy(result.output);
   } catch {
     throw new LaunchReadinessEvidenceError();
   }
@@ -667,11 +663,7 @@ async function captureLaunchIdentity(
   gatewayName: string,
   gatewayPort: number,
   deps: LaunchReadinessDeps,
-): Promise<{
-  identity: LaunchReadinessIdentity;
-  agent: AgentDefinition;
-  sb: SandboxEntry;
-}> {
+): Promise<{ identity: LaunchReadinessIdentity; agent: AgentDefinition; sb: SandboxEntry }> {
   try {
     assertNoOpenShellGatewayEndpointOverride();
   } catch {
@@ -733,7 +725,7 @@ async function captureLaunchIdentity(
     throw new ObservationError("identity");
   }
 
-  const livePolicy = captureLivePolicy(sandboxName, gatewayName, deps);
+  validateLivePolicy(sandboxName, gatewayName, deps);
   const inferenceSelection = normalizeInferenceSelection(entry);
   const inference = registry.getSandboxEntryInference(entry);
   const inferenceResult = (deps.capture ?? ((args) => captureLaunchReadiness(args)))(
@@ -788,7 +780,6 @@ async function captureLaunchIdentity(
     identity: {
       registry: launchReadinessDigest(projection),
       agent: launchReadinessDigest(projectAgent(agent)),
-      livePolicy,
       liveInference: launchReadinessDigest({
         selection: inferenceSelection,
         live: liveInference
@@ -812,7 +803,6 @@ function compareIdentity(
   const baseMatches =
     left.registry === right.registry &&
     left.agent === right.agent &&
-    left.livePolicy === right.livePolicy &&
     left.liveInference === right.liveInference &&
     left.gatewayName === right.gatewayName &&
     left.lifecycleGeneration === right.lifecycleGeneration &&
@@ -970,10 +960,7 @@ export function resolveOrdinaryOpenClawPairingTarget(
  * never another write.
  */
 type PortablePairingWaitResult =
-  | {
-      readonly kind: "observed";
-      readonly value: OpenClawPairingRepairObservation;
-    }
+  | { readonly kind: "observed"; readonly value: OpenClawPairingRepairObservation }
   | { readonly kind: "rejected" }
   | { readonly kind: "timeout" };
 

@@ -150,10 +150,7 @@ function upsertRecoveredSandbox(
  * requested name) points at a sandbox the registry does not yet contain.
  */
 function shouldRecoverRegistryEntries(
-  current: {
-    sandboxes: Array<{ name: string }>;
-    defaultSandbox?: string | null;
-  },
+  current: { sandboxes: Array<{ name: string }>; defaultSandbox?: string | null },
   session: Session | null,
   requestedSandboxName: string | null,
 ) {
@@ -267,9 +264,7 @@ function canInspectLiveGatewayReadOnly(): boolean {
   // and never advertises a sandbox the next command cannot act on. Probes are
   // non-fatal so a hung gateway falls back to the empty registry instead of
   // exiting the process.
-  const lifecycle = getNamedGatewayLifecycleState(undefined, {
-    ignoreProbeErrors: true,
-  });
+  const lifecycle = getNamedGatewayLifecycleState(undefined, { ignoreProbeErrors: true });
   return lifecycle.state === "healthy_named";
 }
 
@@ -483,10 +478,6 @@ export async function recoverRegistryEntries({
           requestedSandboxName,
           gatewayName,
         )
-      : {
-          ...lockedCurrent,
-          recoveredFromSession: false,
-          recoveredFromGateway: 0,
-        };
+      : { ...lockedCurrent, recoveredFromSession: false, recoveredFromGateway: 0 };
   });
 }

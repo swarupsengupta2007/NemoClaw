@@ -18,12 +18,12 @@ import {
 } from "../../../../test/helpers/hermes-portable-onboarding-fixture";
 import type { SandboxEntry } from "../../state/registry";
 import {
-  pendingSandboxPolicyVerificationForBoundary,
+  pendingSandboxCreateVerificationForBoundary,
   revalidateCreatedSandboxPolicyRegistration,
-  type CreatedSandboxPolicyVerificationInput,
+  type CreatedSandboxPolicyRegistrationInput,
 } from "../sandbox-create/policy-verification";
 import {
-  runSandboxCreateWithPolicyAuthorityChecks,
+  runSandboxCreateWithPolicyVerification,
   verifyCreatedSandboxEffectivePolicy,
   type EffectiveVerifiedSandboxPolicyBoundary,
 } from "../sandbox-create/orchestration";
@@ -39,22 +39,12 @@ type CreatedPolicyIdentity = { readonly route: SelectedDockerGpuRoute };
 let stateDir: string;
 let policyPath: string;
 
-function gatewayInfo(): {
-  status: number;
-  output: string;
-  stdout: string;
-  stderr: string;
-} {
+function gatewayInfo(): { status: number; output: string; stdout: string; stderr: string } {
   const output = `Gateway endpoint: http://127.0.0.1:${GATEWAY_PORT}\n`;
   return { status: 0, output, stdout: output, stderr: "" };
 }
 
-function metadata(): {
-  status: number;
-  output: string;
-  stdout: string;
-  stderr: string;
-} {
+function metadata(): { status: number; output: string; stdout: string; stderr: string } {
   const stdout = JSON.stringify({
     scope: "sandbox",
     sandbox: "alpha",
@@ -67,12 +57,7 @@ function metadata(): {
   return { status: 0, output: stdout, stdout, stderr: "" };
 }
 
-function readiness(): {
-  status: number;
-  output: string;
-  stdout: string;
-  stderr: string;
-} {
+function readiness(): { status: number; output: string; stdout: string; stderr: string } {
   const stdout = JSON.stringify([
     {
       id: HERMES_PORTABLE_TEST_SANDBOX_ID,
@@ -95,10 +80,8 @@ function checkpointFor(
   input: ReturnType<typeof createHermesPortableTestInput>,
   liveIdentityFingerprint = HERMES_PORTABLE_TEST_LIVE_IDENTITY,
 ) {
-  return pendingSandboxPolicyVerificationForBoundary({
-    registration: {
-      policyIdentity: { hash: "sha256:effective", activeVersion: 4 },
-    },
+  return pendingSandboxCreateVerificationForBoundary({
+    registration: {},
     sandboxName: input.sandboxName,
     gatewayName: input.gatewayName,
     gatewayPort: GATEWAY_PORT,
@@ -121,9 +104,10 @@ function checkpointEntry(
   };
 }
 
-function policyRegistrationInput(
-  boundary: EffectiveVerifiedSandboxPolicyBoundary,
-): CreatedSandboxPolicyVerificationInput & {
+function policyRegistrationInput(boundary: EffectiveVerifiedSandboxPolicyBoundary): Omit<
+  CreatedSandboxPolicyRegistrationInput,
+  "plannedAuthority"
+> & {
   readonly registration: EffectiveVerifiedSandboxPolicyBoundary["registration"];
 } {
   return {
@@ -150,7 +134,7 @@ afterEach(() => {
 });
 
 describe("Hermes portable create policy source", () => {
-  it("carries the receipt-owned source through the generic create gate (#10423)", async () => {
+  it("carries the transaction-scoped source through the generic create gate (#10423)", async () => {
     fs.writeFileSync(
       policyPath,
       `version: 1
@@ -168,21 +152,26 @@ network_policies:
       lifecycleGeneration: LIFECYCLE_GENERATION,
       createPolicySourceBytes: Buffer.from(HERMES_PORTABLE_TEST_POLICY),
     };
-    vi.spyOn(openshellRuntimeModule, "captureResolvedOpenshell")
-      .mockReturnValueOnce(gatewayInfo())
-      .mockReturnValueOnce(metadata())
-      .mockReturnValueOnce(readiness())
-      .mockReturnValueOnce(metadata())
-      .mockReturnValueOnce({
-        status: 0,
-        output: HERMES_PORTABLE_TEST_POLICY,
-        stdout: HERMES_PORTABLE_TEST_POLICY,
-        stderr: "",
-      })
-      .mockReturnValueOnce(gatewayInfo())
-      .mockReturnValueOnce(metadata())
-      .mockReturnValueOnce(readiness())
-      .mockReturnValueOnce(metadata());
+    vi.spyOn(openshellRuntimeModule, "captureResolvedOpenshell").mockImplementation((args) => {
+      const argv = Array.from(args, String);
+      switch (true) {
+        case argv[0] === "gateway" && argv[1] === "info":
+          return gatewayInfo();
+        case argv[0] === "sandbox" && argv[1] === "list":
+          return readiness();
+        case argv.includes("--output") && argv.includes("json"):
+          return metadata();
+        case argv[0] === "policy" && argv[1] === "get":
+          return {
+            status: 0,
+            output: HERMES_PORTABLE_TEST_POLICY,
+            stdout: HERMES_PORTABLE_TEST_POLICY,
+            stderr: "",
+          };
+        default:
+          throw new Error(`Unexpected OpenShell command: ${argv.join(" ")}`);
+      }
+    });
     const readFile = vi.spyOn(fs, "readFileSync");
     let routeFallbackCalls = 0;
     let verifiedCreateEffectCalls = 0;
@@ -196,7 +185,7 @@ network_policies:
     };
     const persistVerifiedPolicy = (boundary: EffectiveVerifiedSandboxPolicyBoundary) => {
       persistedPolicySources.push(boundary.policySourcePath);
-      const checkpoint = pendingSandboxPolicyVerificationForBoundary(boundary);
+      const checkpoint = pendingSandboxCreateVerificationForBoundary(boundary);
       recordedCheckpointEntry = checkpointEntry(current, checkpoint);
       const { name, ...updates } = recordedCheckpointEntry;
       expect(updateRegistry(name, updates)).toBe(true);
@@ -213,7 +202,7 @@ network_policies:
     ) => {
       createSandboxCalls += 1;
       const readCountBeforeVerification = readFile.mock.calls.length;
-      const result = await runSandboxCreateWithPolicyAuthorityChecks<
+      const result = await runSandboxCreateWithPolicyVerification<
         CreatedPolicyIdentity,
         EffectiveVerifiedSandboxPolicyBoundary,
         { ready: true }
@@ -374,7 +363,7 @@ network_policies:
     };
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks<
+      runSandboxCreateWithPolicyVerification<
         CreatedPolicyIdentity,
         EffectiveVerifiedSandboxPolicyBoundary,
         string

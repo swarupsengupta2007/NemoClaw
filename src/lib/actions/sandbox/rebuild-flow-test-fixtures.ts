@@ -96,9 +96,5 @@ export function makePreparedRecoveryManifest() {
     dir: "/sandbox/.openclaw",
     backupPath: "/tmp/rebuild-backups/alpha/2026-07-01T06-50-42-044Z",
     blueprintDigest: null,
-    rebuildPolicyHandoff: {
-      file: "rebuild-policy-handoff.yaml" as const,
-      sha256: "a".repeat(64),
-    },
   };
 }

@@ -174,7 +174,6 @@ describe("registry", () => {
     // the durable SandboxEntry type; serializeSandboxEntryForDisk strips them.
     registry.registerSandbox({ name: "alpha", model: "m", provider: "p" });
     registry.updateSandbox("alpha", {
-      policies: ["npm"],
       recoveredFromGateway: true,
       livePhase: "Ready",
     });
@@ -196,7 +195,6 @@ describe("registry", () => {
             agent: "openclaw",
             adapter: "mcporter",
             url: "https://api.githubcopilot.com/mcp/",
-            allowedIps: ["8.8.8.8"],
             env: ["GITHUB_TOKEN"],
             providerName: "alpha-mcp-github",
             providerId: "11111111-2222-4333-8444-555555555555",
@@ -212,7 +210,6 @@ describe("registry", () => {
 
     expect(entry).toMatchObject({
       url: "https://api.githubcopilot.com/mcp/",
-      allowedIps: ["8.8.8.8"],
       env: ["GITHUB_TOKEN"],
       providerName: "alpha-mcp-github",
       providerId: "11111111-2222-4333-8444-555555555555",
@@ -499,13 +496,6 @@ describe("registry", () => {
 
   it("updateSandbox returns false for nonexistent sandbox", () => {
     expect(registry.updateSandbox("nope", {})).toBe(false);
-  });
-
-  it("strips legacy finalized policy markers on registration and update", () => {
-    registry.registerSandbox({ name: "clone", policies: [], policyPresetsFinalized: true });
-    expect(registry.getSandbox("clone").policyPresetsFinalized).toBeUndefined();
-    registry.updateSandbox("clone", { policyPresetsFinalized: true });
-    expect(registry.getSandbox("clone").policyPresetsFinalized).toBeUndefined();
   });
 
   it("updateSandbox rejects name changes", () => {
@@ -861,10 +851,7 @@ describe("registry", () => {
       sandboxName: "messaging",
       channels: [{ channelId: "telegram" }],
     });
-    expect(data.sandboxes.messaging.messaging.plan.networkPolicy).toEqual({
-      presets: [],
-      entries: [],
-    });
+    expect(data.sandboxes.messaging.messaging.plan.networkPolicy).toBeUndefined();
     expect(data.sandboxes.messaging.messaging.plan.agentRender).toBeUndefined();
     expect(data.sandboxes.messaging.messaging.plan.buildSteps).toBeUndefined();
     expect(data.sandboxes.messaging.messaging.plan.runtimeSetup).toBeUndefined();

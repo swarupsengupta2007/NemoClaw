@@ -27,13 +27,13 @@ const resourceProfiles: [string, { cpu: string; memory: string } | null][] = [
 describe("sandbox create intent machine boundary", () => {
   it("checks final policy requirements before credential provider registration (#9833)", async () => {
     const preflightPolicyRequirements = vi.fn(() => {
-      throw new Error("external policy authority must supply the selected route");
+      throw new Error("live policy requirements changed before the selected route");
     });
     const { deps, calls } = createDeps({ preflightPolicyRequirements });
     calls.setupMessaging.mockResolvedValue(["telegram"]);
 
     await expect(handleSandboxState(baseOptions(deps))).rejects.toThrow(
-      /external policy authority must supply/u,
+      /live policy requirements changed before/u,
     );
 
     expect(preflightPolicyRequirements).toHaveBeenCalledWith(
@@ -57,20 +57,14 @@ describe("sandbox create intent machine boundary", () => {
     });
     const { deps, calls } = createDeps({
       getSandboxReuseState: () => "ready",
-      getStoredMessagingChannelConfig: () => ({
-        TELEGRAM_REQUIRE_MENTION: "1",
-      }),
+      getStoredMessagingChannelConfig: () => ({ TELEGRAM_REQUIRE_MENTION: "1" }),
       hydrateMessagingChannelConfig: () => ({ TELEGRAM_REQUIRE_MENTION: "0" }),
       messagingChannelConfigsEqual: () => false,
       resolveSandboxCreateIntent,
     });
 
     await expect(
-      handleSandboxState({
-        ...baseOptions(deps, session),
-        resume: true,
-        sandboxName: "saved",
-      }),
+      handleSandboxState({ ...baseOptions(deps, session), resume: true, sandboxName: "saved" }),
     ).rejects.toThrow("messaging provider conflict");
 
     expect(resolveSandboxCreateIntent).toHaveBeenCalledTimes(1);
@@ -145,7 +139,7 @@ describe("sandbox create intent machine boundary", () => {
     expect(resolvedIntents[2]).toEqual(resolvedIntents[0]);
   });
 
-  it("replaces a stale resumed create-intent policy with the authoritative rebuild selection (#9792)", async () => {
+  it("does not replace current create policy input from a recorded preset selection (#9792)", async () => {
     const session = createSession({
       sandboxName: "saved",
     });
@@ -178,18 +172,42 @@ describe("sandbox create intent machine boundary", () => {
     await handleSandboxState({
       ...baseOptions(deps, session),
       authoritativeResumeConfig: true,
-      rebuildPolicyPresets: ["github"],
       resume: true,
       sandboxName: "saved",
     });
 
     expect(calls.createSandbox.mock.calls[0]?.at(-1)).toMatchObject({
-      rebuildPolicyPresets: ["github"],
       resolved: {
-        policy: { options: { additionalPresets: ["github"] } },
+        policy: { options: { additionalPresets: ["mcp-bridge-fake"] } },
       },
     });
   });
+
+  it.each([
+    { label: "resume", authoritativeResumeConfig: false },
+    { label: "repair", authoritativeResumeConfig: true },
+  ])(
+    "suppresses stale rebuild presets at the externally managed $label create boundary (#9833)",
+    async ({ authoritativeResumeConfig }) => {
+      const session = createSession({
+        sandboxName: "saved",
+      });
+      const { deps, calls } = createDeps({}, session);
+
+      await handleSandboxState({
+        ...baseOptions(deps, session),
+        authoritativeResumeConfig,
+        resume: true,
+        sandboxName: "saved",
+      });
+
+      const createIntent = calls.createSandbox.mock.calls[0]?.at(-1);
+      expect(createIntent).not.toHaveProperty("rebuildPolicyPresets");
+      expect(createIntent).toMatchObject({
+        resolved: { policy: { options: { additionalPresets: [] } } },
+      });
+    },
+  );
 
   it("carries an explicit recreate request through a fresh sandbox decision (#8847)", async () => {
     const session = createSession({ sandboxName: "same-sandbox" });
@@ -203,9 +221,7 @@ describe("sandbox create intent machine boundary", () => {
     });
 
     expect(calls.recordSkip).not.toHaveBeenCalled();
-    expect(calls.createSandbox.mock.calls[0]?.at(-1)).toMatchObject({
-      recreate: true,
-    });
+    expect(calls.createSandbox.mock.calls[0]?.at(-1)).toMatchObject({ recreate: true });
   });
 
   it("checkpoints a known sandbox name before an interrupted web-search prompt (#6743)", async () => {
@@ -220,10 +236,7 @@ describe("sandbox create intent machine boundary", () => {
     const { deps, calls } = createDeps({ updateSession, configureWebSearch });
 
     await expect(
-      handleSandboxState({
-        ...baseOptions(deps, durableSession),
-        sandboxName: "tm",
-      }),
+      handleSandboxState({ ...baseOptions(deps, durableSession), sandboxName: "tm" }),
     ).rejects.toThrow("web-search prompt interrupted");
 
     expect(durableSession.sandboxName).toBe("tm");
@@ -362,13 +375,7 @@ describe("sandbox create intent machine boundary", () => {
       .fn<() => Promise<CheckpointProviderBinding[]>>()
       .mockImplementationOnce(async () => {
         durableSession.stagedCredentialProviders = ["tm-brave-search"];
-        return [
-          {
-            name: "tm-brave-search",
-            type: "brave",
-            credentialEnv: "BRAVE_API_KEY",
-          },
-        ];
+        return [{ name: "tm-brave-search", type: "brave", credentialEnv: "BRAVE_API_KEY" }];
       })
       .mockImplementationOnce(async () => {
         durableSession.stagedCredentialProviders.push("tm-telegram-bridge");
@@ -428,11 +435,7 @@ describe("sandbox create intent machine boundary", () => {
       webSearchConfig: braveConfig,
       agent: null,
       requiredBindings: [
-        {
-          name: "tm-brave-search",
-          type: "brave",
-          credentialEnv: "BRAVE_API_KEY",
-        },
+        { name: "tm-brave-search", type: "brave", credentialEnv: "BRAVE_API_KEY" },
       ],
       revalidatePolicyRequirements: expect.any(Function),
     });
@@ -463,10 +466,7 @@ describe("sandbox create intent machine boundary", () => {
       calls.selectResourceProfile.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
 
-    calls.selectResourceProfile.mockResolvedValueOnce({
-      cpu: "75%",
-      memory: "75%",
-    });
+    calls.selectResourceProfile.mockResolvedValueOnce({ cpu: "75%", memory: "75%" });
     await handleSandboxState({
       ...baseOptions(deps, durableSession),
       resume: true,
@@ -493,10 +493,7 @@ describe("sandbox create intent machine boundary", () => {
     expect(calls.resolveCreateIntent).toHaveBeenCalledTimes(1);
     expect(calls.createSandbox).toHaveBeenCalledTimes(1);
     expect(durableSession.sandboxPromptProgress.resourceProfile).toBe(true);
-    expect(durableSession.resourceProfile).toEqual({
-      cpu: "75%",
-      memory: "75%",
-    });
+    expect(durableSession.resourceProfile).toEqual({ cpu: "75%", memory: "75%" });
 
     const serializedSession = JSON.stringify(durableSession);
     expect(serializedSession).not.toContain(braveCredential);

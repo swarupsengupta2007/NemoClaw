@@ -11,7 +11,6 @@ import * as agentRuntime from "../../agent/runtime";
 import * as gatewayRuntime from "../../gateway-runtime-action";
 import * as nim from "../../inference/nim";
 import * as gatewayTeardownAuthority from "../../onboard/gateway-teardown-authority";
-import * as runner from "../../runner";
 import * as sessionRecovery from "../../onboard/session-recovery";
 import * as sandboxList from "../../openshell-sandbox-list";
 import * as sandboxVersion from "../../sandbox/version";
@@ -27,6 +26,7 @@ import { rebuildOnboardDependencies } from "./rebuild-onboard-dependencies";
 import * as rebuildRoutePreflight from "./rebuild-preflight-guards";
 import * as rebuildShields from "./rebuild-shields";
 import * as rebuildUsageNotice from "./rebuild-usage-notice";
+import * as policyGet from "./policy-get";
 
 function cloneSession(session: Session): Session {
   return JSON.parse(JSON.stringify(session));
@@ -109,7 +109,6 @@ describe("rebuild resume snapshot repair", () => {
     spies.push(
       vi.spyOn(gatewayDrift, "detectOpenShellStateRpcPreflightIssue").mockReturnValue(null),
       vi.spyOn(gatewayDrift, "detectOpenShellStateRpcResultIssue").mockReturnValue(null),
-      vi.spyOn(runner, "runCapture").mockReturnValue("version: 1\nnetwork_policies: {}\n"),
       vi
         .spyOn(gatewayTeardownAuthority, "resolveGatewayTeardownAuthority")
         .mockImplementation(resolveGatewayAuthority),
@@ -118,18 +117,8 @@ describe("rebuild resume snapshot repair", () => {
         .mockImplementation(resolveGatewayAuthority),
       vi.spyOn(gatewayRuntime, "recoverNamedGatewayRuntime").mockResolvedValue({
         recovered: true,
-        before: {
-          state: "healthy_named",
-          status: "",
-          gatewayInfo: "",
-          activeGateway: null,
-        },
-        after: {
-          state: "healthy_named",
-          status: "",
-          gatewayInfo: "",
-          activeGateway: null,
-        },
+        before: { state: "healthy_named", status: "", gatewayInfo: "", activeGateway: null },
+        after: { state: "healthy_named", status: "", gatewayInfo: "", activeGateway: null },
         attempted: false,
       }),
       vi.spyOn(sandboxList, "captureSandboxListWithGatewayRecovery").mockResolvedValue({
@@ -161,7 +150,6 @@ describe("rebuild resume snapshot repair", () => {
         name: "alpha",
         provider: "ollama-local",
         model: "nvidia/nemotron",
-        policies: [],
         agent: null,
         nimContainer: null,
         nemoclawVersion: "0.1.0",
@@ -213,13 +201,6 @@ describe("rebuild resume snapshot repair", () => {
           timestamp: "2026-06-01T00:00:00.000Z",
         },
       } as never),
-      vi.spyOn(sandboxState, "attachRebuildPolicyHandoff").mockImplementation((manifest) => ({
-        ...manifest,
-        rebuildPolicyHandoff: {
-          file: "rebuild-policy-handoff.yaml",
-          sha256: "a".repeat(64),
-        },
-      })),
       vi
         .spyOn(openshellRuntime, "runOpenshell")
         .mockReturnValue({ status: 0, output: "" } as never),
@@ -259,6 +240,10 @@ describe("rebuild resume snapshot repair", () => {
         imageTag: null,
       } as never),
       vi.spyOn(rebuildUsageNotice, "ensureRebuildUsageNoticeAccepted").mockResolvedValue(true),
+      vi.spyOn(policyGet, "getSandboxPolicy").mockReturnValue({
+        raw: "version: 1\nnetwork_policies: {}\n",
+        yaml: "version: 1\nnetwork_policies: {}\n",
+      }),
       vi
         .spyOn(rebuildOnboardDependencies, "onboard")
         .mockImplementation(async (options: unknown) => {

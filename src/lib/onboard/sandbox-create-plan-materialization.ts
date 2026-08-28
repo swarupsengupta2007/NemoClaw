@@ -6,7 +6,6 @@ import { hasConfiguredMessagingCredential, type MessagingTokenDef } from "./mess
 import { filterMessagingProvidersForSandboxCreate } from "./sandbox-create-intent";
 import type {
   MaterializeSandboxCreatePlanInput,
-  InitialPolicyDelivery,
   SandboxCreateIntent,
   SandboxCreateMessagingProviderRequest,
 } from "./sandbox-create-intent-types";
@@ -36,12 +35,7 @@ function buildSandboxDriverConfig(
     throw new Error("Sandbox GPU device selection requires the OpenShell GPU request.");
   }
   const dockerMounts: Array<Record<string, unknown>> = (intent.hostMounts ?? []).map(
-    ({ source, target }) => ({
-      type: "bind",
-      source,
-      target,
-      read_only: true,
-    }),
+    ({ source, target }) => ({ type: "bind", source, target, read_only: true }),
   );
   if (managedStateMount) {
     const conflictingHostMount = intent.hostMounts?.find(({ target }) =>
@@ -79,7 +73,8 @@ function buildSandboxDriverConfig(
 export type SandboxCreatePlan = {
   activeMessagingChannels: string[];
   initialSandboxPolicy: InitialSandboxPolicy;
-  initialPolicyDelivery: InitialPolicyDelivery;
+  /** Tier resolved before create, persisted with the registry entry for safe resume. */
+  policyTier: string | null;
   createArgs: string[];
   messagingProviders: string[];
   gpuRoutePlan: SandboxCreateIntent["gpuRoutePlan"];
@@ -105,10 +100,7 @@ export function selectHermesPortableExtraProviderPlan(
     readonly extraProviders: readonly string[];
     readonly staleExtraProviders: readonly string[];
   },
-): {
-  readonly extraProviders: readonly string[];
-  readonly staleExtraProviders: readonly string[];
-} {
+): { readonly extraProviders: readonly string[]; readonly staleExtraProviders: readonly string[] } {
   if (hermesPortable) {
     return { extraProviders: [...(requested ?? [])], staleExtraProviders: [] };
   }
@@ -290,7 +282,7 @@ function assertDeferredProviderPlanSupported(
 export function materializeSandboxCreatePlan({
   intent,
   fromRef,
-  initialPolicyDelivery,
+  policylessCreate = false,
   deferSandboxEffectsUntilPolicyVerification = false,
   managedStateMount,
   messagingTokenDefs,
@@ -323,7 +315,7 @@ export function materializeSandboxCreatePlan({
     fromRef,
     "--name",
     intent.sandboxName,
-    ...(initialPolicyDelivery === "supplied" ? ["--policy", initialSandboxPolicy.policyPath] : []),
+    ...(!policylessCreate ? ["--policy", initialSandboxPolicy.policyPath] : []),
     ...(driverConfig ? ["--driver-config-json", driverConfig] : []),
     ...intent.gpuCreateArgs,
     ...intent.resourceCreateArgs,
@@ -350,7 +342,7 @@ export function materializeSandboxCreatePlan({
   if (deferSandboxEffectsUntilPolicyVerification) {
     assertDeferredProviderPlanSupported(intent, plannedMessagingProviders, initialSandboxPolicy);
   }
-  if (initialPolicyDelivery === "supplied") {
+  if (!policylessCreate) {
     assertCredentialBindingProvidersAttached(
       initialSandboxPolicy,
       buildCreateProviderSet(intent, plannedMessagingProviders, resolveHermesToolGatewayProvider()),
@@ -385,7 +377,7 @@ export function materializeSandboxCreatePlan({
       activatedMessagingProviders,
       resolveHermesToolGatewayProvider(),
     );
-    if (initialPolicyDelivery === "supplied") {
+    if (!policylessCreate) {
       assertCredentialBindingProvidersAttached(initialSandboxPolicy, createProviders);
     }
     if (!sameProviderNames(activatedMessagingProviders, plannedMessagingProviders)) {
@@ -404,7 +396,7 @@ export function materializeSandboxCreatePlan({
   return {
     activeMessagingChannels: [...intent.policy.activeMessagingChannels],
     initialSandboxPolicy,
-    initialPolicyDelivery,
+    policyTier: intent.policy.options.policyTier,
     createArgs,
     messagingProviders: plannedMessagingProviders,
     gpuRoutePlan: intent.gpuRoutePlan,
@@ -420,12 +412,8 @@ export function materializeSandboxCreatePlan({
 export function materializeHermesPortableCreatePlan(input: {
   readonly intent: SandboxCreateIntent;
   readonly fromRef: string;
-  readonly initialPolicyDelivery: InitialPolicyDelivery;
 }): SandboxCreatePlan {
-  const { intent, fromRef, initialPolicyDelivery } = input;
-  if (initialPolicyDelivery !== "supplied") {
-    throw new Error("Hermes portable sandbox creation requires an explicit initial policy.");
-  }
+  const { intent, fromRef } = input;
   if (
     intent.policy.options.agentName !== "hermes" ||
     !["none", "native-only"].includes(intent.gpuRoutePlan) ||
@@ -470,7 +458,7 @@ export function materializeHermesPortableCreatePlan(input: {
   return {
     activeMessagingChannels: [],
     initialSandboxPolicy,
-    initialPolicyDelivery,
+    policyTier: intent.policy.options.policyTier,
     createArgs,
     messagingProviders: [],
     gpuRoutePlan: intent.gpuRoutePlan,

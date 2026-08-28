@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { isDeepStrictEqual } from "node:util";
-import { PolicyAuthorityRefusalError } from "../adapters/openshell/policy-authority";
+import { PolicyObservationError } from "../adapters/openshell/policy-state";
 import type { InferenceSelection } from "../inference/selection";
 import {
   inferenceSelectionRegistryFields,
@@ -44,7 +44,7 @@ import { cloneSandboxWorkloadReceipt } from "./registry/workload";
 import { normalizeSandboxMcpState } from "./registry-mcp";
 import {
   normalizePendingSandboxCreateVerification,
-  normalizeSandboxEntry,
+  normalizeSandboxPolicyAttribution,
   retainedDefaultSandbox,
 } from "./registry-normalization";
 import * as reversibleRemoval from "./registry-reversible-removal";
@@ -113,7 +113,7 @@ export {
   getMessagingPlanFromEntry,
   type SandboxMessagingState,
 } from "./registry-messaging";
-export { hasUnsafeHostMountTerminalText, normalizeSandboxEntry };
+export { hasUnsafeHostMountTerminalText, normalizeSandboxPolicyAttribution };
 
 export type SandboxRemovalReceipt = reversibleRemoval.RegistryRemovalReceipt<SandboxEntry>;
 
@@ -140,7 +140,7 @@ function pendingVerifiedCreateEntry(
   reservation: QualifiedPendingSandboxCreateReservation,
   checkpoint: PendingSandboxCreateVerification,
 ): SandboxEntry {
-  return normalizeSandboxEntry({
+  return normalizeSandboxPolicyAttribution({
     ...reservation.entry,
     gatewayPort: checkpoint.gatewayPort,
     lifecycleGeneration: checkpoint.lifecycleGeneration,
@@ -149,7 +149,7 @@ function pendingVerifiedCreateEntry(
   });
 }
 
-function assertPendingPolicyVerificationMatchesRegistration(
+function assertPendingCreateVerificationMatchesRegistration(
   recordedEntry: SandboxEntry | undefined,
   requestedEntry: SandboxEntry,
   authority:
@@ -165,14 +165,14 @@ function assertPendingPolicyVerificationMatchesRegistration(
   const expectedCheckpoint = normalizePendingSandboxCreateVerification(authority?.checkpoint);
   if (!authority) {
     if (checkpoint) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         "Cannot publish a verified create checkpoint without exact transaction authority",
       );
     }
     return;
   }
   if (!checkpoint || !expectedCheckpoint || !isDeepStrictEqual(checkpoint, expectedCheckpoint)) {
-    throw new PolicyAuthorityRefusalError(
+    throw new PolicyObservationError(
       "Cannot publish a sandbox registration after its verified create checkpoint changed",
     );
   }
@@ -182,7 +182,7 @@ function assertPendingPolicyVerificationMatchesRegistration(
     !recordedEntry ||
     !isDeepStrictEqual(recordedEntry, pendingVerifiedCreateEntry(reservation, expectedCheckpoint))
   ) {
-    throw new PolicyAuthorityRefusalError(
+    throw new PolicyObservationError(
       "Cannot publish a sandbox registration after its verified create transaction changed",
     );
   }
@@ -230,7 +230,7 @@ function assertPendingPolicyVerificationMatchesRegistration(
   ] as const;
   const mismatches: string[] = commonChecks.filter(([, matches]) => !matches).map(([name]) => name);
   if (mismatches.length > 0) {
-    throw new PolicyAuthorityRefusalError(
+    throw new PolicyObservationError(
       `Cannot publish a sandbox registration that differs from its verified create checkpoint (${mismatches.join(", ")})`,
     );
   }
@@ -253,7 +253,7 @@ export function recordPendingSandboxCreateVerification(
     checkpoint.gatewayName !== authority.gatewayName ||
     !isCurrentPendingSandboxCreateReservation(reservation, reservation.entry)
   ) {
-    throw new PolicyAuthorityRefusalError(
+    throw new PolicyObservationError(
       "Cannot record an incomplete verified sandbox create checkpoint",
     );
   }
@@ -264,7 +264,7 @@ export function recordPendingSandboxCreateVerification(
       current?.pendingCreateVerification,
     );
     if (!current) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         `Cannot record sandbox '${name}' policy verification after its route reservation changed`,
       );
     }
@@ -277,7 +277,7 @@ export function recordPendingSandboxCreateVerification(
         recordedCheckpoint !== undefined ||
         !isCurrentPendingSandboxCreateReservation(reservation, current)
       ) {
-        throw new PolicyAuthorityRefusalError(
+        throw new PolicyObservationError(
           `Cannot record sandbox '${name}' policy verification after its route reservation changed`,
         );
       }
@@ -291,7 +291,7 @@ export function recordPendingSandboxCreateVerification(
         checkpoint.gatewayPort !== expected.gatewayPort ||
         checkpoint.sandboxName !== expected.sandboxName
       ) {
-        throw new PolicyAuthorityRefusalError(
+        throw new PolicyObservationError(
           `Cannot replace sandbox '${name}' verified create checkpoint without exact authority`,
         );
       }
@@ -317,7 +317,7 @@ export function requireCurrentPendingSandboxCreateVerification(
     !current ||
     !isDeepStrictEqual(current, pendingVerifiedCreateEntry(reservation, checkpoint))
   ) {
-    throw new PolicyAuthorityRefusalError(
+    throw new PolicyObservationError(
       `Cannot continue sandbox '${name}' creation after its verified checkpoint changed`,
     );
   }
@@ -340,12 +340,12 @@ export function registerSandbox(
     const data = load();
     const recordedEntry = data.sandboxes[entry.name];
     if (entry.pendingCreateVerification !== undefined) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         "Cannot publish a caller-supplied pending policy verification",
       );
     }
     if (routeReservation && options.pending !== true && !options.verifiedCreate) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         "Cannot consume a create route reservation without its verified policy checkpoint",
       );
     }
@@ -354,7 +354,7 @@ export function registerSandbox(
       options.verifiedCreate &&
       !isDeepStrictEqual(routeReservation, options.verifiedCreate.reservation)
     ) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         "Cannot publish a verified sandbox create with a different route reservation authority",
       );
     }
@@ -400,7 +400,7 @@ export function registerSandbox(
       options.pending !== true &&
       !options.verifiedCreate
     ) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         "Cannot publish a pending sandbox create without its verified policy checkpoint",
       );
     }
@@ -408,8 +408,8 @@ export function registerSandbox(
     if (entry.servingProfileProvenance !== undefined && !servingProfileProvenance) {
       throw new Error("Cannot register a sandbox with invalid serving profile provenance");
     }
-    const normalizedPolicyEntry = normalizeSandboxEntry(entry);
-    assertPendingPolicyVerificationMatchesRegistration(
+    const normalizedPolicyEntry = normalizeSandboxPolicyAttribution(entry);
+    assertPendingCreateVerificationMatchesRegistration(
       recordedEntry,
       normalizedPolicyEntry,
       options.verifiedCreate,
@@ -422,7 +422,7 @@ export function registerSandbox(
       recordedEntry.lifecycleLiveIdentityFingerprint !==
         normalizedPolicyEntry.lifecycleLiveIdentityFingerprint;
     if (reservedGenerationChanged !== reservedFingerprintChanged) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         "Cannot register a sandbox after only part of its reserved lifecycle identity changed",
       );
     }
@@ -649,7 +649,7 @@ export function reserveSandboxInferenceRoute(
           ));
       if (!sameReservation) {
         if (existing.pendingCreateVerification) {
-          throw new PolicyAuthorityRefusalError(
+          throw new PolicyObservationError(
             `Cannot replace sandbox '${name}' while its verified create checkpoint is incomplete`,
           );
         }
@@ -657,7 +657,7 @@ export function reserveSandboxInferenceRoute(
           existing.reservationSessionId !== route.reservationSessionId
             ? "belongs to another onboarding session"
             : "cannot change before the owning create transaction completes";
-        throw new PolicyAuthorityRefusalError(
+        throw new PolicyObservationError(
           `Cannot replace sandbox '${name}': its inference route reservation ${detail}`,
         );
       }
@@ -666,7 +666,7 @@ export function reserveSandboxInferenceRoute(
     const existingForReservation: SandboxEntry = existing
       ? { ...existing }
       : { name, pendingRouteReservation: true };
-    const next = normalizeSandboxEntry({
+    const next = normalizeSandboxPolicyAttribution({
       ...existingForReservation,
       pendingRouteReservation: true,
       reservationSessionId:
@@ -731,12 +731,12 @@ export function updateSandbox(name: string, updates: Partial<SandboxEntry>): boo
     const current = data.sandboxes[name];
     if (!current) return false;
     if (Object.prototype.hasOwnProperty.call(updates, "pendingCreateVerification")) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         `Refusing to change sandbox '${name}' verified create checkpoint outside its transaction.`,
       );
     }
     if (current.pendingCreateVerification) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         `Refusing to update sandbox '${name}' while its verified create checkpoint is incomplete.`,
       );
     }
@@ -744,7 +744,7 @@ export function updateSandbox(name: string, updates: Partial<SandboxEntry>): boo
       return false;
     }
     if (changesHostLocalInferenceLifecycleAuthority(current, updates)) return false;
-    data.sandboxes[name] = normalizeSandboxEntry({ ...current, ...updates });
+    data.sandboxes[name] = normalizeSandboxPolicyAttribution({ ...current, ...updates });
     save(data);
     return true;
   });
@@ -864,10 +864,10 @@ export function restoreSandboxEntry(
 ): void {
   withLock(() => {
     const data = load();
-    const normalizedEntry = normalizeSandboxEntry(entry);
+    const normalizedEntry = normalizeSandboxPolicyAttribution(entry);
     const current = data.sandboxes[normalizedEntry.name];
     if (current?.pendingCreateVerification && !isDeepStrictEqual(current, normalizedEntry)) {
-      throw new PolicyAuthorityRefusalError(
+      throw new PolicyObservationError(
         `Refusing to restore sandbox '${normalizedEntry.name}' while its verified create checkpoint is incomplete.`,
       );
     }
@@ -887,7 +887,7 @@ export function restoreSandboxEntryIfMissing(receipt: SandboxRemovalReceipt): bo
     const data = load();
     const result = reversibleRemoval.restoreSandboxIfMissingInRegistry(data, {
       ...receipt,
-      entry: normalizeSandboxEntry(receipt.entry),
+      entry: normalizeSandboxPolicyAttribution(receipt.entry),
     });
     if (!result.restored) return false;
     save(result.registry);
@@ -895,10 +895,7 @@ export function restoreSandboxEntryIfMissing(receipt: SandboxRemovalReceipt): bo
   });
 }
 
-export function listSandboxes(): {
-  sandboxes: SandboxEntry[];
-  defaultSandbox: string | null;
-} {
+export function listSandboxes(): { sandboxes: SandboxEntry[]; defaultSandbox: string | null } {
   const data = load();
   return {
     sandboxes: Object.values(data.sandboxes),
@@ -930,9 +927,5 @@ export function getConfiguredMessagingChannels(name: string): string[] {
 }
 
 export function setChannelDisabled(name: string, channel: string, disabled: boolean): boolean {
-  return setRegistryChannelDisabled(name, channel, disabled, {
-    load,
-    save,
-    withLock,
-  });
+  return setRegistryChannelDisabled(name, channel, disabled, { load, save, withLock });
 }

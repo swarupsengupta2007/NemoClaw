@@ -105,41 +105,12 @@ const retryAgentCases: ReadonlyArray<
 const retryConflictCases: ReadonlyArray<
   readonly [
     label: string,
-    retryOptions: {
-      timeout?: string;
-      reason?: string;
-      policy?: string;
-      throwOnError: true;
-    },
+    retryOptions: { timeout?: string; reason?: string; policy?: string; throwOnError: true },
   ]
 > = [
-  [
-    "timeout",
-    {
-      timeout: "6m",
-      reason: "retry-safe",
-      policy: "permissive",
-      throwOnError: true,
-    },
-  ],
-  [
-    "reason",
-    {
-      timeout: "5m",
-      reason: "changed-reason",
-      policy: "permissive",
-      throwOnError: true,
-    },
-  ],
-  [
-    "policy",
-    {
-      timeout: "5m",
-      reason: "retry-safe",
-      policy: "custom-policy",
-      throwOnError: true,
-    },
-  ],
+  ["timeout", { timeout: "6m", reason: "retry-safe", policy: "permissive", throwOnError: true }],
+  ["reason", { timeout: "5m", reason: "changed-reason", policy: "permissive", throwOnError: true }],
+  ["policy", { timeout: "5m", reason: "retry-safe", policy: "custom-policy", throwOnError: true }],
 ];
 
 describe("OpenClaw shields top-config transaction", () => {
@@ -661,7 +632,7 @@ describe("OpenClaw shields flow rollback and recovery", () => {
   );
 
   it(
-    "rejects an equivalent repeated shieldsDown request with missing timer authority and retains recovery (#8806)",
+    "rejects an equivalent repeated shieldsDown request with missing timer authority and restores lockdown (#8806)",
     {
       timeout: 30_000,
     },
@@ -691,16 +662,12 @@ describe("OpenClaw shields flow rollback and recovery", () => {
       ).toThrow(/Cannot accept equivalent shields down request without live auto-restore timer/u);
 
       expect(JSON.parse(fs.readFileSync(before.statePath, "utf-8"))).toMatchObject({
-        shieldsDown: true,
-        shieldsDownReason: "retry-safe",
+        shieldsDown: false,
+        shieldsDownAt: null,
       });
       expect(fs.existsSync(before.timerPath)).toBe(false);
       expect(harness.auditSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: "shields_up_failed",
-          sandbox: "openclaw",
-          error: expect.stringContaining("bounded forward policy is missing"),
-        }),
+        expect.objectContaining({ action: "shields_auto_restore", sandbox: "openclaw" }),
       );
       expect(harness.errorSpy.mock.calls.flat().join("\n")).toContain(
         "Cannot accept equivalent shields down request without live auto-restore timer authority.",
@@ -838,13 +805,9 @@ describe("OpenClaw shields flow rollback and recovery", () => {
     fs.rmSync(state.shieldsPolicySnapshotPath);
 
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery!,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery!, throwOnError: true }),
     ).not.toThrow();
-    expect(harness.policySetBodies.at(-1)).toBe(expectedPolicy);
-    expect(fs.existsSync(state.shieldsPolicySnapshotPath)).toBe(false);
+    expect(fs.readFileSync(state.shieldsPolicySnapshotPath, "utf-8")).toBe(expectedPolicy);
   });
 
   it("refuses to overwrite a changed restrictive snapshot during backup recovery (#9452)", () => {
@@ -861,15 +824,10 @@ describe("OpenClaw shields flow rollback and recovery", () => {
     };
     expect(recovery).toBeDefined();
     const changedPolicy = "version: 1\nnetwork_policies:\n  changed: {}\n";
-    fs.writeFileSync(state.shieldsPolicySnapshotPath, changedPolicy, {
-      mode: 0o600,
-    });
+    fs.writeFileSync(state.shieldsPolicySnapshotPath, changedPolicy, { mode: 0o600 });
 
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery!,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery!, throwOnError: true }),
     ).toThrow(
       /Backup Shields policy recovery failed.*(?:unsafe metadata|no longer matches its binding)/u,
     );
@@ -885,18 +843,12 @@ describe("OpenClaw shields flow rollback and recovery", () => {
     fs.symlinkSync(symlinkTarget, snapshotPath);
 
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed/u);
     expect(fs.lstatSync(snapshotPath).isSymbolicLink()).toBe(true);
     expect(fs.readFileSync(symlinkTarget, "utf-8")).toBe(targetContent);
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed.*authority is invalid/u);
   });
 
@@ -911,16 +863,10 @@ describe("OpenClaw shields flow rollback and recovery", () => {
     tamper(snapshotPath);
 
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed.*unsafe metadata/u);
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed.*authority is invalid/u);
   });
 
@@ -937,17 +883,11 @@ describe("OpenClaw shields flow rollback and recovery", () => {
     );
 
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed.*state no longer authorizes/u);
     expect(fs.existsSync(snapshotPath)).toBe(true);
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed.*authority is invalid/u);
   });
 
@@ -962,16 +902,10 @@ describe("OpenClaw shields flow rollback and recovery", () => {
     expect(recovery).toBeDefined();
 
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery!,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery!, throwOnError: true }),
     ).not.toThrow();
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery!,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery!, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed.*authority is invalid/u);
   });
 
@@ -1028,17 +962,12 @@ describe("OpenClaw shields flow rollback and recovery", () => {
     );
 
     expect(() =>
-      harness.shieldsUp("openclaw", {
-        policySnapshotRecovery: recovery!,
-        throwOnError: true,
-      }),
+      harness.shieldsUp("openclaw", { policySnapshotRecovery: recovery!, throwOnError: true }),
     ).toThrow(/Backup Shields policy recovery failed.*transition no longer authorizes/u);
   });
 
   it("reports staged driver-neutral recovery when shields-down rollback cannot re-lock (#6126)", () => {
-    const harness = createHarness({
-      failOpenClawGuardActions: ["unlock", "lock"],
-    });
+    const harness = createHarness({ failOpenClawGuardActions: ["unlock", "lock"] });
 
     expect(() =>
       harness.shieldsDown("openclaw", {
@@ -1074,13 +1003,22 @@ describe("OpenClaw shields flow rollback and recovery", () => {
   });
 
   it("reports staged driver-neutral recovery when snapshot restoration fails (#6126)", () => {
-    const harness = createHarness();
-    harness.shieldsDown("openclaw", {
-      timeout: "5m",
-      reason: "recovery-hint coverage",
-      throwOnError: true,
-    });
-    harness.runSpy.mockReturnValue({ status: 1 });
+    const harness = createHarness({ run: () => ({ status: 1 }) });
+    const stateDir = path.join(tmpDir, ".nemoclaw", "state");
+    const snapshotPath = path.join(stateDir, "policy-snapshot-failed-restore.yaml");
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(snapshotPath, "version: 1\nnetwork_policies: {}\n");
+    fs.writeFileSync(
+      path.join(stateDir, "shields-openclaw.json"),
+      JSON.stringify({
+        shieldsDown: true,
+        shieldsDownAt: new Date().toISOString(),
+        shieldsDownTimeout: 300,
+        shieldsDownReason: "recovery-hint coverage",
+        shieldsDownPolicy: "permissive",
+        shieldsPolicySnapshotPath: snapshotPath,
+      }),
+    );
 
     expect(() => harness.shieldsUp("openclaw", { throwOnError: true })).toThrow(
       "policy restore exited with status 1",
@@ -1237,20 +1175,42 @@ describe("OpenClaw shields flow rollback and recovery", () => {
   });
 
   it("retains the bounded auto-restore owner when manual shields-up fails", () => {
-    const harness = createHarness({ failOpenClawGuardActions: ["lock"] });
+    const harness = createHarness();
     const stateDir = path.join(tmpDir, ".nemoclaw", "state");
+    const snapshotPath = path.join(stateDir, "policy-snapshot-relock-failure.yaml");
     const markerPath = path.join(stateDir, "shields-timer-openclaw.json");
-    harness.shieldsDown("openclaw", {
-      timeout: "30m",
-      reason: "rebuild",
-      throwOnError: true,
-    });
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(snapshotPath, "version: 1\nnetwork_policies: {}\n");
+    fs.writeFileSync(
+      path.join(stateDir, "shields-openclaw.json"),
+      JSON.stringify({
+        shieldsDown: true,
+        shieldsDownAt: new Date().toISOString(),
+        shieldsDownTimeout: 1800,
+        shieldsDownReason: "rebuild",
+        shieldsDownPolicy: "permissive",
+        shieldsPolicySnapshotPath: snapshotPath,
+      }),
+    );
+    fs.writeFileSync(
+      markerPath,
+      JSON.stringify({
+        pid: 4242,
+        sandboxName: "openclaw",
+        snapshotPath,
+        restoreAt: new Date(Date.now() + 60_000).toISOString(),
+        processToken: "timer-token",
+        allowLegacyHermesProtocol: false,
+      }),
+    );
+    const killSpy = vi.spyOn(process, "kill").mockReturnValue(true);
 
     expect(() => harness.shieldsUp("openclaw", { throwOnError: true })).toThrow(
       /Config not locked/,
     );
 
     expect(fs.existsSync(markerPath)).toBe(true);
+    expect(killSpy).not.toHaveBeenCalled();
     expect(
       JSON.parse(fs.readFileSync(path.join(stateDir, "shields-openclaw.json"), "utf-8"))
         .shieldsDown,
@@ -1275,10 +1235,7 @@ describe("Hermes Shields down unsafe config path (#8804)", () => {
     harness.setScenario("preflight-symlink");
 
     expect(() =>
-      harness.shields.shieldsDown("hermes-shields", {
-        reason: "unsafe-path",
-        throwOnError: true,
-      }),
+      harness.shields.shieldsDown("hermes-shields", { reason: "unsafe-path", throwOnError: true }),
     ).toThrow(/refusing symlink path: .*config\.yaml/);
 
     expect(harness.runSpy).not.toHaveBeenCalled();
@@ -1295,10 +1252,7 @@ describe("Hermes Shields down unsafe config path (#8804)", () => {
     harness.setScenario("preflight-dir-symlink");
 
     expect(() =>
-      harness.shields.shieldsDown("hermes-shields", {
-        reason: "unsafe-path",
-        throwOnError: true,
-      }),
+      harness.shields.shieldsDown("hermes-shields", { reason: "unsafe-path", throwOnError: true }),
     ).toThrow(/refusing symlink path: .*\.hermes/);
 
     expect(harness.runSpy).not.toHaveBeenCalled();
@@ -1335,10 +1289,7 @@ describe("Hermes Shields down unsafe config path (#8804)", () => {
     harness.setScenario("preflight-sensitive-file-symlink");
 
     expect(() =>
-      harness.shields.shieldsDown("hermes-shields", {
-        reason: "unsafe-path",
-        throwOnError: true,
-      }),
+      harness.shields.shieldsDown("hermes-shields", { reason: "unsafe-path", throwOnError: true }),
     ).toThrow(/refusing symlink path: .*\.env/);
 
     expect(harness.runSpy).not.toHaveBeenCalled();

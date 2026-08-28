@@ -182,7 +182,7 @@ describe("CLI dispatch", () => {
     });
   });
 
-  it("list --json emits structured sandbox details without legacy policy mirrors", () => {
+  it("list --json emits structured sandbox details", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-list-json-"));
     const localBin = path.join(home, "bin");
     const registryDir = path.join(home, ".nemoclaw");
@@ -197,7 +197,6 @@ describe("CLI dispatch", () => {
             model: "configured-model",
             provider: "configured-provider",
             gpuEnabled: true,
-            policies: ["pypi"],
             agent: "openclaw",
           },
         },
@@ -243,7 +242,6 @@ describe("CLI dispatch", () => {
           model: "configured-model",
           provider: "configured-provider",
           gpuEnabled: true,
-          policies: [],
           agent: "openclaw",
           isDefault: true,
           activeSessionCount: 1,
@@ -253,6 +251,7 @@ describe("CLI dispatch", () => {
           sandboxGpuDevice: null,
           openshellDriver: null,
           openshellVersion: null,
+          policies: [],
         },
       ],
     });
@@ -299,9 +298,7 @@ describe("CLI dispatch", () => {
       }),
       { mode: 0o600 },
     );
-    fs.writeFileSync(path.join(localBin, "openshell"), "#!/bin/sh\nexit 1\n", {
-      mode: 0o755,
-    });
+    fs.writeFileSync(path.join(localBin, "openshell"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
     const env = { HOME: home, PATH: `${localBin}:${process.env.PATH || ""}` };
 
     try {

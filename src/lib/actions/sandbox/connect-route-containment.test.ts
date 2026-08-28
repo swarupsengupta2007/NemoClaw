@@ -20,10 +20,7 @@ describe("connect route containment", () => {
 
   beforeEach(() => {
     process.env.NEMOCLAW_TEST_NO_SLEEP = "1";
-    Object.defineProperty(process.stdout, "isTTY", {
-      configurable: true,
-      value: true,
-    });
+    Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: true });
     exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number | string | null) => {
       throw new Error(`process.exit(${code ?? 0})`);
     }) as never);
@@ -45,11 +42,7 @@ describe("connect route containment", () => {
     const assertRouteCompatible = vi.fn(() => {
       throw conflict;
     });
-    const probe = vi.fn(() => ({
-      healthy: false,
-      broken: true,
-      detail: "BROKEN 503",
-    }));
+    const probe = vi.fn(() => ({ healthy: false, broken: true, detail: "BROKEN 503" }));
     const applyVmDnsMonkeypatch = vi.fn(() => ({ ok: false }));
     const reapplyVmInferenceRoute = vi.fn(() => null);
     const repairLegacyDnsProxy = vi.fn(() => ({ exitCode: 0 }));

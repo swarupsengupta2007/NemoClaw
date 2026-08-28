@@ -256,9 +256,7 @@ export function createStatusFlowHarness(options: StatusFlowHarnessOptions = {}):
     .spyOn(statusProcessRecovery, "isSandboxGatewayRunningForStatus")
     .mockResolvedValue(options.gatewayRunning ?? false);
   vi.spyOn(resolve, "resolveOpenshell").mockReturnValue("/usr/bin/openshell");
-  vi.spyOn(agentRuntime, "getSessionAgent").mockReturnValue({
-    name: "openclaw",
-  });
+  vi.spyOn(agentRuntime, "getSessionAgent").mockReturnValue({ name: "openclaw" });
   vi.spyOn(agentRuntime, "getAgentDisplayName").mockReturnValue("OpenClaw");
   vi.spyOn(agentRuntime, "getGatewayCommand").mockReturnValue("openclaw daemon");
   vi.spyOn(nim, "nimStatus").mockReturnValue({
@@ -272,6 +270,7 @@ export function createStatusFlowHarness(options: StatusFlowHarnessOptions = {}):
     container: null,
   });
   vi.spyOn(nim, "shouldShowNimLine").mockReturnValue(true);
+  vi.spyOn(policy, "getAppliedPresets").mockReturnValue(["npm", "telegram"]);
   const checkAgentVersionSpy = vi.spyOn(sandboxVersion, "checkAgentVersion").mockReturnValue(
     options.versionCheck ?? {
       sandboxVersion: "0.1.0",

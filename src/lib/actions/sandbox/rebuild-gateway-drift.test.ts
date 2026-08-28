@@ -18,9 +18,7 @@ import {
 
 const removeStaleRebuildDockerOrphan = openshellDockerContainers.removeStaleRebuildDockerOrphan;
 type QueryDockerContainers = typeof openshellDockerContainers.queryOpenShellDockerSandboxContainers;
-type ForceRemoveDockerContainer = (containerId: string) => {
-  status?: number | null;
-};
+type ForceRemoveDockerContainer = (containerId: string) => { status?: number | null };
 
 const driftIssue: gatewayDrift.OpenShellStateRpcIssue = {
   kind: "image_drift",
@@ -88,11 +86,7 @@ describe("rebuild gateway drift preflight", () => {
       } as never);
     getNamedGatewayLifecycleStateSpy = vi
       .spyOn(gatewayRuntime, "getNamedGatewayLifecycleState")
-      .mockReturnValue({
-        state: "healthy_named",
-        activeGateway: "nemoclaw",
-        status: "",
-      } as never);
+      .mockReturnValue({ state: "healthy_named", activeGateway: "nemoclaw", status: "" } as never);
     recoverDockerDriverSandboxSpy = vi
       .spyOn(dockerDriverRecovery, "recoverDockerDriverSandbox")
       .mockReturnValue({ recovered: false, via: null });
@@ -179,10 +173,9 @@ describe("rebuild gateway drift preflight", () => {
       const registrySnapshot = { sandboxes: { alpha: entry } };
       vi.mocked(registry.getSandbox).mockReturnValue(entry as never);
       vi.mocked(registryPersistence.load).mockReturnValue(registrySnapshot as never);
-      captureOpenshellSpy.mockReturnValueOnce({ status: 0, output: "" }).mockReturnValueOnce({
-        status: 1,
-        output: "Error:   × Not Found: sandbox not found",
-      });
+      captureOpenshellSpy
+        .mockReturnValueOnce({ status: 0, output: "" })
+        .mockReturnValueOnce({ status: 1, output: "Error:   × Not Found: sandbox not found" });
       getNamedGatewayLifecycleStateSpy.mockReturnValue({
         state: "connected_other",
         activeGateway,
@@ -192,10 +185,7 @@ describe("rebuild gateway drift preflight", () => {
 
       const result = await resolveRebuildLiveState("alpha", entry, behaviorLog, bail);
 
-      expect(result).toEqual({
-        staleRecovery: true,
-        staleRegistrySnapshot: registrySnapshot,
-      });
+      expect(result).toEqual({ staleRecovery: true, staleRegistrySnapshot: registrySnapshot });
       expect(result?.staleRegistrySnapshot).not.toBe(registrySnapshot);
       expect(getNamedGatewayLifecycleStateSpy).not.toHaveBeenCalled();
       expect(runOpenshellSpy).toHaveBeenCalledWith(
@@ -245,11 +235,7 @@ describe("rebuild gateway drift preflight", () => {
     captureOpenshellSpy
       .mockReturnValueOnce({ status: 0, output: "" })
       .mockReturnValueOnce({ status: 1, output: "Error: sandbox not found" });
-    queryDockerContainersSpy.mockReturnValue({
-      ok: false,
-      ids: [],
-      error: "docker unavailable",
-    });
+    queryDockerContainersSpy.mockReturnValue({ ok: false, ids: [], error: "docker unavailable" });
 
     await expect(resolveRebuildLiveState("alpha", entry, vi.fn(), bail)).resolves.toMatchObject({
       staleRecovery: true,
@@ -265,10 +251,7 @@ describe("rebuild gateway drift preflight", () => {
     captureOpenshellSpy
       .mockReturnValueOnce({ status: 0, output: "" })
       .mockReturnValueOnce({ status: 1, output: "Error: sandbox not found" });
-    queryDockerContainersSpy.mockReturnValue({
-      ok: true,
-      ids: ["first-id", "second-id"],
-    });
+    queryDockerContainersSpy.mockReturnValue({ ok: true, ids: ["first-id", "second-id"] });
 
     await expect(resolveRebuildLiveState("alpha", entry, vi.fn(), bail)).rejects.toThrow(
       "refusing ambiguous orphan cleanup",
@@ -333,10 +316,7 @@ describe("rebuild gateway drift preflight", () => {
       vi.mocked(registryPersistence.load).mockReturnValue(registrySnapshot as never);
       captureOpenshellSpy
         .mockReturnValueOnce({ status: 0, output: "beta Ready" })
-        .mockReturnValueOnce({
-          status: 1,
-          output: "Error:   × Not Found: sandbox not found",
-        });
+        .mockReturnValueOnce({ status: 1, output: "Error:   × Not Found: sandbox not found" });
       getNamedGatewayLifecycleStateSpy.mockReturnValue({
         state: "healthy_named",
         activeGateway: gatewayName,

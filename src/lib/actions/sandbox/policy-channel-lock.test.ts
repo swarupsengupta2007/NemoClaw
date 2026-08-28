@@ -32,9 +32,7 @@ describe("policy and channel sandbox mutation locking", () => {
     lockMocks.withSandboxMutationLock.mockClear();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    vi.spyOn(defs, "loadAgent").mockReturnValue({
-      name: "hermes",
-    } as defs.AgentDefinition);
+    vi.spyOn(defs, "loadAgent").mockReturnValue({ name: "hermes" } as defs.AgentDefinition);
     vi.spyOn(registry, "getSandbox").mockReturnValue({
       name: "alpha",
       agent: "hermes",
@@ -43,11 +41,7 @@ describe("policy and channel sandbox mutation locking", () => {
     vi.spyOn(registry, "getDisabledChannels").mockReturnValue(["telegram"]);
 
     vi.spyOn(policies, "listPresets").mockReturnValue([
-      {
-        file: "pypi.yaml",
-        name: "pypi",
-        description: "Python Package Index access",
-      },
+      { file: "pypi.yaml", name: "pypi", description: "Python Package Index access" },
     ]);
     vi.spyOn(policies, "listCustomPresets").mockReturnValue([]);
     vi.spyOn(policies, "getAppliedPresets").mockReturnValue(["pypi"]);
@@ -91,13 +85,7 @@ describe("policy and channel sandbox mutation locking", () => {
 
   it.each([
     ["policy add", () => addSandboxPolicy("alpha", { preset: "pypi", dryRun: true })],
-    [
-      "policy remove",
-      () => {
-        vi.mocked(policies.getGatewayPresets).mockReturnValue(["pypi"]);
-        return removeSandboxPolicy("alpha", { preset: "pypi", dryRun: true });
-      },
-    ],
+    ["policy remove", () => removeSandboxPolicy("alpha", { preset: "pypi", dryRun: true })],
     [
       "policy exclude",
       () => excludeSandboxBaseline("alpha", { key: "nous_research", dryRun: true }),
@@ -113,10 +101,7 @@ describe("policy and channel sandbox mutation locking", () => {
       "channel stop",
       async () => {
         vi.mocked(registry.getDisabledChannels).mockReturnValue([]);
-        await stopSandboxChannel("alpha", {
-          channel: "telegram",
-          dryRun: true,
-        });
+        await stopSandboxChannel("alpha", { channel: "telegram", dryRun: true });
       },
     ],
   ])("previews %s without taking the mutation lock (#8877)", async (_label, action) => {

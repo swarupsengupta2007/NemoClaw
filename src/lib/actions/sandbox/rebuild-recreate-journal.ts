@@ -178,10 +178,7 @@ export function openRebuildRecreateJournal(
       ...checkpoint,
       machineState: current.machine.state,
       updatedAt: new Date().toISOString(),
-      sandboxIdentity: decisionSelected({
-        name: target.sandboxName,
-        agent: agentName,
-      }),
+      sandboxIdentity: decisionSelected({ name: target.sandboxName, agent: agentName }),
       gatewayAuthority: decisionSelected(gatewayAuthority),
     };
     beginSandboxRecreateTransaction(current, {

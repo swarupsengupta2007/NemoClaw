@@ -49,7 +49,7 @@ providerCommands.runOpenshellProviderCommand = (args) => {
 };
 policies.getPresetContentGatewayState = () => "match";
 policies.applyPresetContent = () => { mutations.push("policy:apply"); return true; };
-policies.removePolicyContent = () => { mutations.push("policy:remove"); return true; };
+policies.removePreset = () => { mutations.push("policy:remove"); return true; };
 processRecovery.executeSandboxCommand = (_sandboxName, command) => {
   mutations.push("adapter:" + command);
   return { status: 0, stdout: '{"ok":true}\n', stderr: "" };
@@ -61,8 +61,8 @@ const makeEntry = (server, addState) => ({
   agent: "hermes",
   adapter: "hermes-config",
   url: "https://8.8.8.8/mcp",
-  allowedIps: ["8.8.8.8"],
   env: ["GITHUB_TOKEN"],
+  allowedIps: ["8.8.8.8"],
   providerName: "provider-" + server,
   providerId,
   policyName: "mcp-bridge-" + server,

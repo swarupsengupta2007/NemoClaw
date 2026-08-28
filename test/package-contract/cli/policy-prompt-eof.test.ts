@@ -10,7 +10,8 @@
  * successful mutation.
  *
  * These tests drive the compiled CLI (`dist/nemoclaw.js`) with a pipe-backed
- * stdin. Only the sandbox and live-policy lookups are stubbed.
+ * stdin. Only the registry and preset lookups are stubbed, which replaces
+ * on-disk sandbox state.
  */
 
 import { spawnSync } from "node:child_process";
@@ -42,7 +43,6 @@ policies.listPresets = () => [
 ];
 policies.listCustomPresets = () => [];
 policies.getAppliedPresets = () => ["npm"];
-policies.getGatewayPresets = () => ["npm"];
 registry.getSandbox = (name) =>
   name === "test-sandbox" ? { name } : null;
 registry.listSandboxes = () => ({ sandboxes: [{ name: "test-sandbox" }] });

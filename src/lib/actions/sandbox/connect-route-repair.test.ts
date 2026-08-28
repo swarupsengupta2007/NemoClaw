@@ -407,20 +407,12 @@ describe("connect inference route retries", () => {
       { attempts: 3, delayMs: 2_000 },
     );
 
-    expect(result).toMatchObject({
-      healthy: true,
-      broken: false,
-      httpStatus: 200,
-    });
+    expect(result).toMatchObject({ healthy: true, broken: false, httpStatus: 200 });
     expect(captureOpenshell).toHaveBeenCalledTimes(3);
   });
 
   it("returns the final unhealthy probe result after exhausting attempts (#9218)", () => {
-    vi.mocked(captureOpenshell).mockReturnValue({
-      status: 0,
-      output: "BROKEN 503",
-      stderr: "",
-    });
+    vi.mocked(captureOpenshell).mockReturnValue({ status: 0, output: "BROKEN 503", stderr: "" });
 
     const result = probeSandboxInferenceRoute(
       "alpha",
@@ -428,11 +420,7 @@ describe("connect inference route retries", () => {
       { attempts: 2, delayMs: 500 },
     );
 
-    expect(result).toMatchObject({
-      healthy: false,
-      broken: true,
-      httpStatus: 503,
-    });
+    expect(result).toMatchObject({ healthy: false, broken: true, httpStatus: 503 });
     expect(captureOpenshell).toHaveBeenCalledTimes(2);
   });
 });

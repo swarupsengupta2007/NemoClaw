@@ -5,7 +5,6 @@ import { printOpenShellStateRpcIssue } from "../../adapters/openshell/gateway-dr
 import { CLI_NAME } from "../../cli/branding";
 import { deferSandboxLifecycleExit, isSandboxLifecycleDeferredExit } from "../../core/process-exit";
 import { inspectManagedLlamaCppStatus } from "../../inference/llama-cpp/managed-status";
-import { getGatewayPresets } from "../../policy";
 import { withMcpLifecycleLock } from "../../state/mcp-lifecycle-lock-acquisition";
 import * as registry from "../../state/registry";
 import { getSandboxDockerRuntime } from "./docker-health";
@@ -107,7 +106,7 @@ function hermesPortableStatusReport(
     hostMounts: normalizeSandboxStatusHostMounts(entry?.hostMounts),
     openshellDriver: entry?.openshellDriver ?? "unknown",
     openshellVersion: entry?.openshellVersion ?? "unknown",
-    policies: getGatewayPresets(sandboxName, 5_000) ?? [],
+    policies: [],
     failureLayer: null,
     terminalRuntimeHealth: null,
     servingProcessHealth: null,
@@ -137,9 +136,7 @@ function maybeEnsureHermesToolGatewayBroker(sb: registry.SandboxEntry | null): v
   }
   try {
     const hermesToolGatewayBroker = require("../../hermes-tool-gateway-broker");
-    hermesToolGatewayBroker.ensureHermesToolGatewayBrokerForSandboxEntry(sb, {
-      quiet: true,
-    });
+    hermesToolGatewayBroker.ensureHermesToolGatewayBrokerForSandboxEntry(sb, { quiet: true });
   } catch {
     /* non-fatal — status should still show sandbox diagnostics */
   }

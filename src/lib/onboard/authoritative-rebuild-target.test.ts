@@ -28,22 +28,19 @@ const target = {
 const originalGateway = process.env.OPENSHELL_GATEWAY;
 
 describe("authoritative rebuild sandbox flow options", () => {
-  it("clones the transient preset handoff and ignores non-authoritative injection", () => {
-    const rebuildPolicyPresets = ["github"];
+  it("carries only the bounded live OpenShell policy handoff", () => {
     const projected = authoritativeRebuildSandboxFlowOptions({
       authoritativeResumeConfig: true,
-      rebuildPolicyPresets,
+      rebuildPolicySourcePath: "/tmp/current-policy.yaml",
     });
 
     expect(projected).toEqual({
       authoritativeResumeConfig: true,
-      rebuildPolicyPresets: ["github"],
+      rebuildPolicySourcePath: "/tmp/current-policy.yaml",
     });
-    expect(projected.rebuildPolicyPresets).not.toBe(rebuildPolicyPresets);
     expect(
       authoritativeRebuildSandboxFlowOptions({
         authoritativeResumeConfig: false,
-        rebuildPolicyPresets: ["mcp-bridge-fake"],
       }),
     ).toEqual({ authoritativeResumeConfig: false });
   });
@@ -188,21 +185,12 @@ describe("prepared provider reconfiguration handoff", () => {
 
   it.each([
     { scenario: "resume disabled", override: { resume: false } },
-    {
-      scenario: "sandbox recreation disabled",
-      override: { recreateSandbox: false },
-    },
-    {
-      scenario: "onboard lock absent",
-      override: { onboardLockAlreadyHeld: false },
-    },
+    { scenario: "sandbox recreation disabled", override: { recreateSandbox: false } },
+    { scenario: "onboard lock absent", override: { onboardLockAlreadyHeld: false } },
   ])(
     "authorizes incomplete-session recovery only for the locked rebuild context [$scenario]",
     ({ override }) => {
-      const recoveryOptions = {
-        ...authorizedOptions,
-        rebuildProviderReconfigure: undefined,
-      };
+      const recoveryOptions = { ...authorizedOptions, rebuildProviderReconfigure: undefined };
       expect(rebuildProviderFlowOptions(recoveryOptions, providerTarget)).toMatchObject({
         authoritativeResumeConfig: true,
         forceInferenceSetup: false,
@@ -240,11 +228,7 @@ describe("prepared provider reconfiguration handoff", () => {
     };
 
     const activated = rebuildProviderFlowOptions(
-      {
-        ...authorizedOptions,
-        endpointSource: "onboard",
-        providerRecoveryReceipt: receipt,
-      },
+      { ...authorizedOptions, endpointSource: "onboard", providerRecoveryReceipt: receipt },
       flowContext,
     );
     expect(activated.providerRecoveryReceipt?.sessionId).toBe("sess-alpha");
@@ -335,9 +319,7 @@ describe("authoritative rebuild target preflight", () => {
     await expect(
       preflightAuthoritativeRebuildTarget(
         target,
-        deps({
-          inferenceRouteState: vi.fn((): InferenceRouteState => "mismatched"),
-        }),
+        deps({ inferenceRouteState: vi.fn((): InferenceRouteState => "mismatched") }),
       ),
     ).rejects.toThrow("inference route does not match");
   });
@@ -373,9 +355,7 @@ describe("authoritative rebuild target preflight", () => {
     await expect(
       preflightAuthoritativeRebuildTarget(
         target,
-        deps({
-          captureForwardList: vi.fn(() => "beta 127.0.0.1 18789 42 active"),
-        }),
+        deps({ captureForwardList: vi.fn(() => "beta 127.0.0.1 18789 42 active") }),
       ),
     ).rejects.toThrow("belongs to sandbox 'beta'");
   });
@@ -386,12 +366,7 @@ describe("authoritative rebuild target preflight", () => {
         target,
         deps({
           captureForwardList: vi.fn(() => ""),
-          checkPort: vi.fn(async () => ({
-            ok: false,
-            process: "node",
-            pid: 99,
-            reason: "",
-          })),
+          checkPort: vi.fn(async () => ({ ok: false, process: "node", pid: 99, reason: "" })),
         }),
       ),
     ).rejects.toThrow("occupied by node (PID 99)");

@@ -37,7 +37,6 @@ export type RecorderOverrides = {
       sandboxName?: string | null;
       provider?: string | null;
       model?: string | null;
-      policyPresets?: string[] | null;
     },
   ) => Promise<void>;
   recordStepComplete?: (stepName: string, updates?: SessionUpdates) => Promise<Session>;
@@ -226,14 +225,13 @@ export function createPhases(
     policiesDeps: {
       loadSession: recorders.loadSession ?? (() => createSession()),
       getActiveSandbox: recorders.getActiveSandbox ?? (() => null),
-      getAppliedPolicyPresets: () => [],
       mergePolicyMessagingChannels:
         recorders.mergePolicyMessagingChannels ?? ((selected) => selected),
       detectUnconfiguredMessagingChannels: () => [],
       verifyCompatibleEndpointSandboxSmoke: vi.fn(),
       preparePolicyPresetResumeSelection: () => ({
-        policyPresets: [],
-        recordedPolicyPresetsNeedReconcile: false,
+        policyPresets: ["balanced"],
+        livePolicyPresetsNeedUpdate: false,
         disabledMessagingPolicyPresetApplied: false,
         suppressedAgentRequiredPresetsLive: false,
       }),
@@ -247,8 +245,6 @@ export function createPhases(
           order.push("policies");
           return ["balanced"];
         }),
-      updateSession:
-        recorders.updateSession ?? vi.fn((mutator) => mutator(createSession()) ?? createSession()),
       recordStepComplete:
         recorders.recordStepComplete ??
         vi.fn(async (_stepName: string, updates: SessionUpdates = {}) =>
@@ -274,9 +270,7 @@ export function createPhases(
       removeLegacyCredentialsFile: vi.fn(),
       cleanupStaleHostFiles: vi.fn(),
       checkAndRecoverSandboxProcesses: vi.fn(),
-      settleOrdinaryOpenClawPairing: vi.fn(async () => ({
-        kind: "settled" as const,
-      })),
+      settleOrdinaryOpenClawPairing: vi.fn(async () => ({ kind: "settled" as const })),
       ordinaryOpenClawPairingIncompleteMessage: vi.fn(
         () => "OpenClaw onboarding is incomplete; resume onboarding.",
       ),

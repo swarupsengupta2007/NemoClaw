@@ -78,31 +78,19 @@ export function resolveRebuildHermesDashboardEnv(
     entry.hermesDashboardEnabled !== undefined &&
     typeof entry.hermesDashboardEnabled !== "boolean"
   ) {
-    return {
-      ok: false,
-      reason: "recorded hermesDashboardEnabled value is not boolean",
-    };
+    return { ok: false, reason: "recorded hermesDashboardEnabled value is not boolean" };
   }
   if (rebuildAgent !== "hermes" || entry.hermesDashboardEnabled !== true) {
     return { ok: true, env: { [HERMES_DASHBOARD_ENABLE_ENV]: "0" } };
   }
   if (!validDashboardPort(entry.hermesDashboardPort)) {
-    return {
-      ok: false,
-      reason: "recorded Hermes dashboard port is invalid or missing",
-    };
+    return { ok: false, reason: "recorded Hermes dashboard port is invalid or missing" };
   }
   if (!validDashboardPort(entry.hermesDashboardInternalPort)) {
-    return {
-      ok: false,
-      reason: "recorded Hermes dashboard internal port is invalid or missing",
-    };
+    return { ok: false, reason: "recorded Hermes dashboard internal port is invalid or missing" };
   }
   if (entry.hermesDashboardTui !== undefined && typeof entry.hermesDashboardTui !== "boolean") {
-    return {
-      ok: false,
-      reason: "recorded hermesDashboardTui value is not boolean",
-    };
+    return { ok: false, reason: "recorded hermesDashboardTui value is not boolean" };
   }
   const env: RebuildHermesDashboardEnv = {
     [HERMES_DASHBOARD_ENABLE_ENV]: "1",
@@ -120,16 +108,17 @@ export function resolveRebuildHermesDashboardEnv(
       },
     });
   } catch (err) {
-    return {
-      ok: false,
-      reason: err instanceof Error ? err.message : String(err),
-    };
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   }
   return { ok: true, env };
 }
 
 function normalizeHermesAuthMethod(value: unknown): "oauth" | "api_key" | null {
   return value === "oauth" || value === "api_key" ? value : null;
+}
+
+function builtinWebSearchPolicyProviders(entry: RebuildSandboxEntry): WebSearchProvider[] {
+  return (["brave", "tavily"] as const).filter((provider) => entry.webSearchProvider === provider);
 }
 
 export function resolveRebuildDurableConfig(
@@ -150,6 +139,11 @@ export function resolveRebuildDurableConfig(
     (!resolvedSelection.model || session.model === resolvedSelection.model)
       ? session
       : null;
+  const policyProviders = builtinWebSearchPolicyProviders(entry);
+  const migrationPolicyProviders =
+    entry.webSearchEnabled === true || entry.agent !== DCODE_AGENT_NAME
+      ? policyProviders
+      : policyProviders.filter((provider) => provider === "brave");
   const recordedWebSearchProvider = entry.webSearchProvider;
   const validRecordedWebSearchProvider = isWebSearchProvider(recordedWebSearchProvider)
     ? recordedWebSearchProvider
@@ -162,7 +156,8 @@ export function resolveRebuildDurableConfig(
     typeof entry.webSearchEnabled === "boolean"
       ? entry.webSearchEnabled
       : validRecordedWebSearchProvider !== null ||
-        matchingSession?.webSearchConfig?.fetchEnabled === true;
+        matchingSession?.webSearchConfig?.fetchEnabled === true ||
+        migrationPolicyProviders.length > 0;
   let webSearchError: string | null = null;
   if (entry.webSearchEnabled !== undefined && typeof entry.webSearchEnabled !== "boolean") {
     webSearchError = "recorded webSearchEnabled value is not boolean";
@@ -174,10 +169,21 @@ export function resolveRebuildDurableConfig(
     webSearchError = "recorded webSearchProvider value is invalid";
   } else if (!webSearchEnabled && validRecordedWebSearchProvider) {
     webSearchError = "recorded webSearchProvider is set while web search is disabled";
+  } else if (
+    webSearchEnabled &&
+    !validRecordedWebSearchProvider &&
+    !sessionWebSearchProvider &&
+    migrationPolicyProviders.length > 1
+  ) {
+    webSearchError = "recorded web-search policies select more than one provider";
   }
   let webSearchProvider: WebSearchProvider | null = null;
   if (webSearchEnabled && !webSearchError) {
-    webSearchProvider = validRecordedWebSearchProvider ?? sessionWebSearchProvider ?? "brave";
+    webSearchProvider =
+      validRecordedWebSearchProvider ??
+      sessionWebSearchProvider ??
+      migrationPolicyProviders[0] ??
+      "brave";
   }
   const recordedToolDisclosure =
     entry.toolDisclosure !== undefined && entry.toolDisclosure !== null
@@ -262,11 +268,7 @@ export function resolveRebuildDockerfile(
   const resolved = path.resolve(fromDockerfile);
   try {
     if (!fs.statSync(resolved).isFile()) {
-      return {
-        ok: false,
-        path: resolved,
-        reason: "path is not a regular file",
-      };
+      return { ok: false, path: resolved, reason: "path is not a regular file" };
     }
     fs.accessSync(resolved, fs.constants.R_OK);
   } catch (err) {

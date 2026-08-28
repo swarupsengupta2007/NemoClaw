@@ -43,33 +43,27 @@ function managedCheckpoint(
   overrides: Partial<
     Pick<
       PendingSandboxCreateVerification,
-      | "gatewayPort"
-      | "lifecycleGeneration"
-      | "sandboxIdentityFingerprint"
-      | "route"
-      | "policyHash"
-      | "policyVersion"
+      "gatewayPort" | "lifecycleGeneration" | "sandboxIdentityFingerprint" | "route"
     >
   > = {},
 ): PendingSandboxCreateVerification {
+  const boundary = {
+    gatewayPort: 8080,
+    lifecycleGeneration: LIFECYCLE_GENERATION,
+    sandboxIdentityFingerprint: LIVE_IDENTITY_FINGERPRINT,
+    route: "none" as const,
+    ...overrides,
+  };
   return {
     schemaVersion: 1,
     state: "verified-create",
     gatewayName: EXACT_ROUTE_AUTHORITY.gatewayName,
     sandboxName: EXACT_ROUTE_AUTHORITY.sandboxName,
-    gatewayPort: 8080,
-    lifecycleGeneration: LIFECYCLE_GENERATION,
-    sandboxIdentityFingerprint: LIVE_IDENTITY_FINGERPRINT,
-    route: "none" as const,
-    policyHash: "sha256:policy-1",
-    policyVersion: 1,
-    ...overrides,
+    ...boundary,
   };
 }
 function externalCheckpoint(
-  overrides: Partial<
-    Pick<PendingSandboxCreateVerification, "policyHash" | "policyVersion" | "route">
-  > = {},
+  overrides: Partial<Pick<PendingSandboxCreateVerification, "route">> = {},
 ): PendingSandboxCreateVerification {
   return {
     schemaVersion: 1,
@@ -80,8 +74,6 @@ function externalCheckpoint(
     lifecycleGeneration: LIFECYCLE_GENERATION,
     sandboxIdentityFingerprint: LIVE_IDENTITY_FINGERPRINT,
     route: "none",
-    policyHash: "sha256:external-1",
-    policyVersion: 1,
     ...overrides,
   };
 }
@@ -978,8 +970,6 @@ describe("sandbox inference route reservation", () => {
       const replacement = managedCheckpoint({
         route: "compatibility",
         sandboxIdentityFingerprint: "b".repeat(64),
-        policyHash: "sha256:policy-2",
-        policyVersion: 2,
       });
       const initialEntry = registry.recordPendingSandboxCreateVerification(create, initial);
       const admittedCheckpoint = ownedReservation(
@@ -1084,7 +1074,7 @@ describe("sandbox inference route reservation", () => {
         registry.registerSandbox(completedEntry(checkpoint), route, {
           verifiedCreate: {
             reservation: create,
-            checkpoint: externalCheckpoint({ policyHash: "sha256:changed" }),
+            checkpoint: externalCheckpoint({ route: "native" }),
           },
         }),
       ).toThrow(/verified create checkpoint changed/u);
@@ -1281,14 +1271,7 @@ describe("sandbox inference route reservation qualification (#9203)", () => {
     ["agent", { agent: "hermes" }],
     [
       "workload",
-      {
-        workload: {
-          schemaVersion: 1,
-          kind: "legacy-dockerfile",
-          reference: null,
-          shared: false,
-        },
-      },
+      { workload: { schemaVersion: 1, kind: "legacy-dockerfile", reference: null, shared: false } },
     ],
     ["lifecycle", { lifecycleGeneration: "11111111-1111-4111-8111-111111111111" }],
   ])(

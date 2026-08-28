@@ -81,7 +81,7 @@ export interface SandboxOnboardFlowPhaseOptions<
   requestedObservabilityEnabled?: boolean | null;
   requestedDcodeAutoApprovalMode?: DcodeAutoApprovalMode | null;
   rebuildPreservedEnv?: readonly import("../../state/preserved-env").PreservedEnvFile[];
-  rebuildPolicyPresets?: readonly string[];
+  rebuildPolicySourcePath?: string;
   hostMounts?: readonly import("../../state/registry/types").SandboxHostMount[];
   endpointProvenance: EndpointProvenanceOptions;
   recreateSandbox: (requested?: boolean) => boolean;
@@ -154,10 +154,7 @@ function endpointProvenanceForPhase(
   options: EndpointProvenanceOptions,
 ): EndpointProvenance {
   if (context.fresh) {
-    return {
-      endpointSource: "onboard",
-      onboardEndpointUrl: context.endpointUrl,
-    };
+    return { endpointSource: "onboard", onboardEndpointUrl: context.endpointUrl };
   }
   if (options.endpointSource !== undefined) {
     const endpointSource = normalizeInferenceEndpointSource(options.endpointSource);
@@ -344,7 +341,7 @@ export function createSandboxOnboardFlowPhase<
       requestedObservabilityEnabled: options.requestedObservabilityEnabled,
       requestedDcodeAutoApprovalMode: options.requestedDcodeAutoApprovalMode,
       rebuildPreservedEnv: options.rebuildPreservedEnv,
-      rebuildPolicyPresets: options.rebuildPolicyPresets,
+      rebuildPolicySourcePath: options.rebuildPolicySourcePath,
       hostMounts: options.hostMounts,
       recreateSandbox: options.recreateSandbox,
       session: context.session,
@@ -478,8 +475,5 @@ export async function runCoreOnboardFlowSlice<Context extends OnboardFlowContext
       `Core onboarding prerequisite repair selected '${sandboxRepair.finalState}' for durable entry '${state}'`,
     );
   }
-  return {
-    context: sandboxRepair.context,
-    session: await options.runtime.session(),
-  };
+  return { context: sandboxRepair.context, session: await options.runtime.session() };
 }

@@ -12,6 +12,7 @@ import { MESSAGING_CHANNEL_CONFIG_ENV_KEYS } from "../../messaging-channel-confi
 import { hydrateCredentialEnv } from "../../onboard/credential-env";
 import { DOCKER_GPU_PATCH_NETWORK_ENV } from "../../onboard/docker-gpu-patch";
 import { withPortableOnboardRetirementBoundary } from "../../onboard/portable-retirement-authority";
+import { cleanupTempDir } from "../../onboard/temp-files";
 import { withMcpLifecycleLock } from "../../state/mcp-lifecycle-lock";
 import * as onboardSession from "../../state/onboard-session";
 import { load as loadRegistry, REGISTRY_FILE } from "../../state/registry/persistence";
@@ -31,7 +32,6 @@ import {
 } from "./rebuild-post-restore-phase";
 import { printRebuildPreflightFailure } from "./rebuild-preflight-error";
 import {
-  blockRebuildOnPendingBaselineTransition,
   assertSandboxRebuildCommandAvailable,
   revalidateManagedWorkloadRebuildBeforeDelete,
   revalidateRebuildRouteBeforeDelete,
@@ -163,7 +163,6 @@ async function rebuildSandboxUnlocked(
   const preparedBackupRecovery = recoveryManifest !== null;
   const recoveryRecreate = staleRecovery || preparedBackupRecovery;
   try {
-    if (blockRebuildOnPendingBaselineTransition(sandboxEntry, sandboxName, bail)) return;
     let recoveryRegistrySnapshot = preparedBackupRecovery
       ? JSON.parse(JSON.stringify(loadRegistry()))
       : liveState.staleRegistrySnapshot;
@@ -437,6 +436,7 @@ async function rebuildSandboxUnlocked(
           rebuildsHermesSandbox: rebuildAgent === "hermes",
           hermesToolGateways,
           hasHermesToolGateways,
+          policySourcePath: backup.policySourcePath,
           credentialEnv,
           baseImagePreflight,
           recoveryRecreate,
@@ -462,7 +462,6 @@ async function rebuildSandboxUnlocked(
           targetAgentType: rebuildAgent || "openclaw",
           targetImageIsCustom: Boolean(fromDockerfile),
           backupManifest: backup.backupManifest,
-          policyDocument: backup.policyDocument,
           log,
         });
       let hermesCronRestoreIdentity: HermesCronRestoreIdentity | undefined;
@@ -503,10 +502,6 @@ async function rebuildSandboxUnlocked(
         restoreSucceeded: restored.restoreSucceeded,
         hermesCronRestoreIdentity,
         backupWasForceSkipped: backup.backupWasForceSkipped,
-        failedPresets: restored.failedPresets,
-        finalBuiltinPresets: restored.finalBuiltinPresets,
-        failedPresetRemovals: restored.failedPresetRemovals,
-        policyPresetReconciliationVerified: restored.policyPresetReconciliationVerified,
         staleRecovery,
         recoveryRecreate,
         preparedBackupRecovery,
@@ -516,6 +511,7 @@ async function rebuildSandboxUnlocked(
         log,
         bail,
       });
+      cleanupTempDir(backup.policySourcePath, "nemoclaw-rebuild-policy");
     } finally {
       if (!rebuildShieldsWindow.relocked && !sandboxExistenceAmbiguous) {
         relockShieldsIfNeeded(sandboxStillExists);

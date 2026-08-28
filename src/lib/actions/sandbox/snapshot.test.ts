@@ -31,10 +31,7 @@ describe("runSandboxSnapshot", () => {
   });
 
   function mockDcodeProbe(state: DcodeProbeState, output = "") {
-    mockDcodeProbeResult({
-      status: 0,
-      output: dcodeProbeOutput(state, output),
-    });
+    mockDcodeProbeResult({ status: 0, output: dcodeProbeOutput(state, output) });
   }
 
   function mockDcodeProbeResult(result: f.OpenshellCaptureResult) {
@@ -303,19 +300,14 @@ describe("runSandboxSnapshot", () => {
 
     await runSandboxSnapshot("alpha", { kind: "create", name: "framed-idle" });
 
-    expect(f.backupSandboxStateMock).toHaveBeenCalledWith("alpha", {
-      name: "framed-idle",
-    });
+    expect(f.backupSandboxStateMock).toHaveBeenCalledWith("alpha", { name: "framed-idle" });
     expect(consoleLog.mock.calls.flat().join("\n")).toContain(
       "Snapshot v9 name=framed-idle created",
     );
     const execCall = f.captureOpenshellMock.mock.calls.find(
       ([args]) => args[0] === "sandbox" && args[1] === "exec",
     );
-    expect(execCall?.[1]).toMatchObject({
-      ignoreError: true,
-      includeStreams: true,
-    });
+    expect(execCall?.[1]).toMatchObject({ ignoreError: true, includeStreams: true });
     expect(execCall?.[0]).toContain("-c");
     expect(execCall?.[0]).not.toContain("-lc");
     expect(String(execCall?.[0].at(-1) ?? "")).toMatch(
@@ -325,10 +317,7 @@ describe("runSandboxSnapshot", () => {
 
   it("refuses an active dcode task when OpenShell frames the probe stdout", async () => {
     f.getSandboxMock.mockReturnValue(dcodeSandboxEntry);
-    mockDcodeProbeResult({
-      status: 0,
-      output: framedDcodeProbeOutput("active", "[stdout] "),
-    });
+    mockDcodeProbeResult({ status: 0, output: framedDcodeProbeOutput("active", "[stdout] ") });
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const { runSandboxSnapshot } = await import("./snapshot");
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { inspectOpenShellSandboxIdentityFingerprint } from "../../adapters/openshell/policy-authority";
+import { inspectOpenShellSandboxIdentityFingerprint } from "../../adapters/openshell/policy-state";
 import { runOpenshell } from "../../adapters/openshell/runtime";
 
 type MessagingProviderTokenDefinition = {
@@ -76,11 +76,11 @@ export const policyChannelDependencies = {
       runOpenshell: gatewayRunner(gatewayName),
     });
   },
-  revalidateChannelProviderPolicyAuthority(sandboxName: string, gatewayName: string): void {
+  revalidateChannelProviderPolicy(sandboxName: string, gatewayName: string): void {
     const policy = require("../../policy") as PolicyModule;
     const operation = `change messaging providers for sandbox '${sandboxName}'`;
-    const boundary = policy.inspectPolicyMutationBoundary(sandboxName, operation, gatewayName);
-    policy.recheckPolicyMutationBoundary(sandboxName, operation, boundary);
+    const context = policy.inspectPolicyMutationContext(sandboxName, operation, gatewayName);
+    policy.recheckPolicyMutationContext(sandboxName, operation, context);
   },
   runGatewayOpenshell(
     gatewayName: string,
@@ -130,10 +130,7 @@ export const policyChannelDependencies = {
     const services = require("../../tunnel/services") as GooglechatTunnelServices;
     const webhookProxy =
       require("../../messaging/channels/googlechat/tunnel/proxy") as GooglechatWebhookProxy;
-    lifecycle.stopGooglechatWebhookTunnel(sandboxName, {
-      services,
-      webhookProxy,
-    });
+    lifecycle.stopGooglechatWebhookTunnel(sandboxName, { services, webhookProxy });
   },
   googlechatTunnelRuntime(sandboxName: string): GooglechatTunnelRuntimeDeps {
     return {

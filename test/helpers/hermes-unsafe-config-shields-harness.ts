@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { expect, type MockInstance, vi } from "vitest";
-import { managedPolicyMutationAuthority } from "./shields-flow-harness";
+import { managedPolicyMutationContext } from "./shields-flow-harness";
 
 type RequireSource = NodeJS.Require;
 
@@ -281,22 +281,21 @@ export function createHermesUnsafeConfigHarness(
       );
       vi.spyOn(policy, "parseCurrentPolicy").mockImplementation((raw: unknown) => String(raw));
       vi.spyOn(policy, "resolvePermissivePolicyPath").mockReturnValue(permissivePolicyPath);
-      vi.spyOn(policy, "inspectPolicyMutationBoundary").mockReturnValue(
-        managedPolicyMutationAuthority,
+      vi.spyOn(policy, "inspectPolicyMutationContext").mockReturnValue(
+        managedPolicyMutationContext,
       );
-      vi.spyOn(policy, "inspectPolicyRecoveryBoundary").mockReturnValue(
-        managedPolicyMutationAuthority,
+      vi.spyOn(policy, "inspectPolicyMutationContext").mockReturnValue(
+        managedPolicyMutationContext,
       );
-      vi.spyOn(policy, "recheckPolicyMutationBoundary").mockReturnValue(
-        managedPolicyMutationAuthority,
+      vi.spyOn(policy, "recheckPolicyMutationContext").mockReturnValue(
+        managedPolicyMutationContext,
       );
-      vi.spyOn(policy, "verifyLivePolicyDocument").mockImplementation(() => undefined);
+      vi.spyOn(policy, "verifyAppliedPolicyDocument").mockImplementation(() => undefined);
       vi.spyOn(agentConfig, "resolveAgentConfig").mockReturnValue(hermesTarget);
       vi.spyOn(registry, "getSandbox").mockImplementation((name: unknown) => ({
         name: String(name),
         agent: "hermes",
         openshellDriver: "docker",
-        policyAuthority: "nemoclaw-managed",
         lifecycleGeneration: "legacy-generation",
         workload: { kind: "managed-image" },
       }));
@@ -322,9 +321,7 @@ export function createHermesUnsafeConfigHarness(
         Number(pid) === fakeTimerPid || Number(pid) === process.pid ? "test-start" : null,
       );
       vi.spyOn(timerControl, "isProcessAlive").mockReturnValue(true);
-      vi.spyOn(timerControl, "verifyTimerMarkerIdentity").mockReturnValue({
-        verified: true,
-      });
+      vi.spyOn(timerControl, "verifyTimerMarkerIdentity").mockReturnValue({ verified: true });
       vi.spyOn(childProcess, "fork").mockImplementation((_module: unknown, args: unknown) => {
         const sandboxName = String((args as unknown[])[0]);
         return {
@@ -333,10 +330,7 @@ export function createHermesUnsafeConfigHarness(
           unref: vi.fn(),
           kill: vi.fn(() => true),
           send: vi.fn((message: unknown) => {
-            const request = message as {
-              type?: unknown;
-              processToken?: unknown;
-            };
+            const request = message as { type?: unknown; processToken?: unknown };
             if (request.type === "authorize" && typeof request.processToken === "string") {
               const marker = timerControl.readTimerMarker(sandboxName);
               if (marker?.timerProcessStartIdentity) {

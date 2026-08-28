@@ -272,7 +272,7 @@ describe("Portable OpenClaw pairing settlement", () => {
       updateSandbox,
       withSandboxLock: vi.fn(async (_name, operation) => {
         revalidatePolicyRequirements = () => {
-          throw new Error("policy authority changed");
+          throw new Error("policy requirements changed");
         };
         return operation();
       }),
@@ -287,7 +287,7 @@ describe("Portable OpenClaw pairing settlement", () => {
         },
         scope.deps,
       ),
-    ).rejects.toThrow("policy authority changed");
+    ).rejects.toThrow("policy requirements changed");
 
     expect(updateSandbox).not.toHaveBeenCalled();
     expect(scope.observePairing).not.toHaveBeenCalled();
@@ -318,7 +318,7 @@ describe("Portable OpenClaw pairing settlement", () => {
     expect(scope.runApproval).not.toHaveBeenCalled();
   });
 
-  it("does not repair a legacy OpenClaw row without exact receipt and policy authority (#9207)", async () => {
+  it("does not repair a legacy OpenClaw row without exact receipt and policy requirements (#9207)", async () => {
     const updateSandbox = vi.fn(() => true);
     const scope = settlementDeps({
       getSandbox: vi.fn(() => ({
@@ -581,7 +581,7 @@ describe("Portable OpenClaw pairing settlement", () => {
     const scope = settlementDeps();
     scope.observePairing.mockImplementationOnce(() => {
       revalidatePolicyRequirements = () => {
-        throw new Error("policy authority changed");
+        throw new Error("policy requirements changed");
       };
       return {
         state: "pairing-only",
@@ -597,7 +597,7 @@ describe("Portable OpenClaw pairing settlement", () => {
         },
         scope.deps,
       ),
-    ).rejects.toThrow("policy authority changed");
+    ).rejects.toThrow("policy requirements changed");
 
     expect(scope.runProducer).not.toHaveBeenCalled();
     expect(scope.runApproval).not.toHaveBeenCalled();
@@ -609,7 +609,7 @@ describe("Portable OpenClaw pairing settlement", () => {
     const scope = settlementDeps({
       runPortablePairingProducer: vi.fn(() => {
         revalidatePolicyRequirements = () => {
-          throw new Error("policy authority changed");
+          throw new Error("policy requirements changed");
         };
       }),
     });
@@ -626,7 +626,7 @@ describe("Portable OpenClaw pairing settlement", () => {
         },
         scope.deps,
       ),
-    ).rejects.toThrow("policy authority changed");
+    ).rejects.toThrow("policy requirements changed");
 
     expect(scope.deps.runPortablePairingProducer).toHaveBeenCalledOnce();
     expect(scope.runApproval).not.toHaveBeenCalled();
@@ -638,7 +638,7 @@ describe("Portable OpenClaw pairing settlement", () => {
     const scope = settlementDeps();
     scope.observePairing.mockImplementationOnce(() => {
       revalidatePolicyRequirements = () => {
-        throw new Error("policy authority changed");
+        throw new Error("policy requirements changed");
       };
       return {
         state: "settled",
@@ -654,7 +654,7 @@ describe("Portable OpenClaw pairing settlement", () => {
         },
         scope.deps,
       ),
-    ).rejects.toThrow("policy authority changed");
+    ).rejects.toThrow("policy requirements changed");
 
     expect(scope.runProducer).not.toHaveBeenCalled();
     expect(scope.runApproval).not.toHaveBeenCalled();
@@ -675,7 +675,7 @@ describe("Portable OpenClaw pairing settlement", () => {
       })
       .mockImplementationOnce(() => {
         revalidatePolicyRequirements = () => {
-          throw new Error("policy authority changed");
+          throw new Error("policy requirements changed");
         };
         return {
           state: "settled",
@@ -691,7 +691,7 @@ describe("Portable OpenClaw pairing settlement", () => {
         },
         scope.deps,
       ),
-    ).rejects.toThrow("policy authority changed");
+    ).rejects.toThrow("policy requirements changed");
 
     expect(scope.runProducer).toHaveBeenCalledOnce();
     expect(scope.runApproval).toHaveBeenCalledOnce();

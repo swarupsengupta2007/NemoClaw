@@ -18,16 +18,8 @@ class ExitError extends Error {
 }
 
 const POLICY_PRESETS: PresetInfo[] = [
-  {
-    file: "npm.yaml",
-    name: "npm",
-    description: "npm and Yarn registry access",
-  },
-  {
-    file: "pypi.yaml",
-    name: "pypi",
-    description: "Python Package Index access",
-  },
+  { file: "npm.yaml", name: "npm", description: "npm and Yarn registry access" },
+  { file: "pypi.yaml", name: "pypi", description: "Python Package Index access" },
   { file: "discord.yaml", name: "discord", description: "Discord API access" },
   {
     file: "openclaw-pricing.yaml",
@@ -44,11 +36,7 @@ const POLICY_PRESETS: PresetInfo[] = [
     name: "nous-code",
     description: "Nous Portal managed sandboxed code gateway",
   },
-  {
-    file: "telegram.yaml",
-    name: "telegram",
-    description: "Telegram API access",
-  },
+  { file: "telegram.yaml", name: "telegram", description: "Telegram API access" },
   { file: "wechat.yaml", name: "wechat", description: "WeChat API access" },
 ];
 
@@ -82,11 +70,7 @@ async function captureExit(action: () => Promise<void>): Promise<number | undefi
 }
 
 function arrangeSandbox(agent: string | null = null): void {
-  getSandboxMock.mockReturnValue({
-    name: "test-sandbox",
-    agent,
-    policies: ["pypi"],
-  });
+  getSandboxMock.mockReturnValue({ name: "test-sandbox", agent, policies: ["pypi"] });
 }
 
 let stdinIsTty: PropertyDescriptor | undefined;
@@ -114,6 +98,7 @@ beforeEach(() => {
     name: "test-sandbox",
     agent: null,
   });
+
   vi.spyOn(onboardSession, "loadSession").mockReturnValue(null);
   vi.spyOn(onboardSession, "updateSession").mockReturnValue(
     undefined as unknown as onboardSession.Session,
@@ -229,9 +214,7 @@ describe("addSandboxPolicy", () => {
   });
 
   it("propagates a non-EOF picker failure instead of exiting (#7418)", async () => {
-    const failure = Object.assign(new Error("stdin read failed"), {
-      code: "EIO",
-    });
+    const failure = Object.assign(new Error("stdin read failed"), { code: "EIO" });
     selectFromListMock.mockRejectedValueOnce(failure);
 
     await expect(addSandboxPolicy("test-sandbox")).rejects.toBe(failure);
@@ -285,10 +268,7 @@ describe("addSandboxPolicy", () => {
 
     await expect(
       captureExit(() =>
-        addSandboxPolicy("test-sandbox", {
-          preset: "openclaw-pricing",
-          yes: true,
-        }),
+        addSandboxPolicy("test-sandbox", { preset: "openclaw-pricing", yes: true }),
       ),
     ).resolves.toBe(1);
 
@@ -300,21 +280,9 @@ describe("addSandboxPolicy", () => {
   it("treats messaging channel policy presets unavailable to terminal-runtime agents as unknown before preview or prompt", async () => {
     arrangeSandbox("langchain-deepagents-code");
     vi.spyOn(policies, "listPresets").mockReturnValue([
-      {
-        file: "npm.yaml",
-        name: "npm",
-        description: "npm and Yarn registry access",
-      },
-      {
-        file: "pypi.yaml",
-        name: "pypi",
-        description: "Python Package Index access",
-      },
-      {
-        file: "tavily.yaml",
-        name: "tavily",
-        description: "Tavily Search API access",
-      },
+      { file: "npm.yaml", name: "npm", description: "npm and Yarn registry access" },
+      { file: "pypi.yaml", name: "pypi", description: "Python Package Index access" },
+      { file: "tavily.yaml", name: "tavily", description: "Tavily Search API access" },
     ]);
 
     await expect(
@@ -388,7 +356,7 @@ describe("addSandboxPolicy", () => {
 
 describe("removeSandboxPolicy", () => {
   beforeEach(() => {
-    getGatewayPresetsMock.mockReturnValue(["pypi"]);
+    getAppliedPresetsMock.mockReturnValue(["pypi"]);
   });
 
   it("prompts for confirmation before removing an interactively selected preset", async () => {
@@ -452,7 +420,8 @@ describe("removeSandboxPolicy", () => {
     expect(removePresetMock).not.toHaveBeenCalled();
   });
 
-  it("removes a preset enforced by the live OpenShell policy (#9295)", async () => {
+  it("removes a preset the gateway enforces but the registry never recorded (#9295)", async () => {
+    getAppliedPresetsMock.mockReturnValue([]);
     getGatewayPresetsMock.mockReturnValue(["npm"]);
 
     await removeSandboxPolicy("test-sandbox", { preset: "npm", yes: true });
@@ -460,7 +429,8 @@ describe("removeSandboxPolicy", () => {
     expect(removePresetMock).toHaveBeenCalledWith("test-sandbox", "npm");
   });
 
-  it("refuses a preset absent from the live OpenShell policy (#9295)", async () => {
+  it("refuses a preset neither the registry nor the gateway holds (#9295)", async () => {
+    getAppliedPresetsMock.mockReturnValue([]);
     getGatewayPresetsMock.mockReturnValue(["pypi"]);
 
     await expect(
@@ -471,29 +441,31 @@ describe("removeSandboxPolicy", () => {
     expect(removePresetMock).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the live OpenShell policy is unreadable (#9295)", async () => {
+  it("names the unreachable gateway when it refuses on local state alone (#9295)", async () => {
+    getAppliedPresetsMock.mockReturnValue([]);
     getGatewayPresetsMock.mockReturnValue(null);
 
     await expect(
       captureExit(() => removeSandboxPolicy("test-sandbox", { preset: "npm", yes: true })),
     ).resolves.toBe(1);
 
-    expect(printedText()).toContain("Could not query the live OpenShell policy");
-    expect(printedText()).toContain("no policy changes were made");
+    expect(printedText()).toContain(
+      "Could not query the gateway, so only local state was checked.",
+    );
     expect(removePresetMock).not.toHaveBeenCalled();
   });
 
-  it("offers a live preset in the removal picker (#9295)", async () => {
+  it("offers a gateway-only preset in the removal picker (#9295)", async () => {
     getGatewayPresetsMock.mockReturnValue(["npm"]);
 
     await removeSandboxPolicy("test-sandbox");
 
     expect(selectForRemovalMock).toHaveBeenCalledWith(POLICY_PRESETS, {
-      applied: ["npm"],
+      applied: ["pypi", "npm"],
     });
   });
 
-  it("lists each live preset once in the removal picker (#9295)", async () => {
+  it("lists a preset both sources hold only once in the removal picker (#9295)", async () => {
     getGatewayPresetsMock.mockReturnValue(["pypi", "npm"]);
 
     await removeSandboxPolicy("test-sandbox");

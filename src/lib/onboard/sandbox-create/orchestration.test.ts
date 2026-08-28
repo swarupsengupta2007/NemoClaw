@@ -7,7 +7,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { PolicyAuthorityRefusalError } from "../../adapters/openshell/policy-authority";
+import { PolicyObservationError } from "../../adapters/openshell/policy-state";
 import type { SandboxEntry } from "../../state/registry";
 import { runSandboxProviderPreDeleteCleanup } from "../sandbox-provider-cleanup";
 import {
@@ -22,10 +22,9 @@ import {
   readManagedDcodeCreateSelectionDrift,
   readSandboxRecreateRegistryEntry,
   reconcileCreatedHermesCredentialEnvironment,
-  resolveInitialPolicyDelivery,
   runAuthorityBoundProviderCleanup,
   runAsyncWithPostCreateRecovery,
-  runSandboxCreateWithPolicyAuthorityChecks,
+  runSandboxCreateWithPolicyVerification,
   runWithPostCreateRecovery,
 } from "./orchestration";
 
@@ -33,9 +32,7 @@ const UNVERIFIED_RECOVERY_CONTEXT = {
   gatewayName: "nemoclaw",
   gatewayPort: 8080,
   lifecycleGeneration: "generation-1",
-  verifiedEffectivePolicyIdentity: null,
-  createAttemptNonce: "c".repeat(62),
-  policyCreationReceipt: null,
+  createAttemptNonce: "a".repeat(62),
 } as const;
 
 describe("created Hermes credential environment reconciliation", () => {
@@ -68,7 +65,7 @@ describe("created Hermes credential environment reconciliation", () => {
     reconcileCreatedHermesCredentialEnvironment(
       { sandboxName: "alpha", plan },
       {
-        revalidatePolicyAuthority: (operation) => events.push(`policy:${operation}`),
+        revalidatePolicyRequirements: (operation) => events.push(`policy:${operation}`),
         reconcileCredentialEnv: () => {
           events.push("reconcile");
           return { changed: true };
@@ -107,7 +104,7 @@ describe("created Hermes credential environment reconciliation", () => {
     reconcileCreatedHermesCredentialEnvironment(
       { sandboxName: "alpha", plan },
       {
-        revalidatePolicyAuthority: vi.fn(),
+        revalidatePolicyRequirements: vi.fn(),
         reconcileCredentialEnv: () => ({ changed: false }),
         restartGateway,
         parseRestartCompletion: vi.fn(),
@@ -124,8 +121,11 @@ describe("created Hermes credential environment reconciliation", () => {
     const expectedIdentity = "identity-a";
     let liveIdentity = expectedIdentity;
     const mutations: string[] = [];
-    const revalidatePolicyAuthority = vi.fn(() => {
-      liveIdentity === expectedIdentity || (() => { throw new Error("sandbox identity changed"); })();
+    const revalidatePolicyRequirements = vi.fn(() => {
+      liveIdentity === expectedIdentity ||
+        (() => {
+          throw new Error("sandbox identity changed");
+        })();
       liveIdentity = "identity-b";
     });
 
@@ -133,7 +133,7 @@ describe("created Hermes credential environment reconciliation", () => {
       reconcileCreatedHermesCredentialEnvironment(
         { sandboxName: "alpha", plan },
         {
-          revalidatePolicyAuthority,
+          revalidatePolicyRequirements,
           reconcileCredentialEnv: ((_plan: never, revalidate?: (operation: string) => void) => {
             revalidate?.("mutating credential environment");
             mutations.push(liveIdentity);
@@ -155,7 +155,7 @@ describe("created Hermes credential environment reconciliation", () => {
       reconcileCreatedHermesCredentialEnvironment(
         { sandboxName: "alpha", plan },
         {
-          revalidatePolicyAuthority: vi.fn(),
+          revalidatePolicyRequirements: vi.fn(),
           reconcileCredentialEnv: () => ({ changed: true }),
           restartGateway: () => ({ status: 1, stdout: "", stderr: "failed" }),
           parseRestartCompletion: () => null,
@@ -231,12 +231,7 @@ describe("retained create recovery persistence", () => {
       gatewayName: "nemoclaw-18080",
       gatewayPort: 18080,
       lifecycleGeneration: "00000000-0000-4000-8000-000000000004",
-      verifiedEffectivePolicyIdentity: {
-        hash: "sha256:policy-4",
-        activeVersion: 4,
-      },
-      createAttemptNonce: "d".repeat(62),
-      policyCreationReceipt: null,
+      createAttemptNonce: "b".repeat(62),
     } as const;
     const markRetainedSandboxRecovery = vi.fn(() => true);
     const input = {
@@ -427,11 +422,6 @@ describe("retained create recovery persistence", () => {
 });
 
 describe("APF create policy selection", () => {
-  it("selects whether OpenShell receives a supplied policy or APF interception", () => {
-    expect(resolveInitialPolicyDelivery(true)).toBe("apf-interceptor");
-    expect(resolveInitialPolicyDelivery(false)).toBe("supplied");
-  });
-
   it("requires APF effects to use the generic post-create gate (#9833)", () => {
     expect(() =>
       assertApfCreateIntent({
@@ -486,7 +476,7 @@ describe("deferred provider effect authority", () => {
 
   it("refuses provider cleanup when a sandbox appears after verified absence (#9833)", () => {
     let observationCount = 0;
-    const revalidatePolicyAuthority = vi.fn();
+    const revalidatePolicyRequirements = vi.fn();
     const runOpenshell = vi.fn(() => ({
       pid: 1,
       output: [null, "", ""],
@@ -503,14 +493,14 @@ describe("deferred provider effect authority", () => {
           observationCount++ === 0
             ? { state: "missing", liveIdentityFingerprint: null }
             : { state: "ready", liveIdentityFingerprint: "f".repeat(64) },
-        revalidatePolicyAuthority,
+        revalidatePolicyRequirements,
         runProviderPreDeleteCleanup: runSandboxProviderPreDeleteCleanup,
         runOpenshell,
         redact: (value) => value,
         tolerateMissingSandbox: true,
       }),
     ).toThrow(/appeared after absence was verified/u);
-    expect(revalidatePolicyAuthority).toHaveBeenCalledOnce();
+    expect(revalidatePolicyRequirements).toHaveBeenCalledOnce();
     expect(runOpenshell).not.toHaveBeenCalled();
   });
 
@@ -539,16 +529,14 @@ describe("deferred provider effect authority", () => {
         revalidate("cleaning up providers for sandbox 'alpha'");
         return ["first", "second"];
       },
-      revalidatePolicyAuthorityBeforeCreate: vi.fn(),
+      revalidatePolicyRequirementsBeforeCreate: vi.fn(),
     });
     const runAfterVerifiedCreate = boundary.runAfterVerifiedCreate;
     expect(runAfterVerifiedCreate).toBeTypeOf("function");
 
     await expect(
       runAfterVerifiedCreate?.({
-        registration: {
-          policyIdentity: { hash: "b".repeat(64), activeVersion: 1 },
-        },
+        registration: {},
         sandboxName: "alpha",
         gatewayName: "nemoclaw",
         gatewayPort: 18790,
@@ -607,10 +595,7 @@ describe("managed MCP rebuild handoff", () => {
 
 describe("sandbox recreate registry authority", () => {
   it("re-reads the durable source row for Hermes portable recreation (#10056)", () => {
-    const durable = {
-      name: "alpha",
-      lifecycleGeneration: "source-generation",
-    } as SandboxEntry;
+    const durable = { name: "alpha", lifecycleGeneration: "source-generation" } as SandboxEntry;
     const readRegistry = vi.fn(() => durable);
 
     expect(
@@ -717,7 +702,7 @@ describe("Hermes portable registration adapter", () => {
   });
 });
 
-describe("sandbox create policy authority checks", () => {
+describe("sandbox create policy requirements checks", () => {
   const exactIdentity = "a".repeat(64);
   const verifiedPolicyBoundary = () => ({
     verifyCreatedPolicy: vi.fn(() => "verified"),
@@ -735,22 +720,22 @@ describe("sandbox create policy authority checks", () => {
     const create = vi.fn(async () => "created");
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: () => {
-          throw new Error("external policy authority must supply the selected route");
+          throw new Error("live policy requirements changed before the selected route");
         },
         ...exactIdentityBoundary(),
         create,
         cleanupTemporarySources: vi.fn(),
       }),
-    ).rejects.toThrow(/external policy authority must supply/u);
+    ).rejects.toThrow(/live policy requirements changed before/u);
     expect(create).not.toHaveBeenCalled();
   });
 
   it("checks the named Ready sandbox before registration can continue (#9833)", async () => {
     const events: string[] = [];
-    const result = await runSandboxCreateWithPolicyAuthorityChecks({
+    const result = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate: (sandboxIsLive) => events.push(sandboxIsLive ? "ready-check" : "create-check"),
       create: async (verifyCreatedSandbox) => {
@@ -795,7 +780,7 @@ describe("sandbox create policy authority checks", () => {
     const events: string[] = [];
     const revalidate = vi.fn(() => events.push("create-check"));
 
-    const error = await runSandboxCreateWithPolicyAuthorityChecks({
+    const error = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate,
       create: async (verifyCreatedSandbox) => {
@@ -806,7 +791,7 @@ describe("sandbox create policy authority checks", () => {
       ...exactIdentityBoundary(),
       revalidateVerifiedPolicy: () => {
         events.push("ready-check");
-        throw new Error("external policy authority changed");
+        throw new Error("external policy requirements changed");
       },
       cleanupTemporarySources: () => events.push("cleanup-sources"),
     }).catch((caught: unknown) => caught);
@@ -837,7 +822,7 @@ describe("sandbox create policy authority checks", () => {
     const persistRetainedSandboxRecovery = vi.fn(() => true);
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: vi.fn(),
         create: async (verifyCreatedSandbox) => {
@@ -846,7 +831,7 @@ describe("sandbox create policy authority checks", () => {
         },
         ...exactIdentityBoundary(),
         revalidateVerifiedPolicy: () => {
-          throw new Error("external policy authority changed");
+          throw new Error("external policy requirements changed");
         },
         persistRetainedSandboxRecovery,
         cleanupTemporarySources: vi.fn(),
@@ -862,14 +847,11 @@ describe("sandbox create policy authority checks", () => {
   });
 
   it("retains verified policy evidence when checkpoint persistence fails (#9833)", async () => {
-    const verifiedEvidence = {
-      policyHash: "sha256:policy-4",
-      policyVersion: 4,
-    } as const;
+    const verifiedEvidence = { policyHash: "sha256:policy-4", policyVersion: 4 } as const;
     const persistRetainedSandboxRecovery = vi.fn(() => true);
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: vi.fn(),
         create: async (verifyCreatedSandbox) => {
@@ -898,7 +880,7 @@ describe("sandbox create policy authority checks", () => {
     const createFailure = new Error("runtime patch failed after verification");
     const persistRetainedSandboxRecovery = vi.fn(() => true);
 
-    const error = await runSandboxCreateWithPolicyAuthorityChecks({
+    const error = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate: vi.fn(),
       create: async (verifyCreatedSandbox) => {
@@ -953,7 +935,7 @@ describe("sandbox create policy authority checks", () => {
         throw createFailure;
       });
 
-      const error = await runSandboxCreateWithPolicyAuthorityChecks({
+      const error = await runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: vi.fn(),
         create,
@@ -981,7 +963,7 @@ describe("sandbox create policy authority checks", () => {
     const revalidate = vi.fn();
     const revalidateCreatedSandboxIdentity = vi.fn();
 
-    const error = await runSandboxCreateWithPolicyAuthorityChecks({
+    const error = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate,
       create: async (verifyCreatedSandbox) => {
@@ -1047,9 +1029,9 @@ describe("sandbox create policy authority checks", () => {
       },
       runVerifiedSandboxCreateEffects: null,
       activateDeferredProviderEffects: () => ["credential-provider"],
-      revalidatePolicyAuthorityBeforeCreate: vi.fn(),
+      revalidatePolicyRequirementsBeforeCreate: vi.fn(),
     });
-    const error = await runSandboxCreateWithPolicyAuthorityChecks({
+    const error = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate: vi.fn(),
       create: async (verifyCreatedSandbox) => {
@@ -1062,9 +1044,7 @@ describe("sandbox create policy authority checks", () => {
       },
       runVerifiedCreateEffects: async () => {
         await providerBoundary.runAfterVerifiedCreate?.({
-          registration: {
-            policyIdentity: { hash: "policy-alpha", activeVersion: 1 },
-          },
+          registration: {},
           sandboxName: "alpha",
           gatewayName: "nemoclaw",
           gatewayPort: 8080,
@@ -1085,7 +1065,7 @@ describe("sandbox create policy authority checks", () => {
   it("reports temporary source cleanup failure with sandbox preservation (#9833)", async () => {
     const revalidate = vi.fn();
 
-    const error = await runSandboxCreateWithPolicyAuthorityChecks({
+    const error = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate,
       create: async (verifyCreatedSandbox) => {
@@ -1094,7 +1074,7 @@ describe("sandbox create policy authority checks", () => {
       },
       ...exactIdentityBoundary(),
       revalidateVerifiedPolicy: () => {
-        throw new Error("external policy authority changed");
+        throw new Error("external policy requirements changed");
       },
       cleanupTemporarySources: () => {
         throw new Error("temporary source cleanup failed");
@@ -1105,9 +1085,7 @@ describe("sandbox create policy authority checks", () => {
     expect((error as AggregateError).errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ message: "temporary source cleanup failed" }),
-        expect.objectContaining({
-          message: expect.stringContaining("left sandbox 'alpha'"),
-        }),
+        expect.objectContaining({ message: expect.stringContaining("left sandbox 'alpha'") }),
       ]),
     );
   });
@@ -1115,7 +1093,7 @@ describe("sandbox create policy authority checks", () => {
   it("runs continuation effects only after policy and identity verification (#9833)", async () => {
     const events: string[] = [];
 
-    const result = await runSandboxCreateWithPolicyAuthorityChecks({
+    const result = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate: (sandboxIsLive) => events.push(sandboxIsLive ? "policy" : "preflight"),
       create: async (verifyCreatedSandbox) => {
@@ -1162,7 +1140,7 @@ describe("sandbox create policy authority checks", () => {
     const persistVerifiedPolicy = vi.fn();
     const runVerifiedCreateEffects = vi.fn();
 
-    const error = await runSandboxCreateWithPolicyAuthorityChecks({
+    const error = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate: vi.fn(),
       create: async (verifyCreatedSandbox) => {
@@ -1173,7 +1151,7 @@ describe("sandbox create policy authority checks", () => {
       persistCreatedSandboxIdentity: vi.fn(),
       revalidateCreatedSandboxIdentity: vi.fn(),
       verifyCreatedPolicy: () => {
-        throw new PolicyAuthorityRefusalError("policy verification failed");
+        throw new PolicyObservationError("policy verification failed");
       },
       persistVerifiedPolicy,
       revalidateVerifiedPolicy: vi.fn(),
@@ -1192,7 +1170,7 @@ describe("sandbox create policy authority checks", () => {
     const runVerifiedCreateEffects = vi.fn();
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: vi.fn(),
         create: async (verifyCreatedSandbox) => {
@@ -1221,7 +1199,7 @@ describe("sandbox create policy authority checks", () => {
     const runVerifiedCreateEffects = vi.fn();
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: vi.fn(),
         create: async (verifyCreatedSandbox) => {
@@ -1249,7 +1227,7 @@ describe("sandbox create policy authority checks", () => {
     const persistVerifiedPolicy = vi.fn();
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: vi.fn(),
         create: async (verifyCreatedSandbox) => {
@@ -1287,7 +1265,7 @@ describe("sandbox create policy authority checks", () => {
       });
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate,
         create: async (verifyCreatedSandbox) => {
@@ -1320,7 +1298,7 @@ describe("sandbox create policy authority checks", () => {
     const runVerifiedCreateEffects = vi.fn();
 
     await expect(
-      runSandboxCreateWithPolicyAuthorityChecks({
+      runSandboxCreateWithPolicyVerification({
         sandboxName: "alpha",
         revalidate: vi.fn(),
         create: async (verifyCreatedSandbox) => {
@@ -1349,7 +1327,7 @@ describe("sandbox create policy authority checks", () => {
   it("fails closed when a create implementation skips the post-create gate (#9833)", async () => {
     const cleanupTemporarySources = vi.fn();
 
-    const error = await runSandboxCreateWithPolicyAuthorityChecks({
+    const error = await runSandboxCreateWithPolicyVerification({
       sandboxName: "alpha",
       revalidate: vi.fn(),
       create: async () => "created",
@@ -1363,9 +1341,7 @@ describe("sandbox create policy authority checks", () => {
     );
     expect((error as AggregateError).errors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          message: expect.stringContaining("post-create verification"),
-        }),
+        expect.objectContaining({ message: expect.stringContaining("post-create verification") }),
       ]),
     );
     expect(cleanupTemporarySources).toHaveBeenCalledOnce();

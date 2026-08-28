@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // Regression test for #3998 — `nemoclaw <sandbox> channels remove <channel>`
-// must (1) strip the channel from session.policyPresets so onboard --resume
-// does not re-apply the preset on rebuild, (2) wipe the channel's durable
+// must (1) remove the channel preset from the live OpenShell policy, (2) wipe the channel's durable
 // state inside the sandbox so the rebuild's state_dirs backup does not
 // restore stale auth files, and (3) refuse to proceed to rebuild when the
 // in-sandbox cleanup for a QR-paired channel fails — otherwise the backup
@@ -127,7 +126,6 @@ onboard.isNonInteractive = () => true;
 const onboardSession = require(${j("state/onboard-session.js")});
 const sessionStore = {
   sandboxName: "test-sb",
-  policyPresets: ${JSON.stringify(presetNamesApplied)},
   resumable: false,
   status: "complete",
   agent: ${JSON.stringify(sandboxAgent)},
@@ -140,7 +138,6 @@ const sessionStore = {
   nimContainer: null,
   routerPid: null,
   routerCredentialHash: null,
-  policyTier: null,
   messagingPlan: ${messagingPlanLiteral()},
   hermesToolGateways: [],
   wechatConfig: null,
@@ -154,7 +151,6 @@ registry.getSandbox = () => ({
   name: "test-sb",
   agent: ${JSON.stringify(sandboxAgent)},
   messaging: { schemaVersion: 1, plan: ${messagingPlanLiteral()} },
-  policies: ${JSON.stringify(presetNamesApplied)},
 });
 registry.updateSandbox = (name, updates) => {
   registryUpdates.push({ name, updates });
@@ -202,7 +198,7 @@ module.exports = {
 
 describe("channels remove full teardown (#3998)", () => {
   it.each(["openclaw", "hermes"] as const)(
-    "strips '%s' session.policyPresets and clears the in-sandbox whatsapp state dir",
+    "removes the live '%s' channel policy and clears the in-sandbox whatsapp state dir",
     (sandboxAgent) => {
       const script = `${buildPreamble({ sandboxAgent })}
 const ctx = module.exports;
@@ -211,7 +207,6 @@ const ctx = module.exports;
     await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "whatsapp" });
     process.stdout.write("\\n__RESULT__" + JSON.stringify({
       sandboxExecCalls: ctx.sandboxExecCalls,
-      sessionPolicyPresets: ctx.sessionStore.policyPresets,
       removedPresets: ctx.removedPresets,
       callOrder: ctx.callOrder,
       exitCode: ctx.getExitCode(),
@@ -237,12 +232,6 @@ const ctx = module.exports;
         payload.removedPresets,
         [{ sandboxName: "test-sb", presetName: "whatsapp" }],
         `expected one removePreset('whatsapp') call; got ${JSON.stringify(payload.removedPresets)}`,
-      );
-
-      assert.deepEqual(
-        payload.sessionPolicyPresets,
-        ["npm", "pypi", "huggingface", "brew", "whatsapp"],
-        "session policy history is not mutated by live channel removal",
       );
 
       const cleanupCalls = payload.sandboxExecCalls.filter((c: { command: string }) =>
@@ -347,7 +336,6 @@ const ctx = module.exports;
   const dumpState = () => ({
     sandboxExecCalls: ctx.sandboxExecCalls,
     sandboxSshCalls: ctx.sandboxSshCalls,
-    sessionPolicyPresets: ctx.sessionStore.policyPresets,
     removedPresets: ctx.removedPresets,
     registryUpdates: ctx.registryUpdates,
     callOrder: ctx.callOrder,
@@ -387,12 +375,6 @@ const ctx = module.exports;
       [],
       "registry must NOT be mutated when we bail early on cleanup failure",
     );
-    assert.deepEqual(
-      payload.sessionPolicyPresets,
-      ["npm", "pypi", "huggingface", "brew", "whatsapp"],
-      "session.policyPresets must be unchanged on early-bail",
-    );
-
     const cleanupCalls = payload.sandboxExecCalls.filter((c: { command: string }) =>
       c.command.startsWith("rm -rf"),
     );
@@ -406,50 +388,6 @@ const ctx = module.exports;
       payload.sandboxSshCalls[0].command.startsWith("rm -rf"),
       `SSH fallback must invoke the rm -rf cleanup; got ${payload.sandboxSshCalls[0].command}`,
     );
-  });
-
-  it("treats a leftover session.policyPresets entry as residue and runs cleanup", () => {
-    const script = `${buildPreamble({
-      presetNamesApplied: ["npm", "pypi", "whatsapp"],
-      sandboxAgent: "openclaw",
-      channelInRegistry: "telegram",
-    })}
-const ctx = module.exports;
-const registryOverride = require(${JSON.stringify(path.join(repoRoot, "src", "lib", "state/registry.ts"))});
-registryOverride.getSandbox = () => ({
-  name: "test-sb",
-  agent: "openclaw",
-  policies: [],
-});
-const policiesOverride = require(${JSON.stringify(path.join(repoRoot, "src", "lib", "policy/index.ts"))});
-policiesOverride.getAppliedPresets = () => [];
-(async () => {
-  try {
-    await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "whatsapp" });
-    process.stdout.write("\\n__RESULT__" + JSON.stringify({
-      sandboxExecCalls: ctx.sandboxExecCalls,
-      sessionPolicyPresets: ctx.sessionStore.policyPresets,
-      callOrder: ctx.callOrder,
-      exitCode: ctx.getExitCode(),
-    }) + "\\n");
-  } catch (err) {
-    process.stdout.write("\\n__RESULT__" + JSON.stringify({ error: err.message, stack: err.stack }) + "\\n");
-  }
-})();
-`;
-    const result = runScript(script);
-    assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
-    const marker = result.stdout.lastIndexOf("__RESULT__");
-    assert.ok(marker >= 0, `no __RESULT__ marker:\n${result.stdout}`);
-    const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
-    assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
-
-    const cleanupCalls = payload.sandboxExecCalls.filter((c: { command: string }) =>
-      c.command.startsWith("rm -rf"),
-    );
-    assert.equal(cleanupCalls.length, 0);
-    assert.ok(payload.sessionPolicyPresets.includes("whatsapp"));
-    assert.equal(payload.exitCode, null, "must not abort when sandbox-exec succeeds");
   });
 
   it("does not abort when removing a never-configured QR channel even if sandbox is unreachable", () => {
@@ -503,7 +441,7 @@ const ctx = module.exports;
     );
   });
 
-  it("leaves non-whatsapp presets in session.policyPresets untouched when removing a token-based channel", () => {
+  it("removes the live preset and messaging plan entry for a token-based channel", () => {
     const script = `${buildPreamble({
       presetNamesApplied: ["npm", "pypi", "telegram", "brew"],
       sandboxAgent: "openclaw",
@@ -514,7 +452,7 @@ const ctx = module.exports;
   try {
     await ctx.channelModule.removeSandboxChannel("test-sb", { channel: "telegram" });
     process.stdout.write("\\n__RESULT__" + JSON.stringify({
-      sessionPolicyPresets: ctx.sessionStore.policyPresets,
+      removedPresets: ctx.removedPresets,
       registryUpdates: ctx.registryUpdates,
     }) + "\\n");
   } catch (err) {
@@ -530,9 +468,9 @@ const ctx = module.exports;
     assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
 
     assert.deepEqual(
-      payload.sessionPolicyPresets,
-      ["npm", "pypi", "telegram", "brew"],
-      "session policy history remains unchanged after token-channel removal",
+      payload.removedPresets,
+      [{ sandboxName: "test-sb", presetName: "telegram" }],
+      "the command must remove the channel preset from the live OpenShell policy",
     );
 
     const messagingPlanUpdate = payload.registryUpdates.findLast(

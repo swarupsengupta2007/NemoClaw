@@ -100,11 +100,7 @@ function hermesPortableDoctorReport(
       label: "Portable lifecycle",
       status: active ? "ok" : "warn",
       detail: `agent=Hermes; phase=${phase}`,
-      ...(active
-        ? {}
-        : {
-            hint: "resume the existing Hermes portable onboarding transaction",
-          }),
+      ...(active ? {} : { hint: "resume the existing Hermes portable onboarding transaction" }),
     },
   ]);
 }
@@ -466,9 +462,7 @@ function collectRegisteredSandboxChecks(
     // Require dashboard metadata when the agent definition cannot be loaded.
   }
   checks.push(
-    buildLifecycleRegistrationCheck(sandboxName, sb, CLI_NAME, {
-      dashboardPortRequired,
-    }),
+    buildLifecycleRegistrationCheck(sandboxName, sb, CLI_NAME, { dashboardPortRequired }),
   );
   const permsCheck = buildConfigPermsCheck(sandboxName, wantsFix, {
     inspect: shields.inspectMutableConfigPerms,

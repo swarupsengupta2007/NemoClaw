@@ -205,16 +205,12 @@ describe("listBackups computes virtual versions", () => {
   });
   it("ignores any snapshotVersion persisted in legacy manifests", () => {
     // Old on-disk value should be overridden by position-based virtual version.
-    writeBackup("test-sandbox", "2026-04-21T14-00-00-000Z", {
-      snapshotVersion: 99,
-    });
+    writeBackup("test-sandbox", "2026-04-21T14-00-00-000Z", { snapshotVersion: 99 });
     const [entry] = sandboxState.listBackups("test-sandbox");
     expect(entry.snapshotVersion).toBe(1);
   });
   it("surfaces the name field when present", () => {
-    writeBackup("test-sandbox", "2026-04-21T14-00-00-000Z", {
-      name: "before-upgrade",
-    });
+    writeBackup("test-sandbox", "2026-04-21T14-00-00-000Z", { name: "before-upgrade" });
     const [entry] = sandboxState.listBackups("test-sandbox");
     expect(entry.name).toBe("before-upgrade");
     expect(entry.snapshotVersion).toBe(1);
@@ -320,14 +316,10 @@ describe("listBackups computes virtual versions", () => {
         agentType: "openclaw",
         agentVersion: null,
         expectedVersion: null,
-        stateDirs: [],
+        stateDirs: "invalid",
         writableDir: "/sandbox/.openclaw-data",
         backupPath: dir,
         blueprintDigest: null,
-        rebuildPolicyHandoff: {
-          file: "rebuild-policy-handoff.yaml",
-          sha256: "invalid",
-        },
       }),
     );
     expect(sandboxState.listBackups("test-sandbox")).toEqual([]);
@@ -416,9 +408,7 @@ describe("findBackup", () => {
   });
 
   it("matches by exact user-assigned name", () => {
-    writeBackup("test-sandbox", "2026-04-21T14-00-00-000Z", {
-      name: "before-upgrade",
-    });
+    writeBackup("test-sandbox", "2026-04-21T14-00-00-000Z", { name: "before-upgrade" });
     expect(sandboxState.findBackup("test-sandbox", "before-upgrade").match?.name).toBe(
       "before-upgrade",
     );
@@ -717,9 +707,7 @@ process.exit(0);
       const sshLog = path.join(fixture, "ssh-log.jsonl");
       const existingDirs = ["agents", "workspace", "extensions"];
       fs.mkdirSync(binDir, { recursive: true });
-      fs.mkdirSync(path.join(openclawDir, "agents", "main", "sessions"), {
-        recursive: true,
-      });
+      fs.mkdirSync(path.join(openclawDir, "agents", "main", "sessions"), { recursive: true });
       fs.mkdirSync(path.join(openclawDir, "extensions"), { recursive: true });
       fs.mkdirSync(path.join(openclawDir, "workspace"), { recursive: true });
       fs.writeFileSync(path.join(openclawDir, "workspace", "marker.txt"), "marker\n");
@@ -1406,9 +1394,7 @@ process.exit(0);
       process.env.NEMOCLAW_OPENSHELL_BIN = openshell;
       process.env.PATH = `${binDir}${path.delimiter}${oldPath || ""}`;
 
-      const backup = sandboxState.backupSandboxState("deepagents", {
-        name: "deepagents-state",
-      });
+      const backup = sandboxState.backupSandboxState("deepagents", { name: "deepagents-state" });
       expect(backup.success).toBe(true);
       expect(backup.backedUpDirs).toEqual([".state", "skills", "agent/skills"]);
       expect(backup.backedUpFiles).toEqual(["config.toml"]);

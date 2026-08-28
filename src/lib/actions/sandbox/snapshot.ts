@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { dockerCapture } from "../../adapters/docker";
@@ -42,8 +41,15 @@ import {
 } from "../../onboard/gateway-binding";
 import { findAvailableHermesApiPort, HERMES_API_PORT_ENV } from "../../onboard/hermes-api-port";
 import { resolveHermesDashboardOnboardState } from "../../onboard/hermes-dashboard";
+import {
+  isDcodeAgent,
+  OBSERVABILITY_OTLP_LOCAL_POLICY_PRESET,
+} from "../../onboard/observability-policy-presets";
+import { normalizePolicyTierName } from "../../onboard/policy-tier-suppression";
+import { cleanupTempDir, secureTempFile } from "../../onboard/temp-files";
 import * as policies from "../../policy";
-import { ROOT, run, runCapture, shellQuote, validateName } from "../../runner";
+import { buildPolicyGetArgs } from "../../policy/commands";
+import { ROOT, run, shellQuote, validateName } from "../../runner";
 import { parseLiveSandboxNames } from "../../runtime-recovery";
 import { streamSandboxCreate } from "../../sandbox/create-stream";
 import * as shields from "../../shields";
@@ -375,26 +381,17 @@ async function prepareSnapshotClonePolicy(
   policyPath: string;
   cleanup?: () => boolean;
 }> {
-  const boundary = policies.inspectPolicyRecoveryBoundary(
-    srcEntry.name,
-    "capture the live policy for snapshot clone",
-  );
-  const rawPolicy = runCapture(policies.buildPolicyGetCommand(srcEntry.name, boundary.gatewayName));
-  const policyDocument = policies.parseCurrentPolicy(rawPolicy);
-  if (!policyDocument) {
-    throw new Error(`Cannot read the live OpenShell policy for '${srcEntry.name}'.`);
-  }
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-snapshot-policy-"));
-  const policyPath = path.join(tempDir, "policy.yaml");
-  fs.writeFileSync(policyPath, policyDocument, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  const gatewayName = resolveSandboxGatewayName(srcEntry);
+  const raw = captureOpenshell(buildPolicyGetArgs(srcEntry.name, gatewayName)).output;
+  const policy = policies.parseCurrentPolicy(raw);
+  if (!policy) throw new Error(`Cannot read the live OpenShell policy for '${srcEntry.name}'.`);
+  const policyPath = secureTempFile("nemoclaw-clone-policy", ".yaml");
+  fs.writeFileSync(policyPath, policy, { mode: 0o600 });
   return {
     policyPath,
     cleanup: () => {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      return !fs.existsSync(tempDir);
+      cleanupTempDir(policyPath, "nemoclaw-clone-policy");
+      return true;
     },
   };
 }
@@ -573,9 +570,9 @@ async function autoCreateSandboxFromSource(
     run(["bash", dnsScript, srcGatewayName, dstName], { ignoreError: true });
   }
 
-  // Register dst in the NemoClaw registry, cloning resource identity and
-  // runtime configuration from src. Legacy policy-shadow fields are never
-  // copied; the exact live policy was supplied directly to OpenShell create.
+  // Register dst in the NemoClaw registry, cloning most fields from src.
+  // Policies are cleared here — the caller replays them from the snapshot
+  // manifest after the restore succeeds and writes them back into this entry.
   let finalLifecycleRegistration: ReturnType<typeof cloneLifecycle.revalidate>;
   try {
     finalLifecycleRegistration = cloneLifecycle.revalidate(lifecycleRegistration);
@@ -583,50 +580,41 @@ async function autoCreateSandboxFromSource(
     releaseCloneHostLocalReservation();
     failUnregisteredSnapshotClone(dstName, sourceGatewayName);
   }
+  const cloneSourceEntry = srcEntry as SandboxEntry;
   try {
-    const cloneRegistration = {
-      ...(srcEntry as SandboxEntry),
-      name: dstName,
-      createdAt: new Date().toISOString(),
-      observabilityEnabled: sourceObservabilityEnabled,
-      // dst has its own lifecycle; don't inherit src's local NIM container
-      // reference, or destroying dst would stop src's NIM.
-      nimContainer: null,
-      // No CUDA proof has run for dst (this auto-create path passes no GPU flags),
-      // so clear src's proof rather than inheriting it — otherwise dst could show
-      // `Sandbox GPU: enabled (CUDA verified)` based on another sandbox's run (#4231).
-      sandboxGpuProof: null,
-      dashboardPort: dstDashboardPort,
-      // The spread above carries the source's API port; the clone owns its own.
-      hermesApiPort: dstHermesApiPort,
-      // The shared image keeps Hermes' image-baked internal listener port, but
-      // the public WebUI port is a per-sandbox host resource and must follow the
-      // clone's newly allocated dashboard port so rebuild validation converges.
-      hermesDashboardPort:
-        (srcEntry as SandboxEntry).hermesDashboardEnabled === true
-          ? dstDashboardPort
-          : (srcEntry as SandboxEntry).hermesDashboardPort,
-      // A legacy source may have only a gateway name (or neither binding
-      // field). Register the new clone with the complete canonical binding so
-      // stop/start, recovery, and later snapshots can address its gateway.
-      gatewayName: sourceGatewayName,
-      gatewayPort: sourceGatewayPort,
-      ...finalLifecycleRegistration,
-    } as SandboxEntry & Record<string, unknown>;
-    for (const key of [
-      "policyAuthority",
-      "policyCreationReceipt",
-      "pendingPolicyVerification",
-      "policies",
-      "customPolicies",
-      "baselineExclusions",
-      "baselineExclusionTransition",
-      "policyTier",
-      "policyPresetsFinalized",
-    ]) {
-      delete cloneRegistration[key];
-    }
-    registry.registerSandbox(cloneRegistration, undefined, { pending: true });
+    registry.registerSandbox(
+      {
+        ...cloneSourceEntry,
+        name: dstName,
+        createdAt: new Date().toISOString(),
+        observabilityEnabled: sourceObservabilityEnabled,
+        // dst has its own lifecycle; don't inherit src's local NIM container
+        // reference, or destroying dst would stop src's NIM.
+        nimContainer: null,
+        // No CUDA proof has run for dst (this auto-create path passes no GPU flags),
+        // so clear src's proof rather than inheriting it — otherwise dst could show
+        // `Sandbox GPU: enabled (CUDA verified)` based on another sandbox's run (#4231).
+        sandboxGpuProof: null,
+        dashboardPort: dstDashboardPort,
+        // The spread above carries the source's API port; the clone owns its own.
+        hermesApiPort: dstHermesApiPort,
+        // The shared image keeps Hermes' image-baked internal listener port, but
+        // the public WebUI port is a per-sandbox host resource and must follow the
+        // clone's newly allocated dashboard port so rebuild validation converges.
+        hermesDashboardPort:
+          (srcEntry as SandboxEntry).hermesDashboardEnabled === true
+            ? dstDashboardPort
+            : (srcEntry as SandboxEntry).hermesDashboardPort,
+        // A legacy source may have only a gateway name (or neither binding
+        // field). Register the new clone with the complete canonical binding so
+        // stop/start, recovery, and later snapshots can address its gateway.
+        gatewayName: sourceGatewayName,
+        gatewayPort: sourceGatewayPort,
+        ...finalLifecycleRegistration,
+      },
+      undefined,
+      { pending: true },
+    );
   } catch {
     releaseCloneHostLocalReservation();
     failUnregisteredSnapshotClone(dstName, sourceGatewayName);
@@ -1101,6 +1089,7 @@ async function runSnapshotRestoreUnlocked(
   const hasPendingCreatedClone =
     targetEntry?.pendingRouteReservation === true &&
     !registry.isRouteOnlySandboxReservation(targetEntry);
+
   // #3756 P1 preflight: resolve the snapshot selector AND the source pod
   // image before any destructive action. A bad selector, missing snapshot,
   // or unresolvable source image must not be allowed to delete the

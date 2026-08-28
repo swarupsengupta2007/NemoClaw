@@ -39,16 +39,8 @@ class ExitError extends Error {
 }
 
 const POLICY_PRESETS: PresetInfo[] = [
-  {
-    file: "npm.yaml",
-    name: "npm",
-    description: "npm and Yarn registry access",
-  },
-  {
-    file: "pypi.yaml",
-    name: "pypi",
-    description: "Python Package Index access",
-  },
+  { file: "npm.yaml", name: "npm", description: "npm and Yarn registry access" },
+  { file: "pypi.yaml", name: "pypi", description: "Python Package Index access" },
   { file: "discord.yaml", name: "discord", description: "Discord API access" },
 ];
 
@@ -76,10 +68,7 @@ let stdinIsTty: PropertyDescriptor | undefined;
 beforeEach(() => {
   delete process.env.NEMOCLAW_NON_INTERACTIVE;
   stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  Object.defineProperty(process.stdin, "isTTY", {
-    configurable: true,
-    value: true,
-  });
+  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
 
   logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
   errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -92,6 +81,7 @@ beforeEach(() => {
     name: "alpha",
     agent: null,
   });
+
   vi.spyOn(onboardSession, "loadSession").mockReturnValue(null);
   vi.spyOn(onboardSession, "updateSession").mockReturnValue(
     undefined as unknown as onboardSession.Session,
@@ -145,11 +135,7 @@ describe("addSandboxPolicy refresh contract", () => {
   });
 
   it("does not refresh on --dry-run because the registry was never mutated", async () => {
-    await addSandboxPolicy("alpha", {
-      preset: "pypi",
-      yes: true,
-      dryRun: true,
-    });
+    await addSandboxPolicy("alpha", { preset: "pypi", yes: true, dryRun: true });
 
     expect(applyPresetMock).not.toHaveBeenCalled();
     expect(refreshSpy).not.toHaveBeenCalled();
@@ -222,11 +208,7 @@ describe("applyExternalPreset refresh contract (--from-file)", () => {
   });
 
   it("does not refresh on --dry-run with --from-file", async () => {
-    await addSandboxPolicy("alpha", {
-      fromFile: tempFile,
-      yes: true,
-      dryRun: true,
-    });
+    await addSandboxPolicy("alpha", { fromFile: tempFile, yes: true, dryRun: true });
 
     expect(applyPresetContentMock).not.toHaveBeenCalled();
     expect(refreshSpy).not.toHaveBeenCalled();
@@ -235,7 +217,7 @@ describe("applyExternalPreset refresh contract (--from-file)", () => {
 
 describe("removeSandboxPolicy refresh contract", () => {
   beforeEach(() => {
-    vi.mocked(policies.getGatewayPresets).mockReturnValue(["pypi"]);
+    vi.spyOn(policies, "getAppliedPresets").mockReturnValue(["pypi"]);
   });
 
   it("refreshes the in-sandbox POLICY.md after a successful removal", async () => {
@@ -247,11 +229,7 @@ describe("removeSandboxPolicy refresh contract", () => {
   });
 
   it("does not refresh on --dry-run", async () => {
-    await removeSandboxPolicy("alpha", {
-      preset: "pypi",
-      yes: true,
-      dryRun: true,
-    });
+    await removeSandboxPolicy("alpha", { preset: "pypi", yes: true, dryRun: true });
 
     expect(removePresetMock).not.toHaveBeenCalled();
     expect(refreshSpy).not.toHaveBeenCalled();
@@ -278,7 +256,7 @@ describe("removeSandboxPolicy refresh contract", () => {
   });
 
   it("does not refresh when the preset is not currently applied", async () => {
-    vi.mocked(policies.getGatewayPresets).mockReturnValue([]);
+    vi.spyOn(policies, "getAppliedPresets").mockReturnValue([]);
 
     await expect(
       captureExit(() => removeSandboxPolicy("alpha", { preset: "pypi", yes: true })),

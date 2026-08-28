@@ -4,7 +4,7 @@
 import { isDeepStrictEqual } from "node:util";
 
 import { getSandboxDeleteOutcome } from "../../domain/sandbox/destroy";
-import { inspectOpenShellSandboxIdentityFingerprint } from "../../adapters/openshell/policy-authority";
+import { inspectOpenShellSandboxIdentityFingerprint } from "../../adapters/openshell/policy-state";
 import { R, YW } from "../../cli/terminal-style";
 import {
   type PreparedPortableDemoSandboxDestroyAuthority,
@@ -216,11 +216,7 @@ function wipeAndHardenLiveSandbox(
         "If the budget is exhausted, durable containment blocks sandbox mutations. " +
         `Run \`nemoclaw ${sandboxName} shields status\` for exact-generation recovery guidance.`,
     );
-    return {
-      hardenedForDelete: false,
-      hardeningFailed: true,
-      timerProcessToken,
-    };
+    return { hardenedForDelete: false, hardeningFailed: true, timerProcessToken };
   }
   return { hardenedForDelete: true, hardeningFailed: false, timerProcessToken };
 }
@@ -278,9 +274,7 @@ async function finalizeMcpDestroy(
   force: boolean,
 ): Promise<void> {
   try {
-    await finalizeMcpBridgesAfterSandboxDelete(sandboxName, preparation, {
-      force,
-    });
+    await finalizeMcpBridgesAfterSandboxDelete(sandboxName, preparation, { force });
   } catch (error) {
     const detail = redactDestroyError(error);
     console.error(
@@ -315,7 +309,7 @@ export async function executeSandboxDestroy({
       | { status: "ambiguous"; detail: string; subject?: string }
       | { status: "probe-failed"; detail: string; subject?: string };
     const pendingCreateVerification = sandbox?.pendingCreateVerification;
-    const inspectPendingPolicyVerificationContinuity = (): IdentityContinuity => {
+    const inspectPendingCreateVerificationContinuity = (): IdentityContinuity => {
       if (!pendingCreateVerification) return { status: "match" };
       if (!getSandbox) {
         return {
@@ -327,10 +321,7 @@ export async function executeSandboxDestroy({
       const readCurrentCheckpoint = () => getSandbox(sandboxName)?.pendingCreateVerification;
       try {
         if (!isDeepStrictEqual(readCurrentCheckpoint(), pendingCreateVerification)) {
-          return {
-            status: "changed",
-            subject: "Pending policy verification authority",
-          };
+          return { status: "changed", subject: "Pending policy verification authority" };
         }
         const inspectIdentity =
           deps.inspectOpenShellSandboxIdentityFingerprint ??
@@ -358,17 +349,14 @@ export async function executeSandboxDestroy({
       }
     };
     const inspectIdentityContinuity = (): IdentityContinuity => {
-      const pendingContinuity = inspectPendingPolicyVerificationContinuity();
+      const pendingContinuity = inspectPendingCreateVerificationContinuity();
       if (pendingContinuity.status !== "match") return pendingContinuity;
       if (portableContainerAuthority) {
         try {
           portableContainerAuthority.revalidate();
           return { status: "match" };
         } catch (error) {
-          return {
-            status: "probe-failed",
-            detail: redactDestroyError(error),
-          };
+          return { status: "probe-failed", detail: redactDestroyError(error) };
         }
       }
       if (expectedContainerIdentity === undefined) return { status: "match" };
@@ -380,16 +368,10 @@ export async function executeSandboxDestroy({
         return { status: "match" };
       }
       if (verdict.status === "probe-failed") {
-        return {
-          status: "probe-failed",
-          detail: redactDestroyError(verdict.detail),
-        };
+        return { status: "probe-failed", detail: redactDestroyError(verdict.detail) };
       }
       if (verdict.status === "ambiguous") {
-        return {
-          status: "ambiguous",
-          detail: redactDestroyError(verdict.reason),
-        };
+        return { status: "ambiguous", detail: redactDestroyError(verdict.reason) };
       }
       return { status: "changed" };
     };
@@ -551,10 +533,7 @@ export async function executeSandboxDestroy({
       };
     }
     const detachProviders = (): DetachSandboxProvidersResult =>
-      runSandboxProviderPreDeleteCleanup(sandboxName, {
-        runOpenshell,
-        redact,
-      });
+      runSandboxProviderPreDeleteCleanup(sandboxName, { runOpenshell, redact });
     const preProviderContinuity = inspectIdentityContinuity();
     if (preProviderContinuity.status !== "match") {
       const mcpRecoveryFailure = await restoreMcpForAbort(hardened);

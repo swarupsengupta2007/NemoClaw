@@ -1,246 +1,272 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import YAML from "yaml";
 
 import * as policies from "../../policy";
 import { replayTrustedPrivateEndpoint } from "../../security/trusted-private-endpoint";
 import type { McpBridgeEntry } from "../../state/registry";
-import * as registry from "../../state/registry";
-import {
-  buildMcpBridgePolicyKey,
-  buildMcpBridgePolicyName,
-  buildMcpBridgePolicyYaml,
-  MCP_BRIDGE_ALLOWED_METHODS,
-} from "./mcp-bridge-policy-render";
 import {
   applyGeneratedPolicy,
-  assertGeneratedPolicyExactReadOnly,
-  assertGeneratedPolicyMutationSafe,
+  buildMcpBridgePolicyName,
+  buildMcpBridgePolicyYaml,
+  getRegisteredGeneratedPolicy,
+  MCP_BRIDGE_ALLOWED_METHODS,
+  MCP_BRIDGE_POLICY_MAX_BODY_BYTES,
   removeGeneratedPolicy,
 } from "./mcp-bridge-policy";
+import { buildMcpBridgeProviderName } from "./mcp-bridge-validation";
 
-function bridge(overrides: Partial<McpBridgeEntry> = {}): McpBridgeEntry {
-  return {
-    server: "github",
-    agent: "openclaw",
-    adapter: "mcporter",
-    url: "https://api.githubcopilot.com/mcp",
-    env: ["GITHUB_MCP_TOKEN"],
-    allowedIps: ["8.8.8.8"],
-    providerName: "alpha-mcp-github-0123456789abcdef",
-    policyName: "mcp-bridge-github",
-    addedAt: "2026-08-27T00:00:00.000Z",
-    ...overrides,
-  };
-}
+const entry: McpBridgeEntry = {
+  server: "github",
+  agent: "openclaw",
+  adapter: "mcporter",
+  url: "https://mcp.example.com/api",
+  env: [],
+  allowedIps: ["8.8.8.8"],
+  providerName: "mcp-github",
+  policyName: buildMcpBridgePolicyName("github"),
+  addedAt: "2026-08-27T00:00:00.000Z",
+};
 
-function commit(entry: McpBridgeEntry): void {
-  vi.spyOn(registry, "getSandbox").mockReturnValue({
-    name: "alpha",
-    agent: entry.agent,
-    mcp: { bridges: { [entry.server]: entry } },
-  });
-}
+beforeEach(() => vi.restoreAllMocks());
 
-describe("MCP OpenShell policy", () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it("refuses a generated policy without exact address pins", () => {
-    expect(() => applyGeneratedPolicy("alpha", bridge(), { addresses: [] })).toThrow(
-      /without exact address pins/,
+describe("generated MCP policy", () => {
+  it("derives canonical policy content from MCP domain state", () => {
+    expect(getRegisteredGeneratedPolicy("alpha", entry)).toEqual(
+      expect.objectContaining({
+        name: entry.policyName,
+        content: expect.stringContaining("allowed_ips"),
+      }),
     );
   });
 
-  it("applies a scoped generated rule and verifies the live result", () => {
-    const entry = bridge();
-    vi.spyOn(policies, "getPresetContentGatewayState")
-      .mockReturnValueOnce("absent")
-      .mockReturnValueOnce("match");
+  it("applies directly to live OpenShell policy without a custom-policy registry row", () => {
     const apply = vi.spyOn(policies, "applyPresetContent").mockReturnValue(true);
-
+    vi.spyOn(policies, "getPresetContentGatewayState").mockReturnValue("match");
     applyGeneratedPolicy("alpha", entry, { addresses: ["8.8.8.8"] });
-
     expect(apply).toHaveBeenCalledWith(
       "alpha",
       entry.policyName,
-      expect.stringContaining("mcp_bridge_github"),
-      { expectedExistingNetworkPolicyContent: null, nonFatal: true },
+      expect.stringContaining("8.8.8.8"),
+      expect.objectContaining({ nonFatal: true }),
     );
   });
 
-  it("does not replace a drifted live rule", () => {
-    vi.spyOn(policies, "getPresetContentGatewayState").mockReturnValue("drift");
-    const apply = vi.spyOn(policies, "applyPresetContent");
-
-    expect(() => applyGeneratedPolicy("alpha", bridge(), { addresses: ["8.8.8.8"] })).toThrow(
-      /drifted/,
-    );
-    expect(apply).not.toHaveBeenCalled();
-  });
-
-  it("upgrades only the exact credential-free add policy", () => {
-    const entry = bridge({ addState: "preflighted" });
-    vi.spyOn(policies, "getPresetContentGatewayState")
-      .mockReturnValueOnce("drift")
-      .mockReturnValueOnce("match")
-      .mockReturnValueOnce("match");
-    const apply = vi.spyOn(policies, "applyPresetContent").mockReturnValue(true);
-
-    applyGeneratedPolicy("alpha", entry, { addresses: ["8.8.8.8"] });
-
-    expect(apply).toHaveBeenCalledOnce();
-    const options = apply.mock.calls[0]?.[3];
-    expect(options?.expectedExistingNetworkPolicyContent).toContain("mcp_bridge_github");
-    expect(options?.expectedExistingNetworkPolicyContent).not.toContain("credential_binding");
-  });
-
-  it("removes only the exact live rule and verifies absence", () => {
-    const entry = bridge();
-    vi.spyOn(policies, "getPresetContentGatewayState")
-      .mockReturnValueOnce("match")
-      .mockReturnValueOnce("absent");
-    const remove = vi.spyOn(policies, "removePolicyContent").mockReturnValue(true);
-
+  it("removes generated content from the live policy", () => {
+    const remove = vi.spyOn(policies, "removePreset").mockReturnValue(true);
     removeGeneratedPolicy("alpha", entry);
-
     expect(remove).toHaveBeenCalledWith(
       "alpha",
       entry.policyName,
-      expect.stringContaining("mcp_bridge_github"),
-      { nonFatal: true },
+      expect.objectContaining({ presetContent: expect.stringContaining("mcp_bridge_github") }),
     );
   });
 
-  it("refuses to remove a changed host rule", () => {
-    vi.spyOn(policies, "getPresetContentGatewayState").mockReturnValue("drift");
-    const remove = vi.spyOn(policies, "removePolicyContent");
-
-    expect(() => removeGeneratedPolicy("alpha", bridge())).toThrow(/drifted/);
-    expect(remove).not.toHaveBeenCalled();
-  });
-
-  it("removes an exact credential-free policy from an incomplete add", () => {
-    const entry = bridge({ addState: "preflighted" });
-    vi.spyOn(policies, "getPresetContentGatewayState")
-      .mockReturnValueOnce("drift")
-      .mockReturnValueOnce("match")
-      .mockReturnValueOnce("absent");
-    const remove = vi.spyOn(policies, "removePolicyContent").mockReturnValue(true);
-
-    removeGeneratedPolicy("alpha", entry);
-
-    expect(remove).toHaveBeenCalledOnce();
-    expect(remove.mock.calls[0]?.[2]).toContain("mcp_bridge_github");
-    expect(remove.mock.calls[0]?.[2]).not.toContain("credential_binding");
-  });
-
-  it("derives canonical ownership from committed bridge intent and live policy", () => {
-    const entry = bridge();
-    commit(entry);
-    vi.spyOn(policies, "getPresetContentGatewayState").mockReturnValue("match");
-
-    const record = assertGeneratedPolicyExactReadOnly("alpha", entry, "mcporter", {
-      addresses: ["8.8.8.8"],
-    });
-
-    expect(record).toMatchObject({
-      name: "mcp-bridge-github",
-      sourcePath: "generated:nemoclaw-mcp-bridge",
-    });
-    expect(record.content).toContain("mcp_bridge_github");
-    expect(() => assertGeneratedPolicyMutationSafe("alpha", entry)).not.toThrow();
-  });
-
-  it("rejects absent, incomplete, or non-canonical bridge intent", () => {
-    vi.spyOn(registry, "getSandbox").mockReturnValue({ name: "alpha" });
-    expect(() => assertGeneratedPolicyMutationSafe("alpha", bridge())).toThrow(
-      /no matching committed bridge definition/,
-    );
-
-    vi.restoreAllMocks();
-    const incomplete = bridge({ addState: "prepared" });
-    commit(incomplete);
+  it("refuses generated policy without exact public address pins", () => {
     expect(() =>
-      assertGeneratedPolicyExactReadOnly("alpha", incomplete, "mcporter", {
-        addresses: ["8.8.8.8"],
-      }),
-    ).toThrow(/ownership is not canonical/);
+      applyGeneratedPolicy("alpha", { ...entry, allowedIps: [] }, { addresses: [] }),
+    ).toThrow(/without exact public address pins/);
   });
 
-  it("requires host-bound capability for a trusted private endpoint", () => {
-    const entry = bridge({
-      server: "internal",
-      url: "https://mcp.corp.internal/mcp",
-      trustedPrivateHost: "mcp.corp.internal",
-      allowedIps: ["10.20.30.40"],
-      policyName: buildMcpBridgePolicyName("internal"),
-    });
+  it("refuses to render a credential binding without an exact provider name", () => {
     expect(() =>
-      applyGeneratedPolicy("alpha", entry, {
-        addresses: ["10.20.30.40"],
-        trustedPrivateHost: "mcp.corp.internal",
-      }),
-    ).toThrow(/no provenance-checked capability/);
-
-    const trusted = replayTrustedPrivateEndpoint("mcp.corp.internal", ["10.20.30.40"], {
-      requireAllPrivate: true,
-    });
-    vi.spyOn(policies, "getPresetContentGatewayState").mockReturnValue("match");
+      buildMcpBridgePolicyYaml(
+        "github",
+        "https://api.githubcopilot.com/mcp",
+        "mcporter",
+        { addresses: ["8.8.8.8"] },
+        "",
+      ),
+    ).toThrow(/requires an exact provider name/);
     expect(() =>
-      applyGeneratedPolicy("alpha", entry, {
-        addresses: ["10.20.30.40"],
-        trustedPrivateHost: trusted.host,
-        trustedPrivateCapability: trusted.trustedPrivateCapability,
-      }),
-    ).not.toThrow();
+      buildMcpBridgePolicyYaml(
+        "github",
+        "https://api.githubcopilot.com/mcp",
+        "mcporter",
+        { addresses: ["8.8.8.8"] },
+        " provider ",
+      ),
+    ).toThrow(/requires an exact provider name/);
   });
 
-  it("renders the current OpenShell MCP method and credential surface", () => {
-    const content = buildMcpBridgePolicyYaml(
-      "GitHub_Server",
-      "https://api.githubcopilot.com/mcp",
-      "mcporter",
-      { addresses: ["2606:4700:4700::1111", "8.8.8.8"] },
-      "alpha-mcp-bound-provider",
-    );
-    const policy = YAML.parse(content) as {
+  it("pins DNS answers and the current MCP method profile for mcporter", () => {
+    const parsed = YAML.parse(
+      buildMcpBridgePolicyYaml(
+        "GitHub_Server",
+        "https://api.githubcopilot.com/mcp",
+        "mcporter",
+        { addresses: ["2606:4700:4700::1111", "8.8.8.8"] },
+        "alpha-mcp-bound-provider",
+      ),
+    ) as {
+      preset: { name: string };
       network_policies: Record<
         string,
         {
           endpoints: Array<{
-            host: string;
             allowed_ips: string[];
+            credential_binding: { provider: string };
+            mcp: Record<string, unknown>;
             rules: Array<{ allow: { method: string } }>;
           }>;
+          binaries: Array<{ path: string }>;
         }
       >;
     };
-    const key = buildMcpBridgePolicyKey("GitHub_Server");
+    const policy = parsed.network_policies.mcp_bridge_github_server;
 
-    expect(policy.network_policies[key]?.endpoints[0]).toMatchObject({
-      host: "api.githubcopilot.com",
+    expect(parsed.preset.name).toBe("mcp-bridge-github-server");
+    expect(policy.endpoints[0]).toMatchObject({
       allowed_ips: ["2606:4700:4700::1111", "8.8.8.8"],
+      credential_binding: { provider: "alpha-mcp-bound-provider" },
+      mcp: {
+        max_body_bytes: MCP_BRIDGE_POLICY_MAX_BODY_BYTES,
+        strict_tool_names: true,
+        allow_all_known_mcp_methods: false,
+      },
     });
-    expect(policy.network_policies[key]?.endpoints[0]?.rules).toEqual(
+    expect(policy.endpoints[0].rules).toEqual(
       MCP_BRIDGE_ALLOWED_METHODS.map((method) => ({ allow: { method } })),
     );
-    expect(content).toContain("alpha-mcp-bound-provider");
+    expect(policy.binaries.map(({ path }) => path)).toEqual([
+      "/usr/local/bin/mcporter",
+      "/usr/bin/mcporter",
+      "/usr/local/bin/openclaw",
+      "/usr/local/bin/node",
+      "/usr/bin/node",
+    ]);
   });
 
-  it.each(["", " provider "])(
-    "rejects the invalid credential provider name %j",
-    (providerName) => {
-      expect(() =>
+  it.each(["mcporter", "hermes-config", "deepagents-config"] as const)(
+    "renders an authorized private target for %s with a process-local capability",
+    (adapter) => {
+      const replay = replayTrustedPrivateEndpoint("10.20.30.40", ["10.20.30.40"]);
+      const parsed = YAML.parse(
         buildMcpBridgePolicyYaml(
-          "github",
-          "https://api.githubcopilot.com/mcp",
-          "mcporter",
-          { addresses: ["8.8.8.8"] },
-          providerName,
+          "local",
+          "https://10.20.30.40/mcp",
+          adapter,
+          {
+            addresses: [...replay.addresses],
+            trustedPrivateCapability: replay.trustedPrivateCapability,
+            trustedPrivateHost: replay.host,
+          },
+          "alpha-mcp-private-provider",
         ),
-      ).toThrow(/requires an exact provider name/);
+      ) as {
+        network_policies: Record<
+          string,
+          { endpoints: Array<{ allowed_ips: string[]; host: string }> }
+        >;
+      };
+      expect(parsed.network_policies.mcp_bridge_local.endpoints[0]).toMatchObject({
+        host: "10.20.30.40",
+        allowed_ips: ["10.20.30.40"],
+      });
     },
   );
+
+  it("rejects a missing, forged, or host-mismatched private capability", () => {
+    const replay = replayTrustedPrivateEndpoint("mcp.corp.internal", ["10.20.30.40"]);
+    const target = {
+      addresses: [...replay.addresses],
+      trustedPrivateCapability: replay.trustedPrivateCapability,
+      trustedPrivateHost: replay.host,
+    };
+    expect(() =>
+      buildMcpBridgePolicyYaml(
+        "local",
+        "https://other.corp.internal/mcp",
+        "mcporter",
+        target,
+        "alpha-mcp-private-provider",
+      ),
+    ).toThrow(/does not match URL host/);
+    expect(() =>
+      buildMcpBridgePolicyYaml(
+        "local",
+        "https://mcp.corp.internal/mcp",
+        "mcporter",
+        { addresses: ["10.20.30.40"], trustedPrivateHost: "mcp.corp.internal" },
+        "alpha-mcp-private-provider",
+      ),
+    ).toThrow(/no provenance-checked endpoint capability/);
+    expect(() =>
+      buildMcpBridgePolicyYaml(
+        "local",
+        "https://mcp.corp.internal/mcp",
+        "mcporter",
+        {
+          addresses: ["10.20.30.40"],
+          trustedPrivateHost: "mcp.corp.internal",
+          trustedPrivateCapability: {
+            host: "mcp.corp.internal",
+            addresses: ["10.20.30.40"],
+          },
+        } as never,
+        "alpha-mcp-private-provider",
+      ),
+    ).toThrow(/does not match its host-bound endpoint capability/);
+  });
+
+  it.each([
+    "host.openshell.internal",
+    "host.openshell.internal.",
+    "host.docker.internal",
+    "host.containers.internal",
+  ])("refuses an unpinnable host alias [case %#]", (host) => {
+    expect(() =>
+      buildMcpBridgePolicyYaml(
+        "local",
+        `https://${host}:31337/mcp`,
+        "mcporter",
+        { addresses: ["8.8.8.8"] },
+        "alpha-mcp-provider",
+      ),
+    ).toThrow(/does not expose an attested driver gateway address/);
+  });
+
+  it("emits only current OpenShell fields and scopes binaries by adapter", () => {
+    const render = (adapter: "mcporter" | "hermes-config" | "deepagents-config") =>
+      YAML.parse(
+        buildMcpBridgePolicyYaml(
+          "srv",
+          "https://mcp.example.test/mcp",
+          adapter,
+          { addresses: ["8.8.8.8"] },
+          "alpha-mcp-provider",
+        ),
+      ) as {
+        network_policies: Record<
+          string,
+          { binaries: Array<{ path: string }>; endpoints: Array<Record<string, unknown>> }
+        >;
+      };
+    const mcporter = render("mcporter").network_policies.mcp_bridge_srv;
+    expect(mcporter.endpoints[0]).not.toHaveProperty("credential_keys");
+    expect(mcporter.endpoints[0]).not.toHaveProperty("tls");
+    expect(
+      render("hermes-config").network_policies.mcp_bridge_srv.binaries.map((b) => b.path),
+    ).toEqual(["/usr/local/bin/hermes", "/usr/bin/python3*", "/opt/hermes/.venv/bin/python*"]);
+    expect(
+      render("deepagents-config").network_policies.mcp_bridge_srv.binaries.map((b) => b.path),
+    ).toEqual(["/usr/local/bin/dcode", "/opt/venv/bin/python3*"]);
+  });
+
+  it("uses stable collision-resistant provider names with a length guard", () => {
+    expect(buildMcpBridgeProviderName("alpha", "github-server")).toBe("alpha-mcp-github-server");
+    const caseNormalized = buildMcpBridgeProviderName("alpha", "GitHub-Server");
+    const underscoreNormalized = buildMcpBridgeProviderName("alpha", "github_server");
+    expect(caseNormalized).toMatch(/^alpha-mcp-github-server-[a-f0-9]{16}$/u);
+    expect(underscoreNormalized).toMatch(/^alpha-mcp-github-server-[a-f0-9]{16}$/u);
+    expect(new Set([caseNormalized, underscoreNormalized, "alpha-mcp-github-server"]).size).toBe(3);
+    expect(
+      buildMcpBridgeProviderName(
+        "sandbox-name-prefix",
+        "ServerNameThatWouldOtherwiseExceedTheProviderNameLimit",
+      ).length,
+    ).toBeLessThanOrEqual(63);
+  });
 });

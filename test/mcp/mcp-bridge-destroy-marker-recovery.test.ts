@@ -287,7 +287,7 @@ processRecovery.executeSandboxExecCommand = (_sandboxName, command) => {
   return { status: 0, stdout: "", stderr: "" };
 };
 policies.getPresetContentGatewayState = () => policyState;
-policies.removePolicyContent = () => {
+policies.removePreset = () => {
   events.push("policy:remove");
   policyState = "absent";
   return true;
@@ -301,7 +301,6 @@ const entry = {
   providerName,
   providerId: expectedId,
   policyName: "mcp-bridge-github",
-  allowedIps: ["8.8.8.8"],
   addedAt: "2026-06-01T00:00:00.000Z",
 };
 registry.registerSandbox({
@@ -319,7 +318,6 @@ bridge.removeMcpBridge("stuck-sandbox", "github", { force: true }).then(
     const after = registry.getSandbox("stuck-sandbox");
     process.stdout.write("<<REPRO_JSON>>" + JSON.stringify({
       mcp: after && after.mcp,
-      customPolicies: after && after.customPolicies || [],
       events,
       commands,
       providerExists,
@@ -346,7 +344,6 @@ bridge.removeMcpBridge("stuck-sandbox", "github", { force: true }).then(
       result.stdout.slice(result.stdout.indexOf(jsonMarker) + jsonMarker.length),
     ) as {
       mcp: SandboxMcpSnapshot | undefined;
-      customPolicies: unknown[];
       events: string[];
       commands: string[];
       providerExists: boolean;
@@ -356,7 +353,6 @@ bridge.removeMcpBridge("stuck-sandbox", "github", { force: true }).then(
     expect(parsed.attached).toBe(false);
     expect(parsed.providerExists).toBe(false);
     expect(parsed.policyState).toBe("absent");
-    expect(parsed.customPolicies).toEqual([]);
     expect(parsed.mcp?.bridges).toEqual({});
     expect(parsed.mcp?.managedServerNames).toEqual(["github"]);
     expect(parsed.mcp?.destroyPreparedAt).toBeUndefined();

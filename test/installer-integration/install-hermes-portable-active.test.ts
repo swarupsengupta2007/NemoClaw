@@ -20,7 +20,7 @@ import { runHermesPortableOnboardingTransaction } from "../../src/lib/onboard/ex
 import { getHermesPortableSandboxRuntimeRegistryFields } from "../../src/lib/onboard/sandbox-registry-metadata";
 import { resolveSandboxGpuConfig } from "../../src/lib/onboard/sandbox-gpu-mode";
 import { completeHermesPortableSandboxRegistration } from "../../src/lib/onboard/sandbox-create/orchestration";
-import { pendingSandboxPolicyVerificationForBoundary } from "../../src/lib/onboard/sandbox-create/policy-verification";
+import { pendingSandboxCreateVerificationForBoundary } from "../../src/lib/onboard/sandbox-create/policy-verification";
 import { materializeHermesPortableCreatePlan } from "../../src/lib/onboard/sandbox-create-plan-materialization";
 import { resolveSandboxCreateIntent } from "../../src/lib/onboard/sandbox-create-intent";
 import { createPortableOnboardEnvironmentScope } from "../../src/lib/onboard/session-bootstrap";
@@ -113,7 +113,7 @@ describe("Hermes portable installer admission", testTimeoutOptions(60_000), () =
     },
   );
 
-  it("activates one schema-5 receipt from a private checkout and validates both installer sources (#9211)", async () => {
+  it("activates one schema-7 receipt from a private checkout and validates both installer sources (#9211)", async () => {
     const fixtureRoot = createPrivateFixtureRoot();
     const stateDir = path.join(fixtureRoot, "state");
     const homeDir = path.join(fixtureRoot, "home");
@@ -174,10 +174,7 @@ describe("Hermes portable installer admission", testTimeoutOptions(60_000), () =
         "portable",
         "containers.conf",
       );
-      environmentScope.installRuntime({
-        containersConf,
-        socketPath: runtimeAuthority.socketPath,
-      });
+      environmentScope.installRuntime({ containersConf, socketPath: runtimeAuthority.socketPath });
       const podmanSourceEnv =
         environmentScope.createHermesPortablePodmanSourceEnvironment(runtimeAuthority);
       expect(podmanSourceEnv).not.toHaveProperty("DOCKER_CONTEXT");
@@ -246,12 +243,10 @@ describe("Hermes portable installer admission", testTimeoutOptions(60_000), () =
         gpuRoutePlan: "none",
         sandboxGpuLogMessage: null,
         agentName: "hermes",
-        policyTier: null,
       });
       const createPlan = materializeHermesPortableCreatePlan({
         intent,
         fromRef: activeBuildContext.sourceDockerfilePath,
-        initialPolicyDelivery: "supplied",
       });
       const startupArgv = [
         "env",
@@ -280,18 +275,10 @@ describe("Hermes portable installer admission", testTimeoutOptions(60_000), () =
         createPolicySourceBytes: createPlan.initialSandboxPolicy.sourceBytes,
         buildContext: activeBuildContext,
         startup: { agent: loadAgent("hermes"), sandboxName, startupArgv },
-        inferenceRouteReservation: {
-          sessionId: session.sessionId,
-          selection,
-        },
+        inferenceRouteReservation: { sessionId: session.sessionId, selection },
       };
-      const checkpoint = pendingSandboxPolicyVerificationForBoundary({
-        registration: {
-          policyIdentity: {
-            hash: "sha256:portable-installer-policy",
-            activeVersion: 1,
-          },
-        },
+      const checkpoint = pendingSandboxCreateVerificationForBoundary({
+        registration: {},
         sandboxName,
         gatewayName,
         gatewayPort: 8080,
@@ -345,10 +332,7 @@ describe("Hermes portable installer admission", testTimeoutOptions(60_000), () =
                 gatewayName,
                 gatewayPort: 8080,
                 inferenceRouteReservation: createReservation,
-                verifiedCreate: {
-                  reservation: createReservation,
-                  checkpoint,
-                },
+                verifiedCreate: { reservation: createReservation, checkpoint },
               });
             },
             readRegistry: registry.getSandbox,
@@ -362,9 +346,7 @@ describe("Hermes portable installer admission", testTimeoutOptions(60_000), () =
       );
       expect(completed).toMatchObject({
         created: true,
-        active: {
-          receipt: { schemaVersion: 5, phase: "active", sandboxName },
-        },
+        active: { receipt: { schemaVersion: 7, phase: "active", sandboxName } },
       });
       const registered = registry.getSandbox(sandboxName) as SandboxEntry;
       expect(registered).toMatchObject({

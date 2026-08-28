@@ -20,7 +20,7 @@ import {
 } from "./created-sandbox-finalization";
 import { getDcodeSelectionDrift } from "./dcode-selection-drift";
 import type { HermesPortableConfiguredReceipt } from "./experimental/hermes-portable-receipt";
-import { pendingSandboxPolicyVerificationForBoundary } from "./sandbox-create/policy-verification";
+import { pendingSandboxCreateVerificationForBoundary } from "./sandbox-create/policy-verification";
 import type { SandboxGpuCreateFlowResult } from "./sandbox-gpu-create-flow";
 import type { SandboxGpuConfig } from "./sandbox-gpu-mode";
 import type { CreatedSandboxRegistrationInput } from "./sandbox-registration";
@@ -48,9 +48,7 @@ describe("created sandbox registration authority", () => {
     await expect(
       register(
         null,
-        {
-          lifecycleGeneration: "generation-1",
-        } as HermesPortableConfiguredReceipt,
+        { lifecycleGeneration: "generation-1" } as HermesPortableConfiguredReceipt,
         "a".repeat(64),
         vi.fn(),
       ),
@@ -87,7 +85,7 @@ describe("new sandbox cancellation recovery", () => {
           markCancellationRecovery,
           dockerInfoFormat: () => "",
           runCapture: () => "",
-          revalidatePolicyAuthority: vi.fn(),
+          revalidatePolicyRequirements: vi.fn(),
           applyVmDnsMonkeypatch: vi.fn(),
         },
       ),
@@ -382,9 +380,7 @@ describe("created DCode sandbox finalization", () => {
     const endpointUrl = "https://openrouter.ai/api/v1";
     const model = "nvidia/nemotron-3-ultra-550b-a55b";
     const verifiedPolicyBoundary = {
-      registration: {
-        policyIdentity: { hash: "sha256:effective", activeVersion: 1 },
-      },
+      registration: {},
       sandboxName: "dcode",
       gatewayName: "nemoclaw",
       gatewayPort: 8080,
@@ -394,7 +390,7 @@ describe("created DCode sandbox finalization", () => {
     };
     const verifiedCreate = {
       reservation: {} as never,
-      checkpoint: pendingSandboxPolicyVerificationForBoundary(verifiedPolicyBoundary),
+      checkpoint: pendingSandboxCreateVerificationForBoundary(verifiedPolicyBoundary),
     } as NonNullable<CreatedSandboxRegistrationInput["verifiedCreate"]>;
     const runCaptureOpenshell = vi.fn(() =>
       [
@@ -425,13 +421,9 @@ describe("created DCode sandbox finalization", () => {
         endpointUrl,
       },
       {
-        createIntent: {
-          endpointUrl,
-          endpointSource: null,
-          observabilityEnabled: false,
-        },
+        createIntent: { endpointUrl, endpointSource: null, observabilityEnabled: false },
         resolvedCreateIntent: {
-          policy: { options: { baselineExclusions: [] } },
+          policy: { options: {} },
           hostMounts: undefined,
         },
       },
@@ -464,7 +456,7 @@ describe("created DCode sandbox finalization", () => {
         dashboardRemoteBindPrepared: false,
         getVerifiedPolicyBoundary: () => verifiedPolicyBoundary,
         getVerifiedCreateRegistrationAuthority: () => verifiedCreate,
-        revalidatePolicyAuthority: vi.fn(),
+        revalidatePolicyRequirements: vi.fn(),
       },
       null,
       "build-1",
@@ -1019,9 +1011,7 @@ describe("created sandbox completion actions", () => {
         return input as unknown as SandboxEntry;
       });
       const verifiedPolicyBoundary = {
-        registration: {
-          policyIdentity: { hash: "sha256:effective", activeVersion: 1 },
-        },
+        registration: {},
         sandboxName: "hermes",
         gatewayName: "nemoclaw",
         gatewayPort: 8080,
@@ -1050,7 +1040,7 @@ describe("created sandbox completion actions", () => {
       } satisfies QualifiedSandboxInferenceRouteReservation;
       const verifiedCreate = {
         reservation: inferenceRouteReservation,
-        checkpoint: pendingSandboxPolicyVerificationForBoundary(verifiedPolicyBoundary),
+        checkpoint: pendingSandboxCreateVerificationForBoundary(verifiedPolicyBoundary),
       } as NonNullable<CreatedSandboxRegistrationInput["verifiedCreate"]>;
       const completion = createCreatedSandboxCompletionActions(
         {

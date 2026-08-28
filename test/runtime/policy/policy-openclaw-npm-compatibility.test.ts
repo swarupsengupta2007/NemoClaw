@@ -13,7 +13,7 @@ import {
   managedSandboxEntry,
   parseResultPayload,
   SANDBOX_ID,
-} from "../../helpers/managed-policy-receipt-fixture";
+} from "../../helpers/live-policy-fixture";
 
 const requireForTest = createRequire(import.meta.url);
 const YAML = requireForTest("yaml");
@@ -118,7 +118,6 @@ function olderNpmEntry() {
 
 type LiveScenario = {
   sandboxName: string;
-  policies: string[];
   initialPolicy: string;
   childScript: string;
   setMode?: "success" | "fail" | "fail-once";
@@ -126,7 +125,6 @@ type LiveScenario = {
 
 function runLiveScenario({
   sandboxName,
-  policies: registeredPolicies,
   initialPolicy,
   childScript,
   setMode = "success",
@@ -191,7 +189,6 @@ const registry = require(${REGISTRY_PATH});
 const policies = require(${POLICIES_PATH});
 registry.registerSandbox(${JSON.stringify({
     ...managedSandboxEntry(sandboxName),
-    policies: registeredPolicies,
   })});
 ${childScript}
 `;
@@ -222,17 +219,30 @@ ${childScript}
   }
 }
 
-function exclusionRegistration(sandboxName: string, digestCharacter: string): string {
-  return `
-registry.addBaselineExclusion(${JSON.stringify(sandboxName)}, {
-  version: 1,
-  agent: "openclaw",
-  key: "npm_registry",
-  digest: ${JSON.stringify(digestCharacter.repeat(64))},
-});`;
-}
-
 describe("OpenClaw npm compatibility policy lifecycle", () => {
+  it("removes npm attribution superseded by Personal without mutating live policy", () => {
+    const initialPolicy = policyWith({
+      personal_open_internet: structuredClone(REVIEWED_PERSONAL_ENTRY),
+    });
+    const { calls, payload } = runLiveScenario({
+      sandboxName: "personal-owner",
+      initialPolicy,
+      childScript: `
+const removed = policies.removePreset("personal-owner", "npm");
+process.stdout.write("\\n__RESULT__" + JSON.stringify({
+  removed,
+  policy: fs.readFileSync(process.env.CURRENT_POLICY, "utf-8"),
+  registry: registry.getSandbox("personal-owner"),
+}));`,
+    });
+
+    expect(payload.removed).toBe(true);
+    expect(payload.policy).toBe(initialPolicy);
+    expect(payload.registry).not.toHaveProperty("policies");
+    expect(calls.filter((call) => call.startsWith("policy get "))).toHaveLength(2);
+    expect(calls.some((call) => call.startsWith("policy set "))).toBe(false);
+  });
+
   it("does not restore overlapping npm web routes beside Personal during removal", () => {
     const initialPolicy = policyWith({
       personal_open_internet: structuredClone(REVIEWED_PERSONAL_ENTRY),
@@ -241,7 +251,6 @@ describe("OpenClaw npm compatibility policy lifecycle", () => {
     });
     const { calls, payload } = runLiveScenario({
       sandboxName: "personal-npm",
-      policies: ["personal-open-internet", "npm"],
       initialPolicy,
       childScript: `
 const removed = policies.removePreset("personal-npm", "npm");
@@ -256,13 +265,13 @@ process.stdout.write("\\n__RESULT__" + JSON.stringify({
     expect(payload.policy.network_policies).toEqual({
       personal_open_internet: REVIEWED_PERSONAL_ENTRY,
     });
+    expect(payload.registry).not.toHaveProperty("policies");
     expect(calls.filter((call) => call.startsWith("policy set "))).toHaveLength(1);
   });
 
   it("repairs an active npm preset and restores the reviewed baseline on removal (#8497)", () => {
     const { calls, payload, stdout } = runLiveScenario({
       sandboxName: "npm-lifecycle",
-      policies: ["npm"],
       initialPolicy: unoverlaidActivePolicy(),
       childScript: `
 const beforeApplyState = policies.getOpenClawNpmCompatibilityState("npm-lifecycle");
@@ -290,10 +299,11 @@ process.stdout.write("\\n__RESULT__" + JSON.stringify({
     expect(payload.removed).toBe(true);
     expect(payload.afterRemove.network_policies.npm_yarn).toBeUndefined();
     expect(payload.afterRemove.network_policies.npm_registry).toEqual(REVIEWED_BASELINE_ENTRY);
+    expect(payload.registry).not.toHaveProperty("policies");
     expect(stdout).toContain("Effective egress scope that would replace the current preset policy");
     expect(stdout).toContain("OpenClaw npm compatibility");
     expect(stdout).not.toContain("already effective; no new egress would be opened");
-    expect(calls.filter((call) => call.startsWith("policy get "))).toHaveLength(6);
+    expect(calls.filter((call) => call.startsWith("policy get "))).toHaveLength(7);
     expect(calls.filter((call) => call.startsWith("policy set "))).toHaveLength(2);
   });
 
@@ -302,7 +312,6 @@ process.stdout.write("\\n__RESULT__" + JSON.stringify({
     const oldActivePolicy = YAML.parse(activePolicy(oldNpmEntry));
     const { calls, payload, stderr } = runLiveScenario({
       sandboxName: "npm-old-overlay",
-      policies: ["npm"],
       initialPolicy: YAML.stringify(oldActivePolicy),
       setMode: "fail-once",
       childScript: `
@@ -323,10 +332,12 @@ process.stdout.write("\\n__RESULT__" + JSON.stringify({
 
     expect(payload.failedRemoval).toBe(false);
     expect(payload.afterFailedPolicy).toEqual(oldActivePolicy);
+    expect(payload.afterFailedRegistry).not.toHaveProperty("policies");
     expect(payload.removed, stderr).toBe(true);
     expect(payload.afterRemove.network_policies.npm_yarn).toBeUndefined();
     expect(payload.afterRemove.network_policies.npm_registry).toEqual(REVIEWED_BASELINE_ENTRY);
-    expect(calls.filter((call) => call.startsWith("policy get "))).toHaveLength(4);
+    expect(payload.registry).not.toHaveProperty("policies");
+    expect(calls.filter((call) => call.startsWith("policy get "))).toHaveLength(5);
     expect(calls.filter((call) => call.startsWith("policy set "))).toHaveLength(2);
   });
 
@@ -335,7 +346,6 @@ process.stdout.write("\\n__RESULT__" + JSON.stringify({
     drifted.network_policies.npm_registry.endpoints[0].tls = "auto";
     const { calls, payload, stderr } = runLiveScenario({
       sandboxName: "npm-drift",
-      policies: ["npm"],
       initialPolicy: YAML.stringify(drifted),
       childScript: `
 const removed = policies.removePreset("npm-drift", "npm", { nonFatal: true });
@@ -348,86 +358,8 @@ process.stdout.write("\\n__RESULT__" + JSON.stringify({
 
     expect(payload.removed).toBe(false);
     expect(payload.policy).toEqual(drifted);
+    expect(payload.registry).not.toHaveProperty("policies");
     expect(calls.some((call) => call.startsWith("policy set "))).toBe(false);
     expect(stderr).toContain("differs from both the reviewed baseline");
-  });
-
-  it("rejects custom ownership of the reserved npm compatibility key (#8497)", () => {
-    const policies = requireForTest(
-      path.join(REPO_ROOT, "src", "lib", "policy", "index.ts"),
-    ) as typeof import("../../../src/lib/policy");
-    const errors: string[] = [];
-    const errorSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
-      errors.push(args.map(String).join(" "));
-    });
-
-    try {
-      expect(
-        policies.applyPresetContent("custom-npm-key", "custom-registry", REVIEWED_NPM_PRESET, {
-          custom: { sourcePath: "/tmp/custom-registry.yaml" },
-        }),
-      ).toBe(false);
-      expect(errors.join("\n")).toContain("reserved network policy key 'npm_yarn'");
-    } finally {
-      errorSpy.mockRestore();
-    }
-  });
-
-  it.each(["hermes", "langchain-deepagents-code"] as const)(
-    "does not inject an OpenClaw baseline into other agent policies [%s] (#8497)",
-    (agent) => {
-      const policies = requireForTest(
-        path.join(REPO_ROOT, "src", "lib", "policy", "index.ts"),
-      ) as typeof import("../../../src/lib/policy");
-
-      const result = policies.mergePresetNamesIntoPolicy(excludedBaselinePolicy(), ["npm"], {
-        agent,
-      });
-      const effective = YAML.parse(result.policy);
-      expect(effective.network_policies.npm_yarn, agent).toBeDefined();
-      expect(effective.network_policies.npm_registry, agent).toBeUndefined();
-    },
-  );
-
-  it("keeps an approved baseline exclusion absent during create-time composition (#8497)", () => {
-    const policies = requireForTest(
-      path.join(REPO_ROOT, "src", "lib", "policy", "index.ts"),
-    ) as typeof import("../../../src/lib/policy");
-    const result = policies.mergePresetNamesIntoPolicy(excludedBaselinePolicy(), ["npm"], {
-      agent: "openclaw",
-      excludedBaselineKeys: ["npm_registry"],
-    });
-    const effective = YAML.parse(result.policy);
-
-    expect(effective.network_policies.npm_yarn).toBeDefined();
-    expect(effective.network_policies.npm_registry).toBeUndefined();
-  });
-
-  it("refuses create-time composition from a drifted OpenClaw npm baseline (#8497)", () => {
-    const policies = requireForTest(
-      path.join(REPO_ROOT, "src", "lib", "policy", "index.ts"),
-    ) as typeof import("../../../src/lib/policy");
-    const driftedBaseline = YAML.parse(reviewedBaselinePolicy());
-    driftedBaseline.network_policies.npm_registry.binaries = [{ path: "/**" }];
-
-    expect(() =>
-      policies.mergePresetNamesIntoPolicy(YAML.stringify(driftedBaseline), ["npm"], {
-        agent: "openclaw",
-      }),
-    ).toThrow(/differs from the reviewed baseline/i);
-  });
-
-  it("discloses the temporary OpenClaw baseline widening and exact restoration (#8497)", () => {
-    const policies = requireForTest(
-      path.join(REPO_ROOT, "src", "lib", "policy", "index.ts"),
-    ) as typeof import("../../../src/lib/policy");
-    const lines: string[] = [];
-    policies.logOpenClawNpmCompatibilityDisclosure((line) => lines.push(line));
-
-    expect(lines.join("\n")).toContain("/usr/local/bin/openclaw");
-    expect(lines.join("\n")).toContain("GET-only REST");
-    expect(lines.join("\n")).toContain("full L4 pass-through");
-    expect(lines.join("\n")).toContain("HTTP methods and paths are not inspected");
-    expect(lines.join("\n")).toContain("restores the exact reviewed GET-only baseline");
   });
 });

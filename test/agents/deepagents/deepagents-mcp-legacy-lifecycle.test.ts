@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   getLiveSandboxPolicyEntryDigest: vi.fn(),
   getPresetContentGatewayState: vi.fn(),
   recoverNamedGatewayRuntime: vi.fn(),
-  removePolicyContent: vi.fn(),
+  removePreset: vi.fn(),
   runOpenshellProviderCommand: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ vi.mock("../../../src/lib/policy", () => ({
   applyPresetContent: mocks.applyPresetContent,
   getLiveSandboxPolicyEntryDigest: mocks.getLiveSandboxPolicyEntryDigest,
   getPresetContentGatewayState: mocks.getPresetContentGatewayState,
-  removePolicyContent: mocks.removePolicyContent,
+  removePreset: mocks.removePreset,
 }));
 
 vi.mock("../../../src/lib/actions/sandbox/process-recovery", () => ({
@@ -100,10 +100,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  fs.rmSync(path.dirname(registry.REGISTRY_FILE), {
-    recursive: true,
-    force: true,
-  });
+  fs.rmSync(path.dirname(registry.REGISTRY_FILE), { recursive: true, force: true });
   restoreEnvironmentVariable("OPENSHELL_GATEWAY", ORIGINAL_OPENSHELL_GATEWAY);
 
   providerExists = true;
@@ -183,7 +180,7 @@ beforeEach(() => {
     policyState = "match";
     return true;
   });
-  mocks.removePolicyContent.mockReset().mockImplementation(() => {
+  mocks.removePreset.mockReset().mockImplementation(() => {
     policyState = "absent";
     return true;
   });
@@ -196,11 +193,7 @@ beforeEach(() => {
       switch (true) {
         case command === "/usr/local/bin/deepagents-code --nemoclaw-mcp-capability":
           return deepAgentsCapability
-            ? {
-                status: 0,
-                stdout: "NEMOCLAW_DEEPAGENTS_MCP_CAPABILITY=2\n",
-                stderr: "",
-              }
+            ? { status: 0, stdout: "NEMOCLAW_DEEPAGENTS_MCP_CAPABILITY=2\n", stderr: "" }
             : { status: 2, stdout: "", stderr: "unknown option" };
         case command.includes("servers.pop(payload['server'])"): {
           const outcome = adapterRemovalOutcome || (adapterRegistered ? "removed" : "absent");
@@ -255,7 +248,6 @@ beforeEach(() => {
     providerName: "alpha-mcp-github",
     providerId,
     policyName: "mcp-bridge-github",
-    allowedIps: ["8.8.8.8"],
     addedAt: "2026-06-27T00:00:00.000Z",
   };
   registry.registerSandbox({
@@ -325,10 +317,7 @@ describe("legacy Deep Agents managed MCP lifecycle", () => {
       providerType = caseProviderType;
       const preparation = await bridge[method]("alpha");
 
-      expect({
-        entryCount: preparation.entries.length,
-        ...lifecycleResult(),
-      }).toMatchObject({
+      expect({ entryCount: preparation.entries.length, ...lifecycleResult() }).toMatchObject({
         entryCount: 1,
         attached: false,
         adapterRegistered: false,

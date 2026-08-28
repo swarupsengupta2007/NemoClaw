@@ -34,8 +34,6 @@ function pendingCreateVerification(
     lifecycleGeneration: "alpha-generation-1",
     sandboxIdentityFingerprint: SANDBOX_FINGERPRINT,
     route: "none",
-    policyHash: "policy-hash",
-    policyVersion: 1,
     ...overrides,
   };
 }
@@ -323,9 +321,7 @@ describe("sandbox destroy host-local inference transaction", () => {
       .mockReturnValueOnce(entry)
       .mockReturnValueOnce({
         ...entry,
-        pendingCreateVerification: pendingCreateVerification({
-          policyVersion: 2,
-        }),
+        pendingCreateVerification: pendingCreateVerification({ route: "compatibility" }),
       });
     const runOpenshell = vi.fn(() => ({ status: 0, stdout: "", stderr: "" }));
     const stopInferenceResources = vi.fn();
@@ -525,10 +521,7 @@ describe("sandbox destroy host-local inference transaction", () => {
     const runtimeProvider = provider();
     const entry = sandbox();
     const peer = sandbox("beta", receipt());
-    const { result } = await runDestroy(runtimeProvider, {
-      entry,
-      peers: [peer],
-    });
+    const { result } = await runDestroy(runtimeProvider, { entry, peers: [peer] });
 
     expect(result).toMatchObject({ ok: true });
     expect(runtimeProvider.destroy).not.toHaveBeenCalled();
@@ -537,11 +530,7 @@ describe("sandbox destroy host-local inference transaction", () => {
   it("retains externally owned Ollama instead of removing its host process", async () => {
     const value = receipt("ollama");
     const runtimeProvider = provider({
-      destroy: (current) => ({
-        status: "retained",
-        reason: "host-process",
-        receipt: current,
-      }),
+      destroy: (current) => ({ status: "retained", reason: "host-process", receipt: current }),
     });
     const { result, stopInferenceResources } = await runDestroy(runtimeProvider, {
       entry: sandbox("alpha", value),
@@ -581,9 +570,7 @@ describe("sandbox destroy host-local inference transaction", () => {
 
   it("rejects a malformed durable receipt before sandbox deletion", async () => {
     const runtimeProvider = provider();
-    const entry = sandbox("alpha", receipt(), {
-      hostLocalInferenceReceipt: "not-json",
-    });
+    const entry = sandbox("alpha", receipt(), { hostLocalInferenceReceipt: "not-json" });
     const { result, runOpenshell, stopInferenceResources } = await runDestroy(runtimeProvider, {
       entry,
     });
@@ -596,9 +583,7 @@ describe("sandbox destroy host-local inference transaction", () => {
 
   it("preserves authority when the registry row is missing or reused after deletion", async () => {
     const missingProvider = provider();
-    const missing = await runDestroy(missingProvider, {
-      currentAfterDelete: null,
-    });
+    const missing = await runDestroy(missingProvider, { currentAfterDelete: null });
     expect(missing.result).toMatchObject({
       ok: false,
       deleteConfirmed: true,

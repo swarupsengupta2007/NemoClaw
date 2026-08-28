@@ -314,15 +314,6 @@ export function getRebuildSandboxEntryOrBail(
   return sb;
 }
 
-/** Keep the pending baseline-policy transaction guard identical at every rebuild boundary. */
-export function blockRebuildOnPendingBaselineTransition(
-  _sandboxEntry: RebuildSandboxEntry,
-  _sandboxName: string,
-  _bail: RebuildBail,
-): boolean {
-  return false;
-}
-
 export function isSingleAgentRebuildSupported(
   sb: registry.SandboxEntry & { agents?: unknown[] },
   bail: RebuildBail,

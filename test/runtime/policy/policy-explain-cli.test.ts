@@ -7,7 +7,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { managedSandboxEntry, SANDBOX_ID } from "../../helpers/managed-policy-receipt-fixture";
+import {
+  managedSandboxEntry,
+  POLICY_HASH,
+  POLICY_VERSION,
+  SANDBOX_ID,
+} from "../../helpers/live-policy-fixture";
 
 const CLI = path.join(import.meta.dirname, "../../..", "bin", "nemoclaw.js");
 
@@ -65,20 +70,6 @@ let fakeOpenshell: string;
 beforeEach(() => {
   scratchHome = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-policy-explain-"));
   fakeOpenshell = path.join(scratchHome, "openshell");
-  const slackPolicy = fs
-    .readFileSync(
-      path.join(
-        import.meta.dirname,
-        "../../..",
-        "src/lib/messaging/channels/slack/policy/openclaw.yaml",
-      ),
-      "utf8",
-    )
-    .replaceAll("{sandboxName}", "policy-explain-e2e");
-  const githubPolicy = fs.readFileSync(
-    path.join(import.meta.dirname, "../../..", "nemoclaw-blueprint/policies/presets/github.yaml"),
-    "utf8",
-  );
   fs.writeFileSync(
     fakeOpenshell,
     `#!/usr/bin/env bash
@@ -89,13 +80,7 @@ if [ "$1 $2" = "sandbox get" ]; then
   exit 0
 fi
 if [ "$1 $2" = "policy get" ]; then
-  if [ "$sandbox_name" = "policy-explain-e2e" ]; then
-    printf '%s' '${Buffer.from(slackPolicy).toString("base64")}' | base64 -d
-  elif [ "$sandbox_name" = "policy-explain-json" ]; then
-    printf '%s' '${Buffer.from(githubPolicy).toString("base64")}' | base64 -d
-  else
-    printf 'version: 1\nnetwork_policies: {}\n'
-  fi
+  printf '{"scope":"sandbox","sandbox":"%s","status":"effective","policy_source":"sandbox","hash":"${POLICY_HASH}","active_version":${POLICY_VERSION},"policy":{"version":1,"network_policies":{}}}\n' "$sandbox_name"
   exit 0
 fi
 exit 1
@@ -141,8 +126,8 @@ describe("nemoclaw <sandbox> policy-explain (E2E)", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("# Sandbox policy context: policy-explain-e2e");
     expect(result.stdout).toContain("## Active presets");
-    expect(result.stdout).toContain("`slack`");
-    expect(result.stdout).toContain("slack.com");
+    expect(result.stdout).toContain("- none");
+    expect(result.stdout).toContain("## Known unapplied presets");
     expect(result.stdout).toContain("## Failure classification");
     expect(result.stdout).toContain("no tier recorded");
     expect(result.stdout).not.toMatch(/enforcement:|websocket_credential_rewrite|binaries:/);
@@ -169,7 +154,6 @@ describe("nemoclaw <sandbox> policy-explain (E2E)", () => {
       tier: { name: string } | null;
       activePresets: Array<{ name: string; allowedHostCategories: string[] }>;
       knownUnappliedPresets: Array<{ name: string }>;
-      baselineExclusions: Array<{ key: string; status: string; supportImpact: string }>;
       approvalPath: {
         inspect: string;
         add: string;
@@ -183,13 +167,10 @@ describe("nemoclaw <sandbox> policy-explain (E2E)", () => {
 
     expect(parsed.sandboxName).toBe("policy-explain-json");
     expect(parsed.tier).toBeNull();
-    const active = parsed.activePresets.find((p) => p.name === "github");
-    expect(active).toBeDefined();
-    expect(active?.allowedHostCategories).toContain("api.github.com");
+    expect(parsed.activePresets).toEqual([]);
     expect(parsed.knownUnappliedPresets.some((p) => p.name === "slack")).toBe(true);
     expect(parsed.approvalPath.inspect).toBe("nemoclaw policy-explain-json policy list");
     expect(parsed.approvalPath.add).toBe("nemoclaw policy-explain-json policy add <preset>");
-    expect(parsed.baselineExclusions).toEqual([]);
     expect(parsed.approvalPath.excludeBaseline).toContain("policy exclude <key> --dry-run");
     expect(parsed.approvalPath.restoreBaseline).toContain("policy restore <key>");
     expect(

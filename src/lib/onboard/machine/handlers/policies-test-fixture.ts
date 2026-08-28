@@ -19,7 +19,6 @@ export function createPolicyHandlerDeps(
     activeSandbox: vi.fn(() => ({
       messaging: { plan: makeMessagingPlan({ channels: ["telegram"] }) },
     })),
-    livePresets: vi.fn(() => [] as string[]),
     mergeChannels: vi.fn(
       (selected: string[], recorded: string[], active: string[] | null | undefined) =>
         selected.length > 0 ? selected : (active ?? recorded),
@@ -38,12 +37,8 @@ export function createPolicyHandlerDeps(
           >["deps"]["preparePolicyPresetResumeSelection"]
         >[1],
       ) => ({
-        policyPresets: (options.recordedPolicyPresets ?? []).filter(
-          (name) => name !== "unsupported",
-        ),
-        recordedPolicyPresetsNeedReconcile: (options.recordedPolicyPresets ?? []).includes(
-          "unsupported",
-        ),
+        policyPresets: [],
+        livePolicyPresetsNeedUpdate: false,
         disabledMessagingPolicyPresetApplied: false,
         suppressedAgentRequiredPresetsLive: false,
       }),
@@ -58,14 +53,12 @@ export function createPolicyHandlerDeps(
       return session;
     }),
     complete: vi.fn(async () => session),
-    persistPolicies: vi.fn((_sandboxName: string, _appliedPolicyPresets: string[]) => true),
   };
   return {
     calls,
     deps: {
       loadSession: calls.load,
       getActiveSandbox: calls.activeSandbox,
-      getAppliedPolicyPresets: calls.livePresets,
       mergePolicyMessagingChannels: calls.mergeChannels,
       detectUnconfiguredMessagingChannels: calls.unconfiguredChannels,
       verifyCompatibleEndpointSandboxSmoke: calls.smoke,

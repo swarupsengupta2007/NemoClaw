@@ -67,6 +67,7 @@ const recreateOptions: RebuildRecreateOnboardOpts = {
   nonInteractive: true,
   recreateSandbox: true,
   authoritativeResumeConfig: true,
+  rebuildPolicySourcePath: "/tmp/current-policy.yaml",
   acceptThirdPartySoftware: true,
   agent: DCODE_AGENT,
   recreateProvider: "nvidia",
@@ -151,6 +152,7 @@ function makeInput(overrides: Partial<RebuildRecreatePhaseInput> = {}): RebuildR
     rebuildsHermesSandbox: false,
     hermesToolGateways: [],
     hasHermesToolGateways: false,
+    policySourcePath: "/tmp/current-policy.yaml",
     credentialEnv: "NVIDIA_API_KEY",
     baseImagePreflight: { ok: true, imageRef: null, overrideEnvVar: null },
     recoveryRecreate: false,
@@ -333,24 +335,6 @@ describe("runRebuildRecreatePhase handoff", () => {
 
     expect(onboardSession.updateSession).not.toHaveBeenCalled();
     expect(onboardSpy).not.toHaveBeenCalled();
-  });
-
-  it("does not replay ambient policy-tier input during recreate", async () => {
-    const previousPolicyTier = process.env.NEMOCLAW_POLICY_TIER;
-    process.env.NEMOCLAW_POLICY_TIER = "open";
-    try {
-      let observedTier: string | undefined;
-      vi.spyOn(rebuildOnboardDependencies, "onboard").mockImplementation(async () => {
-        observedTier = process.env.NEMOCLAW_POLICY_TIER;
-      });
-
-      await expect(runRebuildRecreatePhase(makeInput())).resolves.toBe(true);
-
-      expect(observedTier).toBeUndefined();
-      expect(process.env.NEMOCLAW_POLICY_TIER).toBe("open");
-    } finally {
-      restoreEnv("NEMOCLAW_POLICY_TIER", previousPolicyTier);
-    }
   });
 
   it("does not take a second backup during the inner recreate", async () => {

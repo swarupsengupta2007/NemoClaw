@@ -84,11 +84,7 @@ export function getRebuildSandboxGpuOverrides(sb: RebuildGpuOptOutEntry | null |
     };
   }
   if (mode === "0") {
-    return {
-      sandboxGpu: "disable",
-      sandboxGpuDevice: null,
-      sessionGpuPassthrough: false,
-    };
+    return { sandboxGpu: "disable", sandboxGpuDevice: null, sessionGpuPassthrough: false };
   }
   if (hasRecordedGpuMode(sb?.sandboxGpuMode) && mode === null) {
     throw new Error(`Invalid recorded sandbox GPU mode '${String(sb?.sandboxGpuMode)}'.`);
@@ -97,24 +93,12 @@ export function getRebuildSandboxGpuOverrides(sb: RebuildGpuOptOutEntry | null |
     // A false cached value keeps resume's legacy fallback from converting
     // recorded auto mode into forced enable after the old registry row is
     // temporarily removed. Fresh preflight recomputes actual auto detection.
-    return {
-      sandboxGpu: null,
-      sandboxGpuDevice: null,
-      sessionGpuPassthrough: false,
-    };
+    return { sandboxGpu: null, sandboxGpuDevice: null, sessionGpuPassthrough: false };
   }
   if (sb?.gpuEnabled === false) {
-    return {
-      sandboxGpu: "disable",
-      sandboxGpuDevice: null,
-      sessionGpuPassthrough: false,
-    };
+    return { sandboxGpu: "disable", sandboxGpuDevice: null, sessionGpuPassthrough: false };
   }
-  return {
-    sandboxGpu: null,
-    sandboxGpuDevice: null,
-    sessionGpuPassthrough: false,
-  };
+  return { sandboxGpu: null, sandboxGpuDevice: null, sessionGpuPassthrough: false };
 }
 
 export type RebuildRecreateOnboardOpts = {
@@ -148,7 +132,7 @@ export type RebuildRecreateOnboardOpts = {
   preparedImageRebuild?: PreparedImageRebuildHandoff;
   managedWorkloadRebuild?: ManagedWorkloadRebuildHandoff;
   rebuildPreservedEnv?: readonly PreservedEnvFile[];
-  rebuildPolicyPresets?: readonly string[];
+  rebuildPolicySourcePath?: string;
   hostMounts?: readonly import("../../state/registry/types").SandboxHostMount[];
   autoYes: boolean;
   toolDisclosure: ToolDisclosure;

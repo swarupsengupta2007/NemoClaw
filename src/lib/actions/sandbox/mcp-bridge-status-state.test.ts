@@ -43,7 +43,6 @@ registry.registerSandbox({
   mcp: { bridges: { first: {
     server: "first",
     url: "https://8.8.8.8/mcp",
-    allowedIps: ["8.8.8.8"],
     env: ["SHARED_MCP_TOKEN"],
     providerName: "nemoclaw-mcp-openclaw-sandbox-first",
     policyName: "mcp-bridge-first",
@@ -93,7 +92,6 @@ for (const [index, marker] of markers.entries()) {
         agent: "openclaw",
         adapter: "mcporter",
         url: "https://mcp.example.test/mcp",
-        allowedIps: ["8.8.8.8"],
         env: [],
         policyName: "mcp-bridge-github",
         addedAt: "2026-06-01T00:00:00.000Z",
@@ -240,14 +238,9 @@ registry.registerSandbox({ name: "openclaw-sandbox", agent: "openclaw" });
     const home = createTempHome("nemoclaw-mcp-status-custom-root-");
     const script = `
 process.env.HOME = ${JSON.stringify(home)};
-const replace = (module, name, value) => Object.defineProperty(module, name, {
-  configurable: true, enumerable: true, value, writable: true,
-});
 const registry = require("./src/lib/state/registry.js");
 const agentDefs = require("./src/lib/agent/defs.js");
 const gatewayRuntime = require("./src/lib/gateway-runtime-action.js");
-const policies = require("./src/lib/policy/index.js");
-const provider = require("./src/lib/actions/sandbox/mcp-bridge-provider.js");
 const processRecovery = require("./src/lib/actions/sandbox/process-recovery.js");
 agentDefs.loadAgent = () => ({
   name: "openclaw",
@@ -266,13 +259,6 @@ processRecovery.executeSandboxCommand = (_sandboxName, command) => {
   capturedCommand = command;
   return { status: 0, stdout: "registered", stderr: "" };
 };
-replace(policies, "getPresetContentGatewayState", () => "match");
-replace(provider, "inspectMcpProvider", () => ({
-  credentialKeys: ["GITHUB_TOKEN"], exists: true,
-  id: "11111111-2222-4333-8444-555555555555", resourceVersion: 12, type: "nemoclaw-mcp-v1",
-}));
-replace(provider, "observeMcpCredentialRevision", () => "v12");
-replace(provider, "providerAttached", () => true);
 registry.registerSandbox({
   name: "custom-root-status",
   agent: "openclaw",
@@ -281,10 +267,7 @@ registry.registerSandbox({
     agent: "openclaw",
     adapter: "mcporter",
     url: "https://mcp.example.test/github",
-    allowedIps: ["8.8.8.8"],
-    env: ["GITHUB_TOKEN"],
-    providerName: "custom-root-status-mcp-github",
-    providerId: "11111111-2222-4333-8444-555555555555",
+    env: [],
     policyName: "mcp-bridge-github",
     addedAt: "2026-06-01T00:00:00.000Z",
   } } },
@@ -320,14 +303,9 @@ status.statusMcpBridge("custom-root-status", "github").then(
     const home = createTempHome("nemoclaw-mcp-status-agent-");
     const script = `
 process.env.HOME = ${JSON.stringify(home)};
-const replace = (module, name, value) => Object.defineProperty(module, name, {
-  configurable: true, enumerable: true, value, writable: true,
-});
 const registry = require("./src/lib/state/registry.js");
 const agentDefs = require("./src/lib/agent/defs.js");
 const gatewayRuntime = require("./src/lib/gateway-runtime-action.js");
-const policies = require("./src/lib/policy/index.js");
-const provider = require("./src/lib/actions/sandbox/mcp-bridge-provider.js");
 const processRecovery = require("./src/lib/actions/sandbox/process-recovery.js");
 agentDefs.loadAgent = (name) => {
   if (name === "current-disabled") {
@@ -353,16 +331,6 @@ gatewayRuntime.recoverNamedGatewayRuntime = async () => ({
   after: { state: "healthy_named" },
 });
 processRecovery.executeSandboxCommand = () => ({ status: 0, stdout: "registered", stderr: "" });
-replace(policies, "getPresetContentGatewayState", () => "match");
-replace(provider, "inspectMcpProvider", (name) => ({
-  credentialKeys: [name.includes("direct") ? "DIRECT_TOKEN" : "LEGACY_TOKEN"], exists: true,
-  id: name.includes("direct")
-    ? "11111111-2222-4333-8444-555555555555"
-    : "66666666-7777-4888-8999-000000000000",
-  resourceVersion: 12, type: "nemoclaw-mcp-v1",
-}));
-replace(provider, "observeMcpCredentialRevision", () => "v12");
-replace(provider, "providerAttached", () => true);
 registry.registerSandbox({
   name: "persisted-status",
   agent: "current-disabled",
@@ -372,10 +340,7 @@ registry.registerSandbox({
       agent: "persisted-unknown",
       adapter: "mcporter",
       url: "https://mcp.example.test/direct",
-      allowedIps: ["8.8.8.8"],
-      env: ["DIRECT_TOKEN"],
-      providerName: "persisted-status-mcp-direct",
-      providerId: "11111111-2222-4333-8444-555555555555",
+      env: [],
       policyName: "mcp-bridge-direct",
       addedAt: "2026-06-01T00:00:00.000Z",
     },
@@ -383,10 +348,7 @@ registry.registerSandbox({
       server: "legacy",
       agent: "persisted-enabled",
       url: "https://mcp.example.test/legacy",
-      allowedIps: ["8.8.8.8"],
-      env: ["LEGACY_TOKEN"],
-      providerName: "persisted-status-mcp-legacy",
-      providerId: "66666666-7777-4888-8999-000000000000",
+      env: [],
       policyName: "mcp-bridge-legacy",
       addedAt: "2026-06-01T00:00:00.000Z",
     },

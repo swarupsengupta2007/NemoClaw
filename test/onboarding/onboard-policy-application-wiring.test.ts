@@ -27,7 +27,7 @@ function restoreRequireCache(prior: Map<string, NodeModule>): void {
 }
 
 describe("onboarding policy application production wiring", () => {
-  it("wires resume policy application to the sandbox registry, readiness checks, and sandbox mutation lock (#7695)", async () => {
+  it("wires resume policy application to live policy, readiness checks, and sandbox mutation lock (#7695)", async () => {
     const priorCache = new Map(
       Object.entries(require.cache).filter(
         (entry): entry is [string, NodeModule] => entry[1] !== undefined,
@@ -134,6 +134,7 @@ describe("onboarding policy application production wiring", () => {
       await expect(
         application.setupPoliciesWithSelection("alpha", { selectedPresets: ["npm"] }),
       ).resolves.toEqual(["npm"]);
+      expect(getSandbox).not.toHaveBeenCalled();
       expect(waitForSandboxReady).toHaveBeenCalledTimes(2);
       expect(waitForSandboxControlPlaneReady).toHaveBeenCalledOnce();
       expect(syncPresetSelection).toHaveBeenCalledWith("alpha", [], ["npm"]);

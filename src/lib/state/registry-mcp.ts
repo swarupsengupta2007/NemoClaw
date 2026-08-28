@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { isIP } from "node:net";
-
 import { isObjectRecord } from "../core/json-types";
+import { isIP } from "node:net";
 import { isBlockedMcpUrlTargetHost, MCP_SERVER_URL_MAX_LENGTH } from "../security/mcp-url-target";
 import {
   canonicalizeTrustedPrivateEndpointPins,
@@ -18,12 +17,7 @@ export interface McpBridgeEntry {
   env: string[];
   /** Exact URL host explicitly admitted for routed private access. */
   trustedPrivateHost?: string;
-  /**
-   * Immutable validated address pins recorded when the bridge was added.
-   * Private pins are bound to trustedPrivateHost; public pins preserve the
-   * exact generated-policy target across lifecycle commands without using a
-   * registry policy shadow.
-   */
+  /** Validated endpoint pins recorded as MCP domain state for new bridges. */
   allowedIps?: string[];
   providerName?: string;
   /** Immutable OpenShell ObjectMeta.id captured after provider creation. */
@@ -177,24 +171,31 @@ function normalizeMcpBridgeEntry(server: string, value: unknown): McpBridgeEntry
       return null;
     }
     allowedIps = [...canonicalPins];
-  } else if (rawAllowedIps !== undefined) {
-    if (
-      !Array.isArray(rawAllowedIps) ||
-      rawAllowedIps.length === 0 ||
-      rawAllowedIps.some(
-        (address) =>
-          typeof address !== "string" ||
-          isIP(address) === 0 ||
-          address !== address.toLowerCase() ||
-          address.includes("%") ||
-          isBlockedMcpUrlTargetHost(address),
-      ) ||
-      new Set(rawAllowedIps).size !== rawAllowedIps.length ||
-      rawAllowedIps.some((address, index) => address !== [...rawAllowedIps].sort()[index])
-    ) {
-      return null;
+  } else {
+    // Legacy public bridge rows predate durable public pins. Preserve them so
+    // explicit restart/rebuild can resolve and write current pins; new bridge
+    // registrations always persist a non-empty canonical list.
+    if (rawAllowedIps === undefined) {
+      allowedIps = undefined;
+    } else {
+      if (
+        !Array.isArray(rawAllowedIps) ||
+        rawAllowedIps.length === 0 ||
+        rawAllowedIps.some(
+          (address) =>
+            typeof address !== "string" ||
+            address !== address.toLowerCase() ||
+            address.includes("%") ||
+            isIP(address) === 0 ||
+            isBlockedMcpUrlTargetHost(address),
+        )
+      ) {
+        return null;
+      }
+      const canonical = [...new Set(rawAllowedIps as string[])].sort();
+      if (canonical.length !== rawAllowedIps.length) return null;
+      allowedIps = canonical;
     }
-    allowedIps = [...rawAllowedIps];
   }
   const rawEnv = value.env;
   const env =

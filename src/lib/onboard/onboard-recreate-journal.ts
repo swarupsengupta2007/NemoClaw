@@ -106,10 +106,7 @@ export function openOnboardRecreateJournal(
       ...checkpoint,
       machineState: current.machine.state,
       updatedAt: new Date().toISOString(),
-      sandboxIdentity: decisionSelected({
-        name: target.sandboxName,
-        agent: agentName,
-      }),
+      sandboxIdentity: decisionSelected({ name: target.sandboxName, agent: agentName }),
       gatewayAuthority: decisionSelected(checkpointGatewayAuthority(authority)),
     };
     beginSandboxRecreateTransaction(current, {

@@ -78,20 +78,12 @@ describe("rebuild post-restore phase", () => {
       "verifyHermesGatewayAfterStateRestoreForCronGate",
     ).mockReturnValue({
       state: "healthy",
-      replacementIdentity: {
-        pid: 77,
-        start_time: 903,
-        drain_token: "restore-token",
-      },
+      replacementIdentity: { pid: 77, start_time: 903, drain_token: "restore-token" },
     });
     vi.spyOn(
       rebuildHermesPostRestore,
       "completeHermesCronRestoreAfterGatewayReplacement",
-    ).mockReturnValue({
-      pid: 77,
-      start_time: 903,
-      drain_token: "restore-token",
-    });
+    ).mockReturnValue({ pid: 77, start_time: 903, drain_token: "restore-token" });
     vi.spyOn(
       rebuildHermesPostRestore,
       "isHermesCronRestoreDrainMarkerRollbackFailure",
@@ -302,11 +294,7 @@ describe("rebuild post-restore phase", () => {
       attemptDispatch();
       return {
         state: "healthy",
-        replacementIdentity: {
-          pid: 77,
-          start_time: 903,
-          drain_token: "restore-token",
-        },
+        replacementIdentity: { pid: 77, start_time: 903, drain_token: "restore-token" },
       };
     });
     vi.mocked(
@@ -745,8 +733,6 @@ describe("rebuild post-restore phase", () => {
       "Mutable OpenClaw config hash was not refreshed",
       "Messaging webhook forward was not verified",
       "MCP bridge definitions were preserved but not fully refreshed",
-      "Exact live policy failed to restore and verify",
-      "Exact live policy reconciliation was incomplete; remove failed: messaging-discord",
       "Shields were previously enabled",
     ];
     const offsets = ordered.map((fragment) => output.indexOf(fragment));

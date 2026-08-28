@@ -30,7 +30,7 @@ export interface AccessFailureInput {
    * Optional caller-provided context. When omitted, the classifier builds
    * its own context for `sandboxName`. Callers that already hold a
    * context (the explain command, the agent runtime) should pass it to
-   * avoid a second registry/gateway probe and to keep the verification
+   * avoid a second gateway probe and to keep the verification
    * status consistent with what the caller already rendered.
    */
   context?: PolicyContext;
@@ -53,7 +53,9 @@ export interface AccessFailureClassification {
    * `high` when the underlying signal unambiguously maps to {@link kind}
    * AND the matched preset (if any) was confirmed by a live gateway
    * probe. `low` when either the signal is ambiguous (notably HTTP 403
-   * on an allowed host) or the gateway is unavailable.
+   * on an allowed host) or the matched preset is `gateway-unavailable`,
+   * in which case the agent must treat the
+   * verdict as advisory.
    */
   confidence: "high" | "low";
 }
@@ -91,12 +93,12 @@ function findMatchingPreset(
 }
 
 function isVerified(preset: PolicyContextPreset): boolean {
-  return preset.verification === "verified" || preset.verification === "agent-base";
+  return preset.verification === "verified";
 }
 
 function verificationNote(preset: PolicyContextPreset): string {
   if (isVerified(preset)) return "";
-  return " The current OpenShell policy is unavailable, so this verdict is advisory.";
+  return " The OpenShell gateway is unreachable, so current enforcement could not be verified.";
 }
 
 function resolveContext(input: AccessFailureInput): PolicyContext {
@@ -161,8 +163,14 @@ export function classifyAccessFailure(input: AccessFailureInput): AccessFailureC
           confidence: "high",
         };
       }
-      // The live policy was unavailable. Treat this as advisory until a
-      // fresh OpenShell read proves whether the preset is active.
+      // Registry-only or gateway-unavailable: the preset is listed locally
+      // but the OpenShell gateway is either drifting or unreachable. A
+      // network-block code on a host that *should* be allowed is the
+      // strongest signal we have that the gateway is in fact blocking
+      // egress to this host — surface it as `blocked-by-policy` so the
+      // agent's remediation matches the doc taxonomy, with the
+      // verification caveat baked into the wording and confidence
+      // downgrade.
       return {
         kind: "blocked-by-policy",
         reason: `Host '${input.host}' is declared by preset '${matched.name}' but the request was refused with a network-block code (${code}) and the OpenShell gateway has not been confirmed to enforce this preset.${note}`,

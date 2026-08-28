@@ -61,7 +61,16 @@ function runCli(args: string, env: Record<string, string | undefined> = {}): Cli
  * exit 0 with stale data, so the old isLive.status guard never fires.
  */
 function writeExecutable(filePath: string, lines: string[]): void {
-  fs.writeFileSync(filePath, ["#!/bin/sh", ...lines].join("\n"), { mode: 0o755 });
+  const policyGet =
+    path.basename(filePath) === "openshell"
+      ? [
+          'if [ "$1 $2" = "policy get" ]; then',
+          "  printf 'version: 1\\nnetwork_policies: {}\\n'",
+          "  exit 0",
+          "fi",
+        ]
+      : [];
+  fs.writeFileSync(filePath, ["#!/bin/sh", ...policyGet, ...lines].join("\n"), { mode: 0o755 });
 }
 
 function writeSandboxRegistry(
@@ -80,7 +89,6 @@ function writeSandboxRegistry(
           model: "test-model",
           provider: "nvidia-prod",
           gpuEnabled: false,
-          policies: [],
           ...entry,
         },
       },
@@ -114,8 +122,6 @@ function writeEmptyOpenClawSnapshot(home: string, name: string): void {
       dir: "/sandbox/.openclaw",
       backupPath,
       blueprintDigest: null,
-      policyPresets: [],
-      customPolicies: [],
       name,
     }),
     { mode: 0o600 },
@@ -173,6 +179,7 @@ function makeStoppedGatewayEnv(prefix: string): Record<string, string> {
 
   return {
     HOME: home,
+    NEMOCLAW_OPENSHELL_BIN: path.join(localBin, "openshell"),
     PATH: `${localBin}:${process.env.PATH ?? ""}`,
   };
 }
@@ -187,7 +194,6 @@ function makeHealthyVmGatewayEnv(prefix: string): Record<string, string> {
   // container probe.
   writeExecutable(path.join(localBin, "openshell"), [
     'case "$1 $2" in',
-    "  \"policy get\") printf 'version: 1\\nnetwork_policies: {}\\n'; exit 0 ;;",
     '  "gateway info") printf "Gateway Info\\n\\nGateway: nemoclaw\\nGateway endpoint: https://127.0.0.1:8080/\\n"; exit 0 ;;',
     '  "sandbox list") printf "NAME STATUS\\nalpha Ready\\n"; exit 0 ;;',
     '  "sandbox exec") printf "NEMOCLAW_DCODE_PROBE=no-runtime\\n"; exit 0 ;;',
@@ -205,6 +211,7 @@ function makeHealthyVmGatewayEnv(prefix: string): Record<string, string> {
 
   return {
     HOME: home,
+    NEMOCLAW_OPENSHELL_BIN: path.join(localBin, "openshell"),
     PATH: `${localBin}:${process.env.PATH ?? ""}`,
   };
 }
@@ -243,7 +250,6 @@ function makeVmRestoreToEnv(
   const dashboardBind = process.env.WSL_DISTRO_NAME ? "0.0.0.0" : "127.0.0.1";
   writeExecutable(path.join(localBin, "openshell"), [
     'case "$1 $2" in',
-    "  \"policy get\") printf 'version: 1\\nnetwork_policies: {}\\n'; exit 0 ;;",
     '  "gateway info") printf "Gateway Info\\n\\nGateway: nemoclaw\\nGateway endpoint: https://127.0.0.1:8080/\\n"; exit 0 ;;',
     `  "sandbox get") [ "$3 $4" = "-g nemoclaw" ] || exit 91; for sandbox_ref in "$@"; do :; done; if [ -f ${JSON.stringify(cloneIdentityCapturedMarker)} ]; then clone_identity=${JSON.stringify(revalidatedCloneIdentity)}; else touch ${JSON.stringify(cloneIdentityCapturedMarker)}; clone_identity=${JSON.stringify(cloneIdentity)}; fi; printf "Name: %s\\nId: %s\\nPhase: Ready\\n" "$sandbox_ref" "$clone_identity"; exit 0 ;;`,
     `  "sandbox list") if [ -n "\${3:-}" ] && [ "$3 $4" != "-g nemoclaw" ]; then exit 91; fi; if [ -f ${JSON.stringify(cloneReadyMarker)} ]; then printf "NAME STATUS\\nalpha Ready\\nclone-1 Ready\\n"; else printf "NAME STATUS\\nalpha Ready\\n"; fi; exit 0 ;;`,
@@ -320,6 +326,7 @@ function makeVmRestoreToEnv(
 
   return {
     HOME: home,
+    NEMOCLAW_OPENSHELL_BIN: path.join(localBin, "openshell"),
     NEMOCLAW_GATEWAY_RECOVERY_SETTLE_SECONDS: "0",
     NEMOCLAW_TEST_SNAPSHOT_RESTORE_MARKER: snapshotRestoreMarker,
     PATH: `${localBin}:${process.env.PATH ?? ""}`,

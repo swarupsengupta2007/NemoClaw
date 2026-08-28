@@ -66,7 +66,7 @@ runner.run = (command) => {
 	  if (cmd.includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
 	  return "";
 	};
-	registry.getSandbox = () => fixtureMocks.managedSandboxPolicyReceiptFixture({
+	registry.getSandbox = () => fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  toolDisclosure: "progressive",
 	}, { sandboxId: "sbx-4f2a91c0d7" });
@@ -114,7 +114,7 @@ const { createSandbox } = require(${onboardPath});
   );
 
   it.each(["balanced", "restricted"])(
-    "recreate-sandbox applies the requested %s tier without persisting it and records the late replacement identity",
+    "recreate-sandbox uses the requested %s tier without recording it",
     {
       timeout: 60_000,
     },
@@ -143,7 +143,7 @@ const childProcess = require("node:child_process");
 const { EventEmitter } = require("node:events");
 
 const commands = []; let registeredSandbox = null;
-	const sourceSandbox = fixtureMocks.managedSandboxPolicyReceiptFixture({
+	const sourceSandbox = fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  gpuEnabled: false,
 	  openshellDriver: "docker",
@@ -258,13 +258,9 @@ const { createSandbox } = require(${onboardPath});
         "should delete existing sandbox when --recreate-sandbox is set",
       );
       assert.ok(
-        payload.commands.some((entry: CommandEntry) => entry.command.includes("sandbox create")),
-        "should create a replacement sandbox",
-      );
-      assert.equal(
-        payload.registeredSandbox?.policyTier,
-        undefined,
-        "the registry must not persist a policy tier",
+        payload.commands.some((entry: CommandEntry) => entry.command.includes("sandbox create")) &&
+          !("policyTier" in (payload.registeredSandbox ?? {})),
+        "should create a sandbox without persisting tier state",
       );
       assert.ok(
         !payload.commands.some((entry: CommandEntry) =>
@@ -350,7 +346,7 @@ runner.run = (command) => {
   }
   return "";
 };
-	const sourceSandbox = fixtureMocks.managedSandboxPolicyReceiptFixture({
+	const sourceSandbox = fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  gpuEnabled: false,
 	}, { sandboxId: "sbx-4f2a91c0d7" });
@@ -446,10 +442,7 @@ const { createSandbox } = require(${onboardPath});
         cmd?: string;
         name?: string;
         backupPath?: string;
-        options?: {
-          targetAgentType?: string;
-          freshOpenClawImagePluginInstalls?: unknown[];
-        };
+        options?: { targetAgentType?: string; freshOpenClawImagePluginInstalls?: unknown[] };
       }>;
       const backupIndex = events.findIndex((e) => e.kind === "backup");
       const deleteIndex = events.findIndex(
@@ -539,7 +532,7 @@ runner.run = (command) => {
   }
   return "";
 };
-	const sourceSandbox = fixtureMocks.managedSandboxPolicyReceiptFixture({
+	const sourceSandbox = fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  gpuEnabled: false,
 	}, { sandboxId: "sbx-4f2a91c0d7" });
@@ -698,7 +691,7 @@ runner.run = (command) => {
   }
   return "";
 };
-	const sourceSandbox = fixtureMocks.managedSandboxPolicyReceiptFixture({
+	const sourceSandbox = fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  gpuEnabled: false,
 	}, { sandboxId: "sbx-4f2a91c0d7" });
@@ -808,7 +801,7 @@ const { createSandbox } = require(${onboardPath});
   );
 
   it(
-    "recreating a sandbox does not replay registry policy preset selections",
+    "recreating a sandbox preserves the user's policy preset selections",
     {
       timeout: 60_000,
     },
@@ -875,11 +868,9 @@ runner.run = (command, opts = {}) => {
 // Existing sandbox has a custom preset selection: only "npm" (not the
 // full "balanced" tier). Recreating the sandbox must preserve this
 // customisation rather than reverting to the tier defaults.
-	const sourceSandbox = fixtureMocks.managedSandboxPolicyReceiptFixture({
+	const sourceSandbox = fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  gpuEnabled: false,
-	  policies: ["npm"],
-	  policyTier: "balanced",
 	}, { sandboxId: "sbx-4f2a91c0d7" });
 	registry.getSandbox = () => sourceSandbox;
 	const createFixture = fixtureMocks.installVerifiedSandboxCreateFixture(registry, {
@@ -919,7 +910,7 @@ const { createSandbox } = require(${onboardPath});
 	    createFixture,
 	  ));
   const session = onboardSession.loadSession();
-  console.log(JSON.stringify({ policyPresets: session && session.policyPresets }));
+  console.log(JSON.stringify({ hasPolicyPresets: Boolean(session && "policyPresets" in session) }));
 })().catch((error) => {
   console.error(error);
   process.exit(1);
@@ -948,11 +939,7 @@ const { createSandbox } = require(${onboardPath});
       assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
       const payload = JSON.parse(payloadLine);
 
-      assert.equal(
-        payload.policyPresets,
-        undefined,
-        "OpenShell live policy must remain the sole source instead of registry preset replay",
-      );
+      assert.equal(payload.hasPolicyPresets, false);
     },
   );
 
@@ -1034,7 +1021,7 @@ runner.runFile = (file, args = [], opts = {}) => {
 	  if (cmd.includes("forward list")) return "my-assistant 127.0.0.1 18789 12345 running";
 	  return "";
 	};
-	registry.getSandbox = () => fixtureMocks.managedSandboxPolicyReceiptFixture({
+	registry.getSandbox = () => fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  toolDisclosure: "progressive",
 	}, { sandboxId: "sbx-4f2a91c0d7" });
@@ -1198,7 +1185,7 @@ runner.runFile = (file, args = [], opts = {}) => {
   }
   return "";
 };
-	const sourceSandbox = fixtureMocks.managedSandboxPolicyReceiptFixture({
+	const sourceSandbox = fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  toolDisclosure: "progressive",
 	}, { sandboxId: "sbx-4f2a91c0d7" });
@@ -1364,7 +1351,7 @@ runner.run = (command, opts = {}) => {
   }
   return "";
 };
-	const sourceSandbox = fixtureMocks.managedSandboxPolicyReceiptFixture({
+	const sourceSandbox = fixtureMocks.sandboxLifecycleFixture({
 	  name: "my-assistant",
 	  toolDisclosure: "progressive",
 	}, { sandboxId: "sbx-4f2a91c0d7" });

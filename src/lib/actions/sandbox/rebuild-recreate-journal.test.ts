@@ -61,6 +61,7 @@ const recreateOptions: RebuildRecreateOnboardOpts = {
   nonInteractive: true,
   recreateSandbox: true,
   authoritativeResumeConfig: true,
+  rebuildPolicySourcePath: "/tmp/current-policy.yaml",
   acceptThirdPartySoftware: true,
   agent: "langchain-deepagents-code",
   recreateProvider: "nvidia",
@@ -125,12 +126,9 @@ describe("rebuild replacement target fingerprint", () => {
     { recreateModel: "model-b" },
     { recreatePreferredInferenceApi: "anthropic" },
   ] as const)("changes when a recorded replacement input changes [case %#]", (drift) => {
-    expect(
-      fingerprintRebuildRecreateTargetIntent({
-        ...recreateOptions,
-        ...drift,
-      }),
-    ).not.toBe(fingerprintRebuildRecreateTargetIntent(recreateOptions));
+    expect(fingerprintRebuildRecreateTargetIntent({ ...recreateOptions, ...drift })).not.toBe(
+      fingerprintRebuildRecreateTargetIntent(recreateOptions),
+    );
   });
 
   it("changes when the replacement targets another gateway", () => {
@@ -144,12 +142,9 @@ describe("rebuild replacement target fingerprint", () => {
   });
 
   it("preserves the previous fingerprint for a replacement without host mounts (#9451)", () => {
-    expect(
-      fingerprintRebuildRecreateTargetIntent({
-        ...recreateOptions,
-        hostMounts: [],
-      }),
-    ).toBe(PRE_HOST_MOUNT_FINGERPRINT);
+    expect(fingerprintRebuildRecreateTargetIntent({ ...recreateOptions, hostMounts: [] })).toBe(
+      PRE_HOST_MOUNT_FINGERPRINT,
+    );
   });
 
   it("separates a mounted replacement from the pre-binding fingerprint (#9451)", () => {

@@ -27,6 +27,7 @@ import {
   onboardSession,
   openshellRuntime,
   policies,
+  policyGet,
   processRecovery,
   purgeRebuildModule,
   type RebuildFlowSession,
@@ -42,7 +43,6 @@ import {
   registry,
   registryPersistence,
   resolve,
-  runner,
   sandboxList,
   sandboxSession,
   sandboxState,
@@ -69,16 +69,8 @@ export type RebuildFlowOverrides = {
     stderr?: string;
     error?: Error;
   };
-  executeSandboxCommand?: () => {
-    status: number;
-    stdout: string;
-    stderr: string;
-  } | null;
-  executeSandboxExecCommand?: () => {
-    status: number;
-    stdout: string;
-    stderr: string;
-  } | null;
+  executeSandboxCommand?: () => { status: number; stdout: string; stderr: string } | null;
+  executeSandboxExecCommand?: () => { status: number; stdout: string; stderr: string } | null;
   checkAndRecoverSandboxProcesses?: () => {
     checked: boolean;
     wasRunning: boolean | null;
@@ -91,11 +83,7 @@ export type RebuildFlowOverrides = {
   restartSandboxGateway?: () => GatewayRestartResult;
   onboard?: (session: RebuildFlowSession) => Promise<void> | void;
   repairMutableConfigPerms?: () =>
-    | {
-        applied: false;
-        skipReason: "agent" | "locked" | "unreadable";
-        reason: string;
-      }
+    | { applied: false; skipReason: "agent" | "locked" | "unreadable"; reason: string }
     | { applied: true; verified: boolean; errors: string[] };
   restoreSandboxState?: () => {
     success: boolean;
@@ -109,7 +97,6 @@ export type RebuildFlowOverrides = {
   sandboxEntryReads?: Array<Record<string, unknown> | null>;
   sessionSandboxName?: string;
   sandboxInventory?: OpenShellSandboxInventory;
-  livePolicyDocument?: string;
   gatewayPresets?: string[];
   verificationUnavailableAfterPresetRemoval?: boolean;
   preDeleteSandboxEntry?: Record<string, unknown>;
@@ -127,10 +114,7 @@ export type RebuildFlowOverrides = {
   dcodeBaseImageIds?: string[];
   sandboxBaseImageLabelsOutput?: string;
   dcodeImageResult?:
-    | {
-        ok: true;
-        prepared: Record<string, unknown> & { cleanupBuildCtx: () => boolean };
-      }
+    | { ok: true; prepared: Record<string, unknown> & { cleanupBuildCtx: () => boolean } }
     | { ok: false; detail: string };
   openShieldsWindow?: () => { relocked: boolean; wasLocked: boolean } | null;
   preflightMessagingConflicts?: () => Promise<void> | void;
@@ -176,7 +160,6 @@ export type RebuildFlowHarness = {
   registryUpdateSpy: MockInstance;
   releaseOnboardLockSpy: MockInstance;
   relockSpy: MockInstance;
-  setLivePolicyDocumentSpy: MockInstance;
   restoreSandboxEntrySpy: MockInstance;
   restoreRegistryEntryIfMissingSpy: MockInstance;
   restoreSandboxStateSpy: MockInstance;
@@ -187,14 +170,15 @@ export type RebuildFlowHarness = {
   reattachMcpProvidersAfterRebuildAbortSpy: MockInstance;
   restoreMcpBridgesAfterRebuildSpy: MockInstance;
   warnUnpreservedUserManagedFilesSpy: MockInstance;
-  preparedDcodeBuildContext: Record<string, unknown> & {
-    cleanupBuildCtx: MockInstance;
-  };
+  preparedDcodeBuildContext: Record<string, unknown> & { cleanupBuildCtx: MockInstance };
   session: RebuildFlowSession;
 };
 
 export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): RebuildFlowHarness {
   purgeRebuildModule();
+  vi.spyOn(policyGet, "getSandboxPolicy").mockReturnValue({
+    yaml: "version: 1\nnetwork_policies:\n  host_preserved: {}\n",
+  });
 
   const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
@@ -269,18 +253,6 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
     recoverySucceeded: false,
   });
   vi.spyOn(resolve, "resolveOpenshell").mockReturnValue(null);
-  vi.spyOn(policies, "inspectPolicyRecoveryBoundary").mockReturnValue({
-    gatewayName: "nemoclaw",
-  });
-  vi.spyOn(policies, "inspectPolicyMutationBoundary").mockReturnValue({
-    gatewayName: "nemoclaw",
-  });
-  const setLivePolicyDocumentSpy = vi
-    .spyOn(policies, "setLivePolicyDocument")
-    .mockReturnValue(true);
-  vi.spyOn(runner, "runCapture").mockReturnValue(
-    overrides.livePolicyDocument ?? "version: 1\nnetwork_policies: {}\n",
-  );
   vi.spyOn(dockerImage, "dockerBuild").mockReturnValue({ status: 0 });
   vi.spyOn(rebuildCustomImagePreflight, "preflightRebuildImage").mockResolvedValue({
     ok: true,
@@ -359,15 +331,10 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
     },
   );
   vi.spyOn(gatewayState, "getReconciledSandboxGatewayState").mockResolvedValue(
-    overrides.reconciledSandboxGatewayState ?? {
-      state: "present",
-      output: "alpha Ready",
-    },
+    overrides.reconciledSandboxGatewayState ?? { state: "present", output: "alpha Ready" },
   );
   vi.spyOn(onboardSession, "loadSession").mockReturnValue(session);
-  vi.spyOn(onboardSession, "acquireOnboardLock").mockReturnValue({
-    acquired: true,
-  });
+  vi.spyOn(onboardSession, "acquireOnboardLock").mockReturnValue({ acquired: true });
   vi.spyOn(onboardSession, "updateSession").mockImplementation((mutator: unknown) => {
     overrides.updateSession?.();
     if (typeof mutator !== "function") {
@@ -454,12 +421,7 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
   vi.spyOn(rebuildRoutePreflight, "revalidateRebuildRouteBeforeDelete").mockImplementation(
     (...args: unknown[]) => {
       const receipt = args[0] as Record<string, unknown>;
-      return (
-        overrides.revalidateRebuildRouteBeforeDelete?.(receipt) ?? {
-          ok: true,
-          receipt,
-        }
-      );
+      return overrides.revalidateRebuildRouteBeforeDelete?.(receipt) ?? { ok: true, receipt };
     },
   );
   const restoreSandboxEntrySpy = vi
@@ -532,30 +494,9 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
   vi.spyOn(sandboxState, "validateRebuildRecoveryManifest").mockImplementation(
     (...args: unknown[]) => {
       const manifest = args[2] as Record<string, unknown>;
-      return (
-        overrides.recoveryManifestValidation?.(manifest) ?? {
-          ok: true as const,
-          manifest,
-        }
-      );
+      return overrides.recoveryManifestValidation?.(manifest) ?? { ok: true as const, manifest };
     },
   );
-  vi.spyOn(sandboxState, "attachRebuildPolicyHandoff").mockImplementation(
-    (...args: unknown[]) =>
-      ({
-        ...(args[0] as Record<string, unknown>),
-        rebuildPolicyHandoff: {
-          file: "rebuild-policy-handoff.yaml",
-          sha256: "a".repeat(64),
-        },
-      }) as never,
-  );
-  vi.spyOn(sandboxState, "readRebuildPolicyHandoff").mockImplementation((...args: unknown[]) =>
-    (args[0] as { rebuildPolicyHandoff?: unknown }).rebuildPolicyHandoff
-      ? "version: 1\nnetwork_policies: {}\n"
-      : null,
-  );
-  vi.spyOn(sandboxState, "clearRebuildPolicyHandoff").mockReturnValue(true);
   vi.spyOn(sandboxState, "getLatestBackup").mockImplementation(
     () =>
       (overrides.preDeleteLatestManifest === undefined
@@ -833,7 +774,6 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
     registryUpdateSpy,
     releaseOnboardLockSpy,
     relockSpy,
-    setLivePolicyDocumentSpy,
     restoreSandboxEntrySpy,
     restoreRegistryEntryIfMissingSpy,
     restoreSandboxStateSpy,

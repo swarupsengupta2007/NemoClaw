@@ -60,7 +60,7 @@ describe("rebuild shields relock guard", () => {
     vi.clearAllMocks();
     rebuildWindow.relocked = false;
     phaseMocks.runPreflight.mockResolvedValue({
-      sandboxEntry: { name: "alpha", customPolicies: [] },
+      sandboxEntry: { name: "alpha" },
       targetConfig: { durableConfig: { webSearchConfig: null } },
       recreateOptions: {
         observabilityEnabled: false,

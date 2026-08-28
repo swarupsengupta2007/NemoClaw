@@ -252,10 +252,7 @@ async function addSandboxPolicyUnlocked(
         const preset = prepared?.[0];
         if (
           !preset ||
-          !(await applyExternalPreset(sandboxName, preset, {
-            dryRun,
-            yes: skipConfirm,
-          }))
+          !(await applyExternalPreset(sandboxName, preset, { dryRun, yes: skipConfirm }))
         ) {
           console.error(`  Aborting --from-dir: ${file} failed. Remaining presets not applied.`);
           process.exit(1);
@@ -276,12 +273,7 @@ async function addSandboxPolicyUnlocked(
       return;
     }
     for (const preset of prepared) {
-      if (
-        !(await applyExternalPreset(sandboxName, preset, {
-          dryRun,
-          yes: skipConfirm,
-        }))
-      ) {
+      if (!(await applyExternalPreset(sandboxName, preset, { dryRun, yes: skipConfirm }))) {
         console.error(
           `  Aborting --from-dir: ${preset.filePath} failed. Remaining presets not applied.`,
         );
@@ -312,7 +304,7 @@ async function addSandboxPolicyUnlocked(
       process.exit(1);
     }
     if (applied.includes(preset.name)) {
-      // #7323: a live name alone must not block a re-add. Users edit
+      // #7323: the registry name alone must not block a re-add. Users edit
       // preset files in place (for example to add `tls: skip` endpoints), so
       // compare the preset content against the live gateway policy and fall
       // through to a normal re-apply when it drifted.
@@ -409,9 +401,7 @@ async function addSandboxPolicyUnlocked(
   }
   const needsOpenClawNpmDisclosure =
     answer === "npm" && (sandboxAgent === null || sandboxAgent === "openclaw");
-  const npmBaselineExcluded =
-    needsOpenClawNpmDisclosure &&
-    policies.getOpenClawNpmCompatibilityState(sandboxName) === "excluded";
+  const npmBaselineExcluded = false;
   if (needsOpenClawNpmDisclosure && !npmBaselineExcluded) {
     policies.logOpenClawNpmCompatibilityDisclosure();
   }
@@ -507,9 +497,7 @@ async function applyExternalPreset(
       custom: {
         sourcePath: path.resolve(loaded.filePath),
         ...(loaded.trustedPrivatePinCapability
-          ? {
-              trustedPrivatePinCapability: loaded.trustedPrivatePinCapability,
-            }
+          ? { trustedPrivatePinCapability: loaded.trustedPrivatePinCapability }
           : {}),
       },
       suppressDisclosure: true,
@@ -530,24 +518,24 @@ export function listSandboxPolicies(sandboxName: string) {
   const builtin = policies.listPresets({ agent: sandboxEntry?.agent ?? null });
   const custom = policies.listCustomPresets(sandboxName);
   const allPresets = [...builtin, ...custom];
+
   // getGatewayPresets returns null when gateway is unreachable, or an
   // array of matched preset names when reachable (possibly empty).
   const gatewayPresets = policies.getGatewayPresets(sandboxName);
 
   const provenanceContext = {
-    tierName: null,
     agentName: sandboxEntry?.agent ?? null,
   };
 
   console.log("");
   console.log(`  Policy presets for sandbox '${sandboxName}':`);
   allPresets.forEach((p: { name: string; description: string }) => {
-    const inGateway = gatewayPresets ? gatewayPresets.includes(p.name) : null;
+    const observedInOpenShell = gatewayPresets ? gatewayPresets.includes(p.name) : null;
     console.log(
       formatPolicyListPresetRow({
         preset: p,
         provenanceContext,
-        inGateway,
+        observedInOpenShell,
       }),
     );
   });
@@ -564,7 +552,7 @@ export function listSandboxPolicies(sandboxName: string) {
         retryCommand: "policy-list",
       });
     } else {
-      console.log("  ⚠ Could not query the live OpenShell policy — applied state unavailable.");
+      console.log("  ⚠ Could not query OpenShell — applied policy state is unavailable.");
     }
   }
   console.log("");
@@ -858,7 +846,7 @@ async function applyChannelAddToGatewayAndRegistry(
     console.error(`  ${gatewayStartGuidance(gatewayName)}`);
     process.exit(1);
   }
-  policyChannelDependencies.revalidateChannelProviderPolicyAuthority(sandboxName, gatewayName);
+  policyChannelDependencies.revalidateChannelProviderPolicy(sandboxName, gatewayName);
   try {
     // bestEffort: failures throw (instead of process.exit inside the helper)
     // so a partial add can be torn down below before exiting.
@@ -1992,15 +1980,14 @@ async function removeSandboxPolicyUnlocked(
   const dryRun = Boolean(options.dryRun);
   const skipConfirm = Boolean(options.yes || options.force || isNonInteractive());
 
-  // Remove-able presets = built-in presets + custom presets encoded in the
-  // live OpenShell policy.
+  // Custom preset names are decoded from their namespaced live OpenShell keys.
   const builtinPresets = policies.listPresets();
   const customPresets = policies.listCustomPresets(sandboxName);
   const allPresets = [...builtinPresets, ...customPresets];
-  // OpenShell is the sole authority. Null means the live policy could not be
-  // read and is not evidence that any preset is absent. (#9295)
+  // Active preset names come from the current OpenShell policy.
+  const applied = policies.getAppliedPresets(sandboxName);
   const gatewayPresets = policies.getGatewayPresets(sandboxName);
-  const removable = gatewayPresets ?? [];
+  const removable = gatewayPresets ? [...new Set([...applied, ...gatewayPresets])] : applied;
 
   const presetArg = options.preset;
   let answer = null;
@@ -2017,7 +2004,7 @@ async function removeSandboxPolicyUnlocked(
     if (!removable.includes(preset.name)) {
       console.error(`  Preset '${preset.name}' is not applied.`);
       if (gatewayPresets === null) {
-        console.error("  Could not query the live OpenShell policy; no policy changes were made.");
+        console.error("  Could not query the gateway, so only local state was checked.");
       }
       process.exit(1);
     }
@@ -2037,12 +2024,7 @@ async function removeSandboxPolicyUnlocked(
   }
   if (!answer) return;
 
-  // Resolve preset content from shipped built-ins or the live namespaced
-  // custom rules. Needed only for the endpoint preview below.
-  let presetContent: string | null = policies.loadPresetForSandbox(sandboxName, answer);
-  if (!presetContent) {
-    presetContent = policies.getCustomPresetContent(sandboxName, answer);
-  }
+  const presetContent = policies.loadPresetForSandbox(sandboxName, answer);
   if (!presetContent) return;
 
   const endpoints = policies.getPresetEndpoints(presetContent);
@@ -2150,8 +2132,6 @@ async function excludeSandboxBaselineUnlocked(
   }
 
   if (!policies.excludeBaselineEntry(sandboxName, key, digest)) {
-    // A failed cross-system mutation can leave a durable repair journal. Keep
-    // the in-sandbox context aligned before returning the nonzero result.
     refreshSandboxPolicyContextFile(sandboxName);
     process.exit(1);
   }
@@ -2197,8 +2177,9 @@ async function restoreSandboxBaselineUnlocked(
       entry,
     );
   } else {
-    console.error(`  The current baseline no longer defines '${key}'.`);
-    process.exit(1);
+    console.log(
+      `  ${YW}⚠${R} The current baseline no longer defines '${key}'; no change is needed.`,
+    );
   }
 
   if (dryRun) {
