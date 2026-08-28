@@ -3,6 +3,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { testTimeoutOptions } from "../../../test/helpers/timeouts";
 import type { VllmProfile } from "../inference/vllm";
 import { makeDeps, makeHostState } from "./__test-helpers__/setup-nim-flow";
 import { createSetupNim, type SetupNimFlowDeps } from "./setup-nim-flow";
@@ -60,7 +61,10 @@ async function selectAgainstRunningVllm(
   return await setupNim(sparkGpu, null, null, true, null, "nemoclaw", routeGuard);
 }
 
-describe("serving profile onboarding against a running vLLM", () => {
+// setupNim loads the full onboarding dependency graph. Under sharded coverage,
+// the first call can exceed Vitest's 5s default even though the mocked flow has
+// no external I/O.
+describe("serving profile onboarding against a running vLLM", testTimeoutOptions(15_000), () => {
   it("passes the requested profile's model to the running-server selection (#9563)", async () => {
     // `--profile` exports NEMOCLAW_PROVIDER=install-vllm, but a running server
     // leaves only the `vllm` entry, so the request collapses onto a deployment
@@ -93,10 +97,14 @@ describe("serving profile onboarding against a running vLLM", () => {
     const observedModels: unknown[] = [];
     const handleVllmSelection = acceptVllmSelection(observedModels);
 
-    await selectAgainstRunningVllm(handleVllmSelection, () => null, () => ({
-      id: "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
-      servedModelId: "nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4",
-    }));
+    await selectAgainstRunningVllm(
+      handleVllmSelection,
+      () => null,
+      () => ({
+        id: "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
+        servedModelId: "nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4",
+      }),
+    );
 
     expect(observedModels).toEqual(["nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4"]);
     expect(handleVllmSelection).toHaveBeenCalledWith(
