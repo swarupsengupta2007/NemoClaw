@@ -180,6 +180,10 @@ function makeExistingDestEnv(
       '  printf "Status: Connected\\n"',
       "  exit 0",
       "fi",
+      'if [ "$1" = "policy" ] && [ "$2" = "get" ]; then',
+      '  printf "version: 1\\nnetwork_policies: {}\\n"',
+      "  exit 0",
+      "fi",
       'if [ "$1" = "sandbox" ] && [ "$2" = "delete" ]; then',
       destinationGatewayName
         ? `  active="$(cat "$ACTIVE_GATEWAY" 2>/dev/null || printf '%s' nemoclaw)"; if [ "$active" != ${JSON.stringify(destinationGatewayName)} ]; then echo "delete on wrong gateway: $active" >&2; exit 42; fi`

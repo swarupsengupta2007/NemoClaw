@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { isIP } from "node:net";
+
 import { isObjectRecord } from "../core/json-types";
 import { isBlockedMcpUrlTargetHost, MCP_SERVER_URL_MAX_LENGTH } from "../security/mcp-url-target";
 import {
@@ -17,10 +19,10 @@ export interface McpBridgeEntry {
   /** Exact URL host explicitly admitted for routed private access. */
   trustedPrivateHost?: string;
   /**
-   * Immutable validated private address pins recorded when the bridge was
-   * added. After strict registry normalization, this durable host state is the
-   * operator-approved replay authority; lifecycle commands never widen it
-   * from ambient DNS.
+   * Immutable validated address pins recorded when the bridge was added.
+   * Private pins are bound to trustedPrivateHost; public pins preserve the
+   * exact generated-policy target across lifecycle commands without using a
+   * registry policy shadow.
    */
   allowedIps?: string[];
   providerName?: string;
@@ -176,7 +178,23 @@ function normalizeMcpBridgeEntry(server: string, value: unknown): McpBridgeEntry
     }
     allowedIps = [...canonicalPins];
   } else if (rawAllowedIps !== undefined) {
-    return null;
+    if (
+      !Array.isArray(rawAllowedIps) ||
+      rawAllowedIps.length === 0 ||
+      rawAllowedIps.some(
+        (address) =>
+          typeof address !== "string" ||
+          isIP(address) === 0 ||
+          address !== address.toLowerCase() ||
+          address.includes("%") ||
+          isBlockedMcpUrlTargetHost(address),
+      ) ||
+      new Set(rawAllowedIps).size !== rawAllowedIps.length ||
+      rawAllowedIps.some((address, index) => address !== [...rawAllowedIps].sort()[index])
+    ) {
+      return null;
+    }
+    allowedIps = [...rawAllowedIps];
   }
   const rawEnv = value.env;
   const env =
@@ -209,7 +227,8 @@ function normalizeMcpBridgeEntry(server: string, value: unknown): McpBridgeEntry
     ...(adapter ? { adapter } : {}),
     url,
     env,
-    ...(trustedPrivateHost ? { trustedPrivateHost, allowedIps } : {}),
+    ...(trustedPrivateHost ? { trustedPrivateHost } : {}),
+    ...(allowedIps ? { allowedIps } : {}),
     ...(providerName ? { providerName } : {}),
     ...(providerId ? { providerId } : {}),
     policyName,

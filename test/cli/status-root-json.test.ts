@@ -28,7 +28,7 @@ describe("CLI root status JSON", () => {
             model: "configured-model",
             provider: "configured-provider",
             gpuEnabled: true,
-            policies: ["npm"],
+            policies: [],
             agent: "openclaw",
             dashboardPort: 18789,
             messaging: {
@@ -137,7 +137,7 @@ describe("CLI root status JSON", () => {
             model: "nvidia/nemotron",
             provider: "nvidia-prod",
             gpuEnabled: true,
-            policies: ["npm"],
+            policies: [],
             agent: "openclaw",
             dashboardPort: 18789,
             isDefault: true,

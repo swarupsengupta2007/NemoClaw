@@ -149,7 +149,6 @@ describe("CLI dispatch", () => {
     );
     expect(add.code).toBe(0);
     expect(add.out).toContain("Applied preset: github");
-    expect(readSandboxPolicies(home)).toContain("github");
 
     const remove = runWithEnv(
       "alpha policy-remove github -y",
@@ -159,7 +158,6 @@ describe("CLI dispatch", () => {
     );
     expect(remove.code).toBe(0);
     expect(remove.out).toContain("Removed preset: github");
-    expect(readSandboxPolicies(home)).not.toContain("github");
   });
 
   it("keeps public policy-add non-interactive missing-preset failure before mutation", ({

@@ -113,11 +113,11 @@ describe("list shows live gateway inference", () => {
     expect(r.code).toBe(0);
     // Live gateway values render on the default sandbox's main row.
     expect(r.out).toContain(
-      "agent: openclaw  model: nvidia/nemotron-3-super-120b-a12b  provider: nvidia-prod  sandbox GPU  policies: pypi, npm",
+      "agent: openclaw  model: nvidia/nemotron-3-super-120b-a12b  provider: nvidia-prod  sandbox GPU  policies: none",
     );
     // The stale (stored) row must not appear.
     expect(r.out).not.toContain(
-      "agent: openclaw  model: configured-model  provider: configured-provider  sandbox GPU  policies: pypi, npm",
+      "agent: openclaw  model: configured-model  provider: configured-provider  sandbox GPU  policies: none",
     );
     // Onboarded values appear in an explicit live-gateway drift annotation.
     expect(r.out).toContain(

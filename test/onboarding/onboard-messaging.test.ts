@@ -472,7 +472,7 @@ const { createSandbox } = require(${onboardPath});
         assert.match(payload.createCommand.command, /--provider my-assistant-slack-app/);
         assert.match(payload.createCommand.policyPath, /nemoclaw-initial-policy/);
         assert.equal(payload.createCommand.policyReadError, null);
-        assert.deepEqual(payload.registeredPolicies, ["slack"]);
+        assert.deepEqual(payload.registeredPolicies, []);
         assert.deepEqual(payload.slackBinaryPaths, [
           "/usr/local/bin/hermes",
           "/usr/bin/python3*",
@@ -510,7 +510,9 @@ const { createSandbox } = require(${onboardPath});
       const preflightPath = JSON.stringify(path.join(repoRoot, "src/lib/onboard/preflight.ts"));
       const credentialsPath = JSON.stringify(path.join(repoRoot, "src/lib/credentials/store.ts"));
       const telegramCredentialKeys = [
-        "TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_TOKEN_AGENT_A", "TELEGRAM_BOT_TOKEN_AGENT_B",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_BOT_TOKEN_AGENT_A",
+        "TELEGRAM_BOT_TOKEN_AGENT_B",
       ];
       const providerCredentialKeys = {
         "compatible-endpoint": ["COMPATIBLE_API_KEY"],
@@ -589,7 +591,10 @@ const { createSandbox } = require(${onboardPath});
             NEMOCLAW_NON_INTERACTIVE: "1",
             NEMOCLAW_TEST_FAIL_PROVIDER: failedProvider || "",
             ...Object.fromEntries(
-              [...Object.values(providerCredentialKeys).flat(), "GITHUB_TOKEN"].map((key) => [key, ""]),
+              [...Object.values(providerCredentialKeys).flat(), "GITHUB_TOKEN"].map((key) => [
+                key,
+                "",
+              ]),
             ),
           },
         });
@@ -1885,12 +1890,8 @@ const { setupMessagingChannels } = require(${onboardPath});
         mode: 0o755,
       });
 
-      // Subscript: mocks credentials.prompt to return a bogus Slack token,
-      // exposes MESSAGING_CHANNELS so the parent can look up the Slack toggle
-      // digit, and asserts that setupMessagingChannels rejects the invalid
-      // token without persisting it. Slack is the 3rd channel in insertion
-      // order today (telegram, discord, slack) but we compute the index
-      // dynamically to avoid a brittle coupling to that ordering.
+      // The subscript exposes MESSAGING_CHANNELS and rejects a mocked invalid
+      // Slack token without persisting it, independent of channel ordering.
       const script = String.raw`
 const credentials = require(${credentialsPath});
 const runner = require(${runnerPath});
@@ -1927,9 +1928,7 @@ const { setupMessagingChannels, MESSAGING_CHANNELS } = require(${onboardPath});
 `;
       fs.writeFileSync(scriptPath, script);
 
-      // Dry run with just Enter — no toggles, empty result — used to read back
-      // Slack's 1-based index from the same subscript so the real run can
-      // press the right digit.
+      // Read Slack's current 1-based toggle index from the same subscript.
       const introspect = spawnSync(process.execPath, [scriptPath], {
         cwd: repoRoot,
         encoding: "utf-8",

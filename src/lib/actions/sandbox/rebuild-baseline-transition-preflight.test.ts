@@ -47,40 +47,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("rebuild baseline transition preflight (#7194)", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.getSandbox.mockReturnValue({
-      name: "alpha",
-      baselineExclusionTransition: {
-        id: "0b2f3297-a9ab-4c2f-80da-bf1760a1afbf",
-        operation: "restore",
-        exclusion: {
-          version: 1,
-          agent: "openclaw",
-          key: "agents.openclaw.default",
-          digest: "a".repeat(64),
-        },
-        startedAt: "2026-07-19T00:00:00.000Z",
-        targetLiveDigest: "b".repeat(64),
-      },
-    });
-  });
-
-  it("stops before session probes, confirmation, MCP checks, or target preparation", async () => {
-    await expect(runRebuildPreflightPhase("alpha", ["--yes"])).resolves.toBeNull();
-
-    expect(mocks.bail).toHaveBeenCalledWith(
-      "Pending baseline policy restore for 'agents.openclaw.default' blocks rebuild.",
-      1,
-    );
-    expect(mocks.countActiveSessions).not.toHaveBeenCalled();
-    expect(mocks.assertMcpDestroyNotPending).not.toHaveBeenCalled();
-    expect(mocks.confirmRebuildIntent).not.toHaveBeenCalled();
-    expect(mocks.prepareTargets).not.toHaveBeenCalled();
-  });
-});
-
 describe("rebuild MCP destroy marker preflight (#7794)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

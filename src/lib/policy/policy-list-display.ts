@@ -5,34 +5,15 @@ import { formatPresetProvenanceSuffix, type PresetProvenanceContext } from "./pr
 
 interface PolicyListPresetRowOptions {
   preset: { name: string; description: string };
-  inRegistry: boolean;
   inGateway: boolean | null;
   provenanceContext: PresetProvenanceContext;
 }
 
-/** Render one policy-list row from reconciled registry and gateway state. */
+/** Render one policy-list row from the live OpenShell policy state. */
 export function formatPolicyListPresetRow(options: PolicyListPresetRowOptions): string {
-  const { preset, inRegistry, inGateway, provenanceContext } = options;
-  let marker: "●" | "○";
-  let stateSuffix = "";
-  if (inGateway === null) {
-    marker = inRegistry ? "●" : "○";
-  } else if (inRegistry && inGateway) {
-    marker = "●";
-  } else if (!inRegistry && !inGateway) {
-    marker = "○";
-  } else if (inGateway) {
-    marker = "●";
-    stateSuffix = " (active on gateway, missing from local state)";
-  } else {
-    marker = "○";
-    stateSuffix = " (recorded locally, not active on gateway)";
-  }
-
-  const provenanceSuffix = formatPresetProvenanceSuffix(preset.name, provenanceContext, {
-    active: marker === "●",
-    inRegistry,
-    inGateway,
-  });
-  return `    ${marker} ${preset.name}${provenanceSuffix} — ${preset.description}${stateSuffix}`;
+  const { preset, inGateway, provenanceContext } = options;
+  const active = inGateway === true;
+  const marker = active ? "●" : "○";
+  const provenanceSuffix = formatPresetProvenanceSuffix(preset.name, provenanceContext, active);
+  return `    ${marker} ${preset.name}${provenanceSuffix} — ${preset.description}`;
 }

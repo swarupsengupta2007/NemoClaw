@@ -43,6 +43,7 @@ registry.registerSandbox({
   mcp: { bridges: { first: {
     server: "first",
     url: "https://8.8.8.8/mcp",
+    allowedIps: ["8.8.8.8"],
     env: ["SHARED_MCP_TOKEN"],
     providerName: "nemoclaw-mcp-openclaw-sandbox-first",
     policyName: "mcp-bridge-first",
@@ -92,6 +93,7 @@ for (const [index, marker] of markers.entries()) {
         agent: "openclaw",
         adapter: "mcporter",
         url: "https://mcp.example.test/mcp",
+        allowedIps: ["8.8.8.8"],
         env: [],
         policyName: "mcp-bridge-github",
         addedAt: "2026-06-01T00:00:00.000Z",
@@ -259,6 +261,7 @@ processRecovery.executeSandboxCommand = (_sandboxName, command) => {
   capturedCommand = command;
   return { status: 0, stdout: "registered", stderr: "" };
 };
+processRecovery.executeSandboxExecCommand = () => ({ status: 0, stdout: "v12", stderr: "" });
 registry.registerSandbox({
   name: "custom-root-status",
   agent: "openclaw",
@@ -267,7 +270,10 @@ registry.registerSandbox({
     agent: "openclaw",
     adapter: "mcporter",
     url: "https://mcp.example.test/github",
-    env: [],
+    allowedIps: ["8.8.8.8"],
+    env: ["GITHUB_TOKEN"],
+    providerName: "custom-root-status-mcp-github",
+    providerId: "11111111-2222-4333-8444-555555555555",
     policyName: "mcp-bridge-github",
     addedAt: "2026-06-01T00:00:00.000Z",
   } } },
@@ -331,6 +337,7 @@ gatewayRuntime.recoverNamedGatewayRuntime = async () => ({
   after: { state: "healthy_named" },
 });
 processRecovery.executeSandboxCommand = () => ({ status: 0, stdout: "registered", stderr: "" });
+processRecovery.executeSandboxExecCommand = () => ({ status: 0, stdout: "v12", stderr: "" });
 registry.registerSandbox({
   name: "persisted-status",
   agent: "current-disabled",
@@ -340,7 +347,10 @@ registry.registerSandbox({
       agent: "persisted-unknown",
       adapter: "mcporter",
       url: "https://mcp.example.test/direct",
-      env: [],
+      allowedIps: ["8.8.8.8"],
+      env: ["DIRECT_TOKEN"],
+      providerName: "persisted-status-mcp-direct",
+      providerId: "11111111-2222-4333-8444-555555555555",
       policyName: "mcp-bridge-direct",
       addedAt: "2026-06-01T00:00:00.000Z",
     },
@@ -348,7 +358,10 @@ registry.registerSandbox({
       server: "legacy",
       agent: "persisted-enabled",
       url: "https://mcp.example.test/legacy",
-      env: [],
+      allowedIps: ["8.8.8.8"],
+      env: ["LEGACY_TOKEN"],
+      providerName: "persisted-status-mcp-legacy",
+      providerId: "66666666-7777-4888-8999-000000000000",
       policyName: "mcp-bridge-legacy",
       addedAt: "2026-06-01T00:00:00.000Z",
     },

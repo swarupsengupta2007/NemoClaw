@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runRebuildRestorePhase } from "./rebuild-restore-phase";
+import * as policies from "../../policy";
 import * as snapshotRestore from "./snapshot/restore-authority";
 
 afterEach(() => {
@@ -22,6 +23,11 @@ describe("rebuild restore target forwarding", () => {
         failedDirs: [],
         failedFiles: [],
       });
+    vi.spyOn(policies, "inspectPolicyMutationBoundary").mockReturnValue({
+      gatewayName: "nemoclaw",
+    });
+    vi.spyOn(policies, "setLivePolicyDocument").mockReturnValue(true);
+    vi.spyOn(policies, "getGatewayPresets").mockReturnValue([]);
 
     runRebuildRestorePhase({
       sandboxName: "alpha",

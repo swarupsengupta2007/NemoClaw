@@ -335,7 +335,7 @@ describe("runRebuildRecreatePhase handoff", () => {
     expect(onboardSpy).not.toHaveBeenCalled();
   });
 
-  it("pins the authoritative restricted tier during recreate and restores ambient policy input", async () => {
+  it("does not replay ambient policy-tier input during recreate", async () => {
     const previousPolicyTier = process.env.NEMOCLAW_POLICY_TIER;
     process.env.NEMOCLAW_POLICY_TIER = "open";
     try {
@@ -346,7 +346,7 @@ describe("runRebuildRecreatePhase handoff", () => {
 
       await expect(runRebuildRecreatePhase(makeInput())).resolves.toBe(true);
 
-      expect(observedTier).toBe("restricted");
+      expect(observedTier).toBeUndefined();
       expect(process.env.NEMOCLAW_POLICY_TIER).toBe("open");
     } finally {
       restoreEnv("NEMOCLAW_POLICY_TIER", previousPolicyTier);

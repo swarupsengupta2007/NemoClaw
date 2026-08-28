@@ -235,7 +235,7 @@ describe("applyExternalPreset refresh contract (--from-file)", () => {
 
 describe("removeSandboxPolicy refresh contract", () => {
   beforeEach(() => {
-    vi.spyOn(policies, "getAppliedPresets").mockReturnValue(["pypi"]);
+    vi.mocked(policies.getGatewayPresets).mockReturnValue(["pypi"]);
   });
 
   it("refreshes the in-sandbox POLICY.md after a successful removal", async () => {
@@ -278,7 +278,7 @@ describe("removeSandboxPolicy refresh contract", () => {
   });
 
   it("does not refresh when the preset is not currently applied", async () => {
-    vi.spyOn(policies, "getAppliedPresets").mockReturnValue([]);
+    vi.mocked(policies.getGatewayPresets).mockReturnValue([]);
 
     await expect(
       captureExit(() => removeSandboxPolicy("alpha", { preset: "pypi", yes: true })),

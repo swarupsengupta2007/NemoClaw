@@ -72,7 +72,6 @@ function prepareVerifiedCreate(
   const checkpoint = {
     schemaVersion: 1 as const,
     state: "verified-create" as const,
-    observedPolicyAuthority: "owner-unknown" as const,
     gatewayName: route.gatewayName,
     gatewayPort: route.gatewayPort,
     sandboxName: name,
@@ -81,7 +80,6 @@ function prepareVerifiedCreate(
     route: "none" as const,
     policyHash: policyCreationReceipt.policyHash,
     policyVersion: policyCreationReceipt.policyVersion,
-    policyCreationReceipt,
   };
   registry.recordPendingSandboxCreateVerification(reservation, checkpoint);
   return {
@@ -213,7 +211,9 @@ describe("registry host-local inference authority", () => {
         { verifiedCreate: verified },
       ),
     ).toThrow(
-      label === "gateway port" ? /policy creation receipt does not match/u : /reservation changed/u,
+      label === "gateway port"
+        ? /verified create checkpoint \(gateway port\)/u
+        : /reservation changed/u,
     );
   });
 

@@ -55,7 +55,7 @@ process.stdout.write("__RESULT__" + JSON.stringify({
     expect(payload.hermesKeys).toEqual(["telegram"]);
   });
 
-  describe("policy-remove custom presets", () => {
+  describe("policy-remove custom presets from live policy", () => {
     function runPolicyRemoveCustom(
       presetName: string,
       extraArgs: string[] = [],
@@ -73,19 +73,17 @@ policies.listPresets = () => [];
 policies.listCustomPresets = () => [
   { file: "/tmp/my-api.yaml", name: "my-api", description: "custom preset" },
 ];
-policies.getAppliedPresets = () => ["my-api"];
+policies.getGatewayPresets = () => ["my-api"];
 policies.loadPreset = () => null; // built-in lookup misses
 policies.loadPresetForSandbox = () => null; // built-in lookup misses
+policies.getCustomPresetContent = () => "network_policies:\n  custom__my-api__route:\n    endpoints:\n      - host: api.example.internal\n";
 policies.getPresetEndpoints = () => ["api.example.internal"];
 policies.removePreset = (sandboxName, presetName) => {
   calls.push({ type: "remove", sandboxName, presetName });
   return true;
 };
 registry.getSandbox = (name) =>
-  name === "test-sandbox" ? { name, policies: [], customPolicies: [] } : null;
-registry.getCustomPolicies = () => [
-  { name: "my-api", content: "network_policies:\n  my-api: {}\n", sourcePath: "/tmp/my-api.yaml" },
-];
+  name === "test-sandbox" ? { name } : null;
 registry.listSandboxes = () => ({ sandboxes: [{ name: "test-sandbox" }] });
 credentials.prompt = async () => "y";
 process.argv = ["node", "nemoclaw.js", "test-sandbox", "policy-remove", ${JSON.stringify(presetName)}, ...${JSON.stringify(extraArgs)}];
@@ -101,7 +99,7 @@ Promise.resolve(require(${CLI_PATH}).mainPromise).finally(() => {
       });
     }
 
-    it("removes a custom preset by name using registry-persisted content", () => {
+    it("removes a custom preset by name using live policy content", () => {
       const result = runPolicyRemoveCustom("my-api", ["--yes"]);
       expect(result.status).toBe(0);
       const calls = JSON.parse(result.stdout.split("__CALLS__")[1].trim()) as PolicyCall[];

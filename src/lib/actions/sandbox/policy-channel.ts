@@ -547,7 +547,6 @@ export function listSandboxPolicies(sandboxName: string) {
       formatPolicyListPresetRow({
         preset: p,
         provenanceContext,
-        inRegistry: inGateway === true,
         inGateway,
       }),
     );
@@ -565,7 +564,7 @@ export function listSandboxPolicies(sandboxName: string) {
         retryCommand: "policy-list",
       });
     } else {
-      console.log("  ⚠ Could not query gateway — showing local state only.");
+      console.log("  ⚠ Could not query the live OpenShell policy — applied state unavailable.");
     }
   }
   console.log("");
@@ -1998,11 +1997,10 @@ async function removeSandboxPolicyUnlocked(
   const builtinPresets = policies.listPresets();
   const customPresets = policies.listCustomPresets(sandboxName);
   const allPresets = [...builtinPresets, ...customPresets];
-  // Null means the gateway could not be queried, which is not evidence of
-  // absence. (#9295)
-  const applied = policies.getAppliedPresets(sandboxName);
+  // OpenShell is the sole authority. Null means the live policy could not be
+  // read and is not evidence that any preset is absent. (#9295)
   const gatewayPresets = policies.getGatewayPresets(sandboxName);
-  const removable = gatewayPresets ? [...new Set([...applied, ...gatewayPresets])] : applied;
+  const removable = gatewayPresets ?? [];
 
   const presetArg = options.preset;
   let answer = null;
@@ -2019,7 +2017,7 @@ async function removeSandboxPolicyUnlocked(
     if (!removable.includes(preset.name)) {
       console.error(`  Preset '${preset.name}' is not applied.`);
       if (gatewayPresets === null) {
-        console.error("  Could not query the gateway, so only local state was checked.");
+        console.error("  Could not query the live OpenShell policy; no policy changes were made.");
       }
       process.exit(1);
     }

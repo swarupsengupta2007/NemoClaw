@@ -68,12 +68,12 @@ export const MUTATION_READS: readonly AuditedPolicyReadFile[] = [
   {
     relativePath: "src/lib/policy/index.ts",
     expectedReads: [
-      ignoredBase("removePreset"),
       ignoredBase("readCurrentSandboxPolicy"),
       ignoredBase("applyPresetContent"),
       ignoredBase("applyPresets"),
+      ignoredBase("getCustomPresetContent"),
       preservingBase("customPresetOwnsNetworkPolicyKey"),
-      ignoredFull("getGatewayPresets/readPolicy"),
+      ignoredFull("getGatewayPresets"),
       preservingBase("getPresetContentGatewayState/readPolicy"),
     ],
   },
@@ -88,6 +88,7 @@ export const MUTATION_READS: readonly AuditedPolicyReadFile[] = [
   {
     relativePath: "src/lib/shields/index.ts",
     expectedReads: [
+      preservingBase("applyShieldsPolicySnapshot"),
       preservingBase("resolveExactManagedMcpPolicies"),
       ignoredBase("resolveProvableManagedMcpPoliciesForDeadline"),
       ignoredBase("shieldsDownWithoutHostLock"),
@@ -102,6 +103,14 @@ const NON_MUTATION_POLICY_READS: readonly AuditedPolicyReadFile[] = [
       unclassifiedBase("captureSandboxBasePolicy"),
       unclassifiedFull("inspectSandboxPolicyAuthority"),
     ],
+  },
+  {
+    relativePath: "src/lib/actions/sandbox/rebuild-backup-phase.ts",
+    expectedReads: [preservingBase("captureLivePolicy")],
+  },
+  {
+    relativePath: "src/lib/actions/sandbox/snapshot.ts",
+    expectedReads: [preservingBase("prepareSnapshotClonePolicy")],
   },
   {
     relativePath: "src/lib/actions/sandbox/gateway-state.ts",

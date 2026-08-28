@@ -259,7 +259,7 @@ exit 1
       ]);
       expect(allowedMethods(teamsPolicy, "teams.microsoft.com")).toEqual(["GET"]);
       expect(allowedMethods(teamsPolicy, "*.sharepoint.com")).toEqual(["GET"]);
-      expect(payload.registry.policies).toEqual(["teams"]);
+      expect(payload.registry.policies).toBeUndefined();
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

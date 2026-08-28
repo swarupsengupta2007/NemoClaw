@@ -570,7 +570,7 @@ startGateway(null).catch((error) => {
       messaging: false,
       resourceProfile: true,
     });
-    expect(cleared.policyPresets).toBeNull();
+    expect(cleared.policyPresets).toEqual(["nous-web", "brave"]);
     expect(cleared.steps.gateway.status).toBe("complete");
     expect(cleared.steps.provider_selection.status).toBe("pending");
     expect(cleared.steps.sandbox.status).toBe("pending");

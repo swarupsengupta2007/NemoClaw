@@ -70,7 +70,8 @@ describe("onboarding policy application production wiring", () => {
     const registryPath = require.resolve("../../src/lib/state/registry.js");
     const lockPath = require.resolve("../../src/lib/state/mcp-lifecycle-lock.js");
     const readinessPath = require.resolve("../../src/lib/onboard/sandbox-readiness-tracing.js");
-    const finalFlowPath = require.resolve("../../src/lib/onboard/machine/final-flow-composition.js");
+    const finalFlowPath =
+      require.resolve("../../src/lib/onboard/machine/final-flow-composition.js");
 
     try {
       const policy = require(policyPath) as Record<string, unknown>;
@@ -130,19 +131,14 @@ describe("onboarding policy application production wiring", () => {
       expect(capturedDeps.waitForSandboxReady).toBe(waitForSandboxReady);
       expect(capturedDeps.waitForSandboxControlPlaneReady).toBe(waitForSandboxControlPlaneReady);
 
-      capturedDeps.setPolicyTier("beta", "balanced");
-      expect(updateSandbox).toHaveBeenCalledWith("beta", { policyTier: "balanced" });
-
       await expect(
         application.setupPoliciesWithSelection("alpha", { selectedPresets: ["npm"] }),
       ).resolves.toEqual(["npm"]);
-      expect(getSandbox).toHaveBeenCalledWith("alpha");
       expect(waitForSandboxReady).toHaveBeenCalledTimes(2);
       expect(waitForSandboxControlPlaneReady).toHaveBeenCalledOnce();
       expect(syncPresetSelection).toHaveBeenCalledWith("alpha", [], ["npm"]);
       expect(events).toEqual([
         "lock entered",
-        "registry tier read",
         "sandbox ready",
         "policies synchronized",
         "sandbox ready",

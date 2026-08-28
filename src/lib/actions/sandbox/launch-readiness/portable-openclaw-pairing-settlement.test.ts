@@ -43,7 +43,6 @@ const ENTRY = {
   name: "alpha",
   agent: "openclaw",
   agentVersion: "2026.7.1",
-  policyPresetsFinalized: true,
   lifecycleGeneration: "generation-1",
   lifecycleLiveIdentityFingerprint: "fingerprint-1",
   gatewayName: "nemoclaw",
@@ -189,39 +188,6 @@ describe("Portable OpenClaw pairing settlement", () => {
     await expect(
       settlePortableOpenClawPairing("alpha", { portableRequired: true }, scope.deps),
     ).resolves.toEqual({ kind: "incomplete", reason: "portable-receipt-missing" });
-    expect(scope.observePairing).not.toHaveBeenCalled();
-    expect(scope.runProducer).not.toHaveBeenCalled();
-    expect(scope.runApproval).not.toHaveBeenCalled();
-  });
-
-  it("performs zero pairing writes for pre-finalization pairing-only state (#9207)", async () => {
-    const scope = settlementDeps({
-      getSandbox: vi.fn(() => ({ ...ENTRY, policyPresetsFinalized: undefined })),
-    });
-
-    await expect(settlePortableOpenClawPairing("alpha", {}, scope.deps)).resolves.toEqual({
-      kind: "incomplete",
-      reason: "portable-policy-incomplete",
-    });
-    expect(scope.calls).toEqual(["sandbox-lock"]);
-    expect(scope.observePairing).not.toHaveBeenCalled();
-    expect(scope.runProducer).not.toHaveBeenCalled();
-    expect(scope.runApproval).not.toHaveBeenCalled();
-  });
-
-  it("fails closed when Portable policy finalization changes inside the gateway lock (#9207)", async () => {
-    const getSandbox = vi
-      .fn()
-      .mockReturnValueOnce(ENTRY)
-      .mockReturnValue({ ...ENTRY, policyPresetsFinalized: undefined });
-    const scope = settlementDeps({ getSandbox });
-
-    await expect(settlePortableOpenClawPairing("alpha", {}, scope.deps)).resolves.toEqual({
-      kind: "incomplete",
-      reason: "portable-policy-incomplete",
-    });
-    expect(scope.calls).toEqual(["sandbox-lock", "gateway-lock"]);
-    expect(getSandbox).toHaveBeenCalledTimes(2);
     expect(scope.observePairing).not.toHaveBeenCalled();
     expect(scope.runProducer).not.toHaveBeenCalled();
     expect(scope.runApproval).not.toHaveBeenCalled();

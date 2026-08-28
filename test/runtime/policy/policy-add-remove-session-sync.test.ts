@@ -81,6 +81,7 @@ const policies = require(${j("policy/index.js")});
 const calls = { apply: [], applyContent: [], remove: [] };
 policies.listPresets = () => ${JSON.stringify(presetNamesAvailable.map((name) => ({ name })))};
 policies.getAppliedPresets = () => ${JSON.stringify(appliedPresets)};
+policies.getGatewayPresets = () => ${JSON.stringify(appliedPresets)};
 policies.loadPreset = (name) => ({ name, network_policies: {} });
 policies.loadPresetForSandbox = (_sandboxName, name) => policies.loadPreset(name);
 policies.getPresetEndpoints = () => [];
@@ -131,8 +132,8 @@ module.exports = { channelModule, calls, sessionUpdates, getSessionState: () => 
 `;
 }
 
-describe("policy-add / policy-remove keep session.policyPresets in sync with registry", () => {
-  it("appends the built-in preset to session.policyPresets after policy-add", () => {
+describe("policy-add / policy-remove leave session policy history non-authoritative", () => {
+  it("does not append a built-in preset to session.policyPresets after policy-add", () => {
     const script = `${buildPreamble({
       sessionSandboxName: "test-sb",
       sessionPolicyPresets: ["npm"],
@@ -159,10 +160,8 @@ const ctx = module.exports;
 
     // Contract 1: applyPreset called exactly once with the chosen preset.
     assert.deepEqual(payload.calls.apply, [{ sandboxName: "test-sb", presetName: "github" }]);
-    // Contract 2: session updated exactly once, github appended.
-    assert.equal(payload.sessionUpdates.length, 1);
-    assert.deepEqual(payload.sessionUpdates[0].policyPresets, ["npm", "github"]);
-    assert.deepEqual(payload.finalSession.policyPresets, ["npm", "github"]);
+    assert.deepEqual(payload.sessionUpdates, []);
+    assert.deepEqual(payload.finalSession.policyPresets, ["npm"]);
   });
 
   it("does not sync session.policyPresets when built-in policy-add fails", () => {
@@ -215,7 +214,7 @@ process.exit = (code) => {
     assert.deepEqual(payload.finalSession.policyPresets, ["npm"]);
   });
 
-  it("appends the custom preset (--from-file) to session.policyPresets", () => {
+  it("does not append a custom preset to session.policyPresets", () => {
     // Write a tiny YAML file the stubbed loadPresetFromFile will pretend to parse.
     const presetFile = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-preset-"));
     const yamlPath = path.join(presetFile, "custom.yaml");
@@ -250,11 +249,11 @@ const ctx = module.exports;
     assert.deepEqual(payload.calls.applyContent, [
       { sandboxName: "test-sb", presetName: "custom-preset-from-file" },
     ]);
-    assert.equal(payload.sessionUpdates.length, 1);
-    assert.deepEqual(payload.sessionUpdates[0].policyPresets, ["npm", "custom-preset-from-file"]);
+    assert.deepEqual(payload.sessionUpdates, []);
+    assert.deepEqual(payload.finalSession.policyPresets, ["npm"]);
   });
 
-  it("removes the preset from session.policyPresets after policy-remove", () => {
+  it("does not remove a preset from session.policyPresets after policy-remove", () => {
     const script = `${buildPreamble({
       appliedPresets: ["npm", "github"],
       sessionSandboxName: "test-sb",
@@ -281,8 +280,8 @@ const ctx = module.exports;
     assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
 
     assert.deepEqual(payload.calls.remove, [{ sandboxName: "test-sb", presetName: "github" }]);
-    assert.equal(payload.sessionUpdates.length, 1);
-    assert.deepEqual(payload.sessionUpdates[0].policyPresets, ["npm"]);
+    assert.deepEqual(payload.sessionUpdates, []);
+    assert.deepEqual(payload.finalSession.policyPresets, ["npm", "github"]);
   });
 
   it("does not touch a session belonging to a different sandbox", () => {
@@ -381,6 +380,7 @@ const ctx = module.exports;
     assert.deepEqual(payload.calls.apply, [
       { sandboxName: "test-sb", presetName: "openclaw-pricing" },
     ]);
-    assert.deepEqual(payload.sessionUpdates[0].policyPresets, ["openclaw-pricing"]);
+    assert.deepEqual(payload.sessionUpdates, []);
+    assert.deepEqual(payload.finalSession.policyPresets, []);
   });
 });

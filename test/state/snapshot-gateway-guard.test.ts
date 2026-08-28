@@ -187,6 +187,7 @@ function makeHealthyVmGatewayEnv(prefix: string): Record<string, string> {
   // container probe.
   writeExecutable(path.join(localBin, "openshell"), [
     'case "$1 $2" in',
+    "  \"policy get\") printf 'version: 1\\nnetwork_policies: {}\\n'; exit 0 ;;",
     '  "gateway info") printf "Gateway Info\\n\\nGateway: nemoclaw\\nGateway endpoint: https://127.0.0.1:8080/\\n"; exit 0 ;;',
     '  "sandbox list") printf "NAME STATUS\\nalpha Ready\\n"; exit 0 ;;',
     '  "sandbox exec") printf "NEMOCLAW_DCODE_PROBE=no-runtime\\n"; exit 0 ;;',
@@ -242,6 +243,7 @@ function makeVmRestoreToEnv(
   const dashboardBind = process.env.WSL_DISTRO_NAME ? "0.0.0.0" : "127.0.0.1";
   writeExecutable(path.join(localBin, "openshell"), [
     'case "$1 $2" in',
+    "  \"policy get\") printf 'version: 1\\nnetwork_policies: {}\\n'; exit 0 ;;",
     '  "gateway info") printf "Gateway Info\\n\\nGateway: nemoclaw\\nGateway endpoint: https://127.0.0.1:8080/\\n"; exit 0 ;;',
     `  "sandbox get") [ "$3 $4" = "-g nemoclaw" ] || exit 91; for sandbox_ref in "$@"; do :; done; if [ -f ${JSON.stringify(cloneIdentityCapturedMarker)} ]; then clone_identity=${JSON.stringify(revalidatedCloneIdentity)}; else touch ${JSON.stringify(cloneIdentityCapturedMarker)}; clone_identity=${JSON.stringify(cloneIdentity)}; fi; printf "Name: %s\\nId: %s\\nPhase: Ready\\n" "$sandbox_ref" "$clone_identity"; exit 0 ;;`,
     `  "sandbox list") if [ -n "\${3:-}" ] && [ "$3 $4" != "-g nemoclaw" ]; then exit 91; fi; if [ -f ${JSON.stringify(cloneReadyMarker)} ]; then printf "NAME STATUS\\nalpha Ready\\nclone-1 Ready\\n"; else printf "NAME STATUS\\nalpha Ready\\n"; fi; exit 0 ;;`,
@@ -270,7 +272,7 @@ function makeVmRestoreToEnv(
     '  if printf "%s" "$cmd" | grep -q "cat --"; then cat "$REMOTE_OPENCLAW_JSON"; exit 0; fi',
     '  touch "$SNAPSHOT_RESTORE_MARKER"',
     '  if printf "%s" "$cmd" | grep -q ".nemoclaw-restore"; then cat > "$REMOTE_OPENCLAW_JSON"; exit 0; fi',
-    '  exit 92',
+    "  exit 92",
     "fi",
     "exit 0",
   ]);
@@ -377,9 +379,7 @@ describe("snapshot VM-driver gateway guard", () => {
         .update("fixture-clone-1")
         .digest("hex"),
     });
-    expect(registryState.sandboxes["clone-1"].lifecycleGeneration).not.toBe(
-      "source-generation",
-    );
+    expect(registryState.sandboxes["clone-1"].lifecycleGeneration).not.toBe("source-generation");
   }, 15000);
 
   it("snapshot restore --to rejects a malformed clone identity before registration (#8942)", () => {

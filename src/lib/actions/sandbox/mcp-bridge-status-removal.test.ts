@@ -52,30 +52,33 @@ providerCommands.runOpenshellProviderCommand = (args) => {
       stderr: "",
     };
   }
+  if (args[0] === "provider" && args[1] === "get") {
+    return { status: 1, stdout: "", stderr: "NotFound" };
+  }
+  if (args[0] === "sandbox" && args[1] === "provider" && args[2] === "detach") {
+    return { status: 0, stdout: "provider was not attached to sandbox", stderr: "" };
+  }
   throw new Error("Unexpected OpenShell call: " + args.join(" "));
 };
 policies.removePreset = () => true;
 policies.getPresetContentGatewayState = () => "absent";
 processRecovery.executeSandboxCommand = () => ({ status: 0, stdout: "", stderr: "" });
-processRecovery.executeSandboxExecCommand = () => ({ status: 0, stdout: "", stderr: "" });
+processRecovery.executeSandboxExecCommand = () => ({ status: 0, stdout: "absent", stderr: "" });
 registry.registerSandbox({
   name: "legacy-sandbox",
   agent: "legacy-disabled",
   mcp: { bridges: { github: {
     server: "github",
-    url: "https://host.openshell.internal:31337/mcp",
-    env: [],
+    url: "https://mcp.example.test/mcp",
+    allowedIps: ["8.8.8.8"],
+    env: ["GITHUB_TOKEN"],
+    providerName: "legacy-sandbox-mcp-github",
+    providerId: "11111111-2222-4333-8444-555555555555",
     policyName: "mcp-bridge-github",
     adapter: "mcporter",
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
   } } },
-});
-registry.addCustomPolicy("legacy-sandbox", {
-  name: "mcp-bridge-github",
-  content: "network_policies:\\n  mcp_bridge_github:\\n    endpoints: []\\n",
-  sourcePath: "generated:nemoclaw-mcp-bridge",
-  appliedAt: "2026-06-01T00:00:00.000Z",
 });
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 bridge.removeMcpBridge("legacy-sandbox", "github").then(
@@ -131,6 +134,9 @@ providerCommands.runOpenshellProviderCommand = (args) => {
       stderr: "",
     };
   }
+  if (args[0] === "provider" && args[1] === "get") {
+    return { status: 1, stdout: "", stderr: "NotFound" };
+  }
   throw new Error("Unexpected OpenShell call: " + args.join(" "));
 };
 policies.removePreset = () => false;
@@ -143,18 +149,15 @@ registry.registerSandbox({
   mcp: { bridges: { github: {
     server: "github",
     url: "https://mcp.example.test/mcp",
-    env: [],
+    allowedIps: ["8.8.8.8"],
+    env: ["GITHUB_TOKEN"],
+    providerName: "legacy-sandbox-mcp-github",
+    providerId: "11111111-2222-4333-8444-555555555555",
     policyName: "mcp-bridge-github",
     adapter: "mcporter",
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
   } } },
-});
-registry.addCustomPolicy("legacy-sandbox", {
-  name: "mcp-bridge-github",
-  content: "network_policies:\\n  mcp_bridge_github:\\n    name: managed\\n    endpoints: []\\n",
-  sourcePath: "generated:nemoclaw-mcp-bridge",
-  appliedAt: "2026-06-01T00:00:00.000Z",
 });
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 bridge.removeMcpBridge("legacy-sandbox", "github", { force: true }).then(

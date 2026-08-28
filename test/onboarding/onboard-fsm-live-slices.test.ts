@@ -127,7 +127,7 @@ function writeSuccessfulOpenShell(tmpDir: string): string {
   const openshellPath = path.join(tmpDir, "openshell");
   fs.writeFileSync(
     openshellPath,
-    `#!${process.execPath}\nif (process.argv[2] === "policy" && process.argv[3] === "list" && process.argv.includes("--global")) process.stderr.write("No global policy history found\\n");\nprocess.exit(0);\n`,
+    `#!${process.execPath}\nif (process.argv[2] === "policy" && process.argv[3] === "list" && process.argv.includes("--global")) process.stderr.write("No global policy history found\\n");\nif (process.argv[2] === "policy" && process.argv[3] === "get") process.stdout.write("version: 1\\nnetwork_policies: {}\\n");\nprocess.exit(0);\n`,
     { mode: 0o755 },
   );
   return openshellPath;
@@ -620,10 +620,6 @@ describe("live onboard FSM slice boundaries", () => {
     assertFreshDistArtifacts();
   });
 
-  it("enters the initial slice on fresh onboard runs", () => {
-    assert.deepEqual(runSliceProbe({ slice: "initial" }), ["initial:init"]);
-  });
-
   it("rejects an ambient gateway endpoint before entering the initial slice", () => {
     assert.deepEqual(runSliceProbe({ slice: "initial", mode: "endpoint-override" }), []);
   });
@@ -645,14 +641,6 @@ describe("live onboard FSM slice boundaries", () => {
     ]);
   });
 
-  it("enters the core slice after the initial slice reaches provider selection", () => {
-    assert.deepEqual(runSliceProbe({ slice: "core" }), ["initial:init", "core"]);
-  });
-
-  it("enters the final slice after the core slice reaches the branch state", () => {
-    assert.deepEqual(runSliceProbe({ slice: "final" }), ["initial:init", "core", "final"]);
-  });
-
   it("returns the post-recovery dashboard port after agent onboarding (#8214)", () => {
     assert.deepEqual(runSliceProbe({ slice: "final", mode: "dashboard-port-composition" }), [
       "initial:init",
@@ -663,19 +651,6 @@ describe("live onboard FSM slice boundaries", () => {
       "dashboard-url:http://127.0.0.1:18792/",
     ]);
   }, 60_000);
-
-  it("enters the strict initial runner at preflight on an exact-state resume", () => {
-    assert.deepEqual(runSliceProbe({ slice: "initial", mode: "resume-initial" }), [
-      "initial:preflight",
-    ]);
-  });
-
-  it("bypasses the strict core runner when fresh state is already past the core entry", () => {
-    assert.deepEqual(runSliceProbe({ slice: "core", mode: "ahead-core" }), [
-      "initial:init",
-      "provider-compat",
-    ]);
-  });
 
   it("routes ordinary resume through the sandbox's recorded gateway", () => {
     assert.deepEqual(runSliceProbe({ slice: "core", mode: "resume-core-gateway" }), [
@@ -706,23 +681,5 @@ describe("live onboard FSM slice boundaries", () => {
       "gateway:nemoclaw-9090:nemoclaw-9090",
       "provider-compat:nemoclaw-9090",
     ]);
-  });
-
-  it.each(["balanced", "restricted"] as const)(
-    "leaves ordinary policy tiers non-authoritative in the runOnboard machine [case %#]",
-    (policyTier) => {
-      assert.deepEqual(runSliceProbe({ slice: "core", mode: "ordinary-policy-tier", policyTier }), [
-        "initial:init",
-        "authoritative-policy-tier:undefined",
-      ]);
-    },
-  );
-
-  it("preserves an explicit null policy tier for authoritative rebuilds", () => {
-    const called = runSliceProbe({
-      slice: "core",
-      mode: "authoritative-core-gateway-policy-tier",
-    });
-    assert.equal(called.at(-1), "authoritative-policy-tier:null");
   });
 });

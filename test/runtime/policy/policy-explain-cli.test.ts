@@ -7,12 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  managedSandboxEntry,
-  POLICY_HASH,
-  POLICY_VERSION,
-  SANDBOX_ID,
-} from "../../helpers/managed-policy-receipt-fixture";
+import { managedSandboxEntry, SANDBOX_ID } from "../../helpers/managed-policy-receipt-fixture";
 
 const CLI = path.join(import.meta.dirname, "../../..", "bin", "nemoclaw.js");
 
@@ -70,6 +65,20 @@ let fakeOpenshell: string;
 beforeEach(() => {
   scratchHome = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-policy-explain-"));
   fakeOpenshell = path.join(scratchHome, "openshell");
+  const slackPolicy = fs
+    .readFileSync(
+      path.join(
+        import.meta.dirname,
+        "../../..",
+        "src/lib/messaging/channels/slack/policy/openclaw.yaml",
+      ),
+      "utf8",
+    )
+    .replaceAll("{sandboxName}", "policy-explain-e2e");
+  const githubPolicy = fs.readFileSync(
+    path.join(import.meta.dirname, "../../..", "nemoclaw-blueprint/policies/presets/github.yaml"),
+    "utf8",
+  );
   fs.writeFileSync(
     fakeOpenshell,
     `#!/usr/bin/env bash
@@ -80,7 +89,13 @@ if [ "$1 $2" = "sandbox get" ]; then
   exit 0
 fi
 if [ "$1 $2" = "policy get" ]; then
-  printf '{"scope":"sandbox","sandbox":"%s","status":"effective","policy_source":"sandbox","hash":"${POLICY_HASH}","active_version":${POLICY_VERSION},"policy":{"version":1,"network_policies":{}}}\n' "$sandbox_name"
+  if [ "$sandbox_name" = "policy-explain-e2e" ]; then
+    printf '%s' '${Buffer.from(slackPolicy).toString("base64")}' | base64 -d
+  elif [ "$sandbox_name" = "policy-explain-json" ]; then
+    printf '%s' '${Buffer.from(githubPolicy).toString("base64")}' | base64 -d
+  else
+    printf 'version: 1\nnetwork_policies: {}\n'
+  fi
   exit 0
 fi
 exit 1
@@ -115,9 +130,6 @@ describe("nemoclaw <sandbox> policy-explain (E2E)", () => {
       "policy-explain-e2e": {
         ...managedSandboxEntry("policy-explain-e2e"),
         createdAt: "2026-06-07T00:00:00.000Z",
-        policies: ["slack"],
-        policyTier: "balanced",
-        policyPresetsFinalized: true,
       },
     });
 
@@ -132,7 +144,7 @@ describe("nemoclaw <sandbox> policy-explain (E2E)", () => {
     expect(result.stdout).toContain("`slack`");
     expect(result.stdout).toContain("slack.com");
     expect(result.stdout).toContain("## Failure classification");
-    expect(result.stdout).toContain("`balanced`");
+    expect(result.stdout).toContain("no tier recorded");
     expect(result.stdout).not.toMatch(/enforcement:|websocket_credential_rewrite|binaries:/);
     expect(result.stdout).not.toMatch(/network_policies:/);
   });
@@ -142,9 +154,6 @@ describe("nemoclaw <sandbox> policy-explain (E2E)", () => {
       "policy-explain-json": {
         ...managedSandboxEntry("policy-explain-json"),
         createdAt: "2026-06-07T00:00:00.000Z",
-        policies: ["github"],
-        policyTier: "balanced",
-        policyPresetsFinalized: true,
       },
     });
 
@@ -173,7 +182,7 @@ describe("nemoclaw <sandbox> policy-explain (E2E)", () => {
     };
 
     expect(parsed.sandboxName).toBe("policy-explain-json");
-    expect(parsed.tier?.name).toBe("balanced");
+    expect(parsed.tier).toBeNull();
     const active = parsed.activePresets.find((p) => p.name === "github");
     expect(active).toBeDefined();
     expect(active?.allowedHostCategories).toContain("api.github.com");

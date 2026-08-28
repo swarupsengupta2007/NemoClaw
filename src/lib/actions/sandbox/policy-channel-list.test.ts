@@ -5,19 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } fr
 
 type PresetInfo = {
   name: string;
-  description?: string;
+  description: string;
 };
 
 const moduleMocks = vi.hoisted(() => ({
   getSandbox: vi.fn<(sandboxName: string) => Record<string, unknown> | null>(),
-  getCustomPolicies: vi.fn<(sandboxName: string) => PresetInfo[]>(),
-  getBaselineExclusions: vi.fn(),
-  getBaselineExclusionTransition: vi.fn(),
   listPresets: vi.fn<(options?: { agent?: string | null }) => PresetInfo[]>(),
   listCustomPresets: vi.fn<(sandboxName: string) => PresetInfo[]>(),
-  getAppliedPresets: vi.fn<(sandboxName: string) => string[]>(),
   getGatewayPresets: vi.fn<(sandboxName: string) => string[] | null>(),
-  getSandboxBaselineEntryDigest: vi.fn(),
   isDockerRuntimeDown: vi.fn<(sandboxName: string) => boolean>(),
   printDockerRuntimeDownGuidance: vi.fn(),
 }));
@@ -25,18 +20,13 @@ const moduleMocks = vi.hoisted(() => ({
 vi.mock("../../state/registry", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../state/registry")>()),
   getSandbox: moduleMocks.getSandbox,
-  getCustomPolicies: moduleMocks.getCustomPolicies,
-  getBaselineExclusions: moduleMocks.getBaselineExclusions,
-  getBaselineExclusionTransition: moduleMocks.getBaselineExclusionTransition,
 }));
 
 vi.mock("../../policy", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../policy")>()),
   listPresets: moduleMocks.listPresets,
   listCustomPresets: moduleMocks.listCustomPresets,
-  getAppliedPresets: moduleMocks.getAppliedPresets,
   getGatewayPresets: moduleMocks.getGatewayPresets,
-  getSandboxBaselineEntryDigest: moduleMocks.getSandboxBaselineEntryDigest,
 }));
 
 vi.mock("./gateway-failure-classifier", async (importOriginal) => ({
@@ -64,24 +54,8 @@ function printedText(): string {
     .join("\n");
 }
 
-function arrangeListing({
-  appliedNames,
-  gatewayNames,
-  tier,
-  agent,
-}: {
-  appliedNames: string[];
-  gatewayNames: string[] | null;
-  tier: string | null;
-  agent: string | null;
-}): void {
-  moduleMocks.getSandbox.mockReturnValue({
-    name: "test-sandbox",
-    agent,
-    policyTier: tier,
-    policies: appliedNames,
-  });
-  moduleMocks.getAppliedPresets.mockReturnValue(appliedNames);
+function arrangeListing(gatewayNames: string[] | null, agent: string | null): void {
+  moduleMocks.getSandbox.mockReturnValue({ name: "test-sandbox", agent });
   moduleMocks.getGatewayPresets.mockReturnValue(gatewayNames);
 }
 
@@ -89,197 +63,75 @@ beforeEach(() => {
   vi.clearAllMocks();
   logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
   errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  moduleMocks.getCustomPolicies.mockReturnValue([]);
   moduleMocks.listPresets.mockReturnValue(POLICY_PRESETS);
   moduleMocks.listCustomPresets.mockReturnValue([]);
   moduleMocks.isDockerRuntimeDown.mockReturnValue(false);
-  moduleMocks.getBaselineExclusions.mockReturnValue([]);
-  moduleMocks.getBaselineExclusionTransition.mockReturnValue(null);
-  moduleMocks.getSandboxBaselineEntryDigest.mockReturnValue(null);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("listSandboxPolicies provenance", () => {
-  it("discloses an interrupted baseline transaction and exact repair command (#7178)", () => {
-    arrangeListing({
-      appliedNames: [],
-      gatewayNames: [],
-      tier: null,
-      agent: "hermes",
-    });
-    moduleMocks.getBaselineExclusionTransition.mockReturnValue({
-      id: "tx-1",
-      operation: "exclude",
-      exclusion: {
-        version: 1,
-        agent: "hermes",
-        key: "nous_research",
-        digest: "approved",
-      },
-      targetLiveDigest: null,
-      startedAt: "2026-07-19T00:00:00.000Z",
-    });
+describe("listSandboxPolicies live OpenShell authority", () => {
+  it("marks only presets present in the live policy as active", () => {
+    arrangeListing(["npm", "pypi"], "openclaw");
 
     listSandboxPolicies("test-sandbox");
 
     const output = printedText();
-    expect(output).toContain("repair required — interrupted exclude; rebuild blocked");
-    expect(output).toContain("nemoclaw test-sandbox policy exclude nous_research");
+    expect(output).toContain("● npm [user-added]");
+    expect(output).toContain("● pypi [user-added]");
+    expect(output).toMatch(/○ discord —/u);
   });
 
-  it.each([
-    "exclude",
-    "restore",
-  ] as const)("keeps an interrupted %s repair visible when the release baseline is unreadable (#7194)", (operation) => {
-    arrangeListing({
-      appliedNames: [],
-      gatewayNames: [],
-      tier: null,
-      agent: "hermes",
+  it("ignores removed registry policy-shadow fields", () => {
+    moduleMocks.getSandbox.mockReturnValue({
+      name: "test-sandbox",
+      agent: "openclaw",
+      policyTier: "balanced",
+      policies: ["npm"],
     });
-    moduleMocks.getBaselineExclusions.mockReturnValue([
-      {
-        version: 1,
-        agent: "hermes",
-        key: "another_entry",
-        digest: "c".repeat(64),
-        acknowledgedAt: "2026-07-18T00:00:00.000Z",
-      },
-      {
-        version: 1,
-        agent: "hermes",
-        key: "nous_research",
-        digest: "a".repeat(64),
-        acknowledgedAt: "2026-07-19T00:00:00.000Z",
-      },
+    moduleMocks.getGatewayPresets.mockReturnValue([]);
+
+    listSandboxPolicies("test-sandbox");
+
+    expect(printedText()).toMatch(/○ npm —/u);
+  });
+
+  it("lists live custom presets as user-added", () => {
+    arrangeListing(["internal-tools"], "openclaw");
+    moduleMocks.listCustomPresets.mockReturnValue([
+      { name: "internal-tools", description: "custom preset" },
     ]);
-    moduleMocks.getBaselineExclusionTransition.mockReturnValue({
-      id: "00000000-0000-4000-8000-000000000001",
-      operation,
-      exclusion: {
-        version: 1,
-        agent: "hermes",
-        key: "nous_research",
-        digest: "a".repeat(64),
-        acknowledgedAt: "2026-07-19T00:00:00.000Z",
-      },
-      targetLiveDigest: operation === "restore" ? "b".repeat(64) : null,
-      startedAt: "2026-07-19T00:00:00.000Z",
-    });
-    moduleMocks.getSandboxBaselineEntryDigest.mockImplementation(() => {
-      throw new Error("release baseline unavailable");
-    });
-
-    expect(() => listSandboxPolicies("test-sandbox")).not.toThrow();
-
-    const output = printedText();
-    expect(output).toContain("another_entry (release baseline unreadable — inspection required)");
-    expect(output).toContain(`repair required — interrupted ${operation}; rebuild blocked`);
-    expect(output).toContain(`nemoclaw test-sandbox policy ${operation} nous_research`);
-    expect(moduleMocks.getSandboxBaselineEntryDigest).toHaveBeenCalledOnce();
-    expect(moduleMocks.getSandboxBaselineEntryDigest).toHaveBeenCalledWith(
-      "test-sandbox",
-      "another_entry",
-    );
-  });
-
-  it("tags active tier-default presets with their tier provenance (#5774)", () => {
-    arrangeListing({
-      appliedNames: ["npm", "pypi"],
-      gatewayNames: ["npm", "pypi"],
-      tier: "balanced",
-      agent: "openclaw",
-    });
 
     listSandboxPolicies("test-sandbox");
 
-    const output = printedText();
-    expect(output).toContain("● npm [from balanced tier]");
-    expect(output).toContain("● pypi [from balanced tier]");
+    expect(printedText()).toContain("● internal-tools [user-added] — custom preset");
   });
 
-  it("keeps tier attribution when a custom registry entry shadows a tier preset (#5774)", () => {
-    moduleMocks.getCustomPolicies.mockReturnValue([
-      { name: "npm", description: "sandbox-scoped custom npm policy" },
-    ]);
-    arrangeListing({
-      appliedNames: ["npm"],
-      gatewayNames: ["npm"],
-      tier: "balanced",
-      agent: "openclaw",
-    });
-
-    listSandboxPolicies("test-sandbox");
-
-    const output = printedText();
-    expect(output).toContain("● npm [from balanced tier]");
-    expect(output).not.toContain("● npm [user-added]");
-  });
-
-  it("tags openclaw-pricing as an OpenClaw agent preset (#5774)", () => {
-    arrangeListing({
-      appliedNames: ["openclaw-pricing"],
-      gatewayNames: ["openclaw-pricing"],
-      tier: "balanced",
-      agent: "openclaw",
-    });
+  it("tags agent-owned presets from the sandbox agent", () => {
+    arrangeListing(["openclaw-pricing"], "openclaw");
 
     listSandboxPolicies("test-sandbox");
 
     expect(printedText()).toContain("● openclaw-pricing [from openclaw agent]");
   });
 
-  it("tags nous-* presets as Hermes agent presets on Hermes (#5774)", () => {
-    arrangeListing({
-      appliedNames: ["nous-web"],
-      gatewayNames: ["nous-web"],
-      tier: "open",
-      agent: "hermes",
-    });
-
-    listSandboxPolicies("test-sandbox");
-
-    expect(printedText()).toContain("● nous-web [from hermes agent]");
-  });
-
-  it("tags presets outside the tier and agent defaults as user-added (#5774)", () => {
-    arrangeListing({
-      appliedNames: ["discord"],
-      gatewayNames: ["discord"],
-      tier: "balanced",
-      agent: "openclaw",
-    });
-
-    listSandboxPolicies("test-sandbox");
-
-    expect(printedText()).toContain("● discord [user-added]");
-  });
-
-  it("omits the provenance tag for inactive presets (#5774)", () => {
-    arrangeListing({
-      appliedNames: ["npm"],
-      gatewayNames: ["npm"],
-      tier: "balanced",
-      agent: "openclaw",
-    });
+  it.each([
+    { agent: "hermes", preset: "openclaw-pricing", forbidden: "[from openclaw agent]" },
+    { agent: "openclaw", preset: "nous-web", forbidden: "[from hermes agent]" },
+  ])("does not infer another agent's provenance for $preset", ({ agent, preset, forbidden }) => {
+    arrangeListing([preset], agent);
 
     listSandboxPolicies("test-sandbox");
 
     const output = printedText();
-    expect(output).toMatch(/○ pypi —/);
-    expect(output).not.toMatch(/○ pypi \[/);
+    expect(output).toContain(`● ${preset} [user-added]`);
+    expect(output).not.toContain(forbidden);
   });
 
-  it("omits channel policy presets that are not available for the sandbox agent (#6185)", () => {
-    arrangeListing({
-      appliedNames: [],
-      gatewayNames: [],
-      tier: "balanced",
-      agent: "langchain-deepagents-code",
-    });
+  it("asks the catalog for presets available to the sandbox agent", () => {
+    arrangeListing([], "langchain-deepagents-code");
     moduleMocks.listPresets.mockImplementation((options) =>
       options?.agent === "langchain-deepagents-code"
         ? [
@@ -291,85 +143,30 @@ describe("listSandboxPolicies provenance", () => {
 
     listSandboxPolicies("test-sandbox");
 
-    expect(moduleMocks.listPresets).toHaveBeenCalledWith({
-      agent: "langchain-deepagents-code",
-    });
-    const output = printedText();
-    expect(output).toContain("○ npm");
-    expect(output).not.toContain("discord");
-    expect(output).not.toContain("telegram");
+    expect(moduleMocks.listPresets).toHaveBeenCalledWith({ agent: "langchain-deepagents-code" });
+    expect(printedText()).not.toContain("discord");
   });
 
-  it.each([
-    {
-      agent: "hermes",
-      preset: "openclaw-pricing",
-      forbidden: "[from openclaw agent]",
-    },
-    { agent: "openclaw", preset: "nous-web", forbidden: "[from hermes agent]" },
-  ])("does not use another agent's provenance for $preset (#5774)", ({
-    agent,
-    preset,
-    forbidden,
-  }) => {
-    arrangeListing({
-      appliedNames: [preset],
-      gatewayNames: [preset],
-      tier: "balanced",
-      agent,
-    });
+  it("shows no applied state when the live policy is unreadable", () => {
+    arrangeListing(null, "openclaw");
 
     listSandboxPolicies("test-sandbox");
 
     const output = printedText();
-    expect(output).toContain(`● ${preset} [user-added]`);
-    expect(output).not.toContain(forbidden);
+    expect(output).toMatch(/○ npm —/u);
+    expect(output).toContain("Could not query the live OpenShell policy");
+    expect(output).toContain("applied state unavailable");
   });
 
-  it("falls back to user-added when policyTier is missing (#5774)", () => {
-    arrangeListing({
-      appliedNames: ["npm"],
-      gatewayNames: ["npm"],
-      tier: null,
-      agent: "openclaw",
-    });
+  it("uses Docker recovery guidance when the runtime is down", () => {
+    arrangeListing(null, "openclaw");
+    moduleMocks.isDockerRuntimeDown.mockReturnValue(true);
 
     listSandboxPolicies("test-sandbox");
 
-    const output = printedText();
-    expect(output).toContain("● npm [user-added]");
-    expect(output).not.toContain("[from balanced tier]");
-  });
-
-  it("does not trust tier provenance for gateway-only desync (#5774)", () => {
-    arrangeListing({
-      appliedNames: [],
-      gatewayNames: ["npm"],
-      tier: "balanced",
-      agent: "openclaw",
+    expect(moduleMocks.printDockerRuntimeDownGuidance).toHaveBeenCalledWith("test-sandbox", {
+      writer: console.log,
+      retryCommand: "policy-list",
     });
-
-    listSandboxPolicies("test-sandbox");
-
-    const output = printedText();
-    expect(output).not.toContain("● npm [from balanced tier]");
-    expect(output).toContain(
-      "● npm [source unverified] — npm and Yarn registry access (active on gateway, missing from local state)",
-    );
-  });
-
-  it("marks registry-only provenance as gateway-unreachable (#5774)", () => {
-    arrangeListing({
-      appliedNames: ["npm"],
-      gatewayNames: null,
-      tier: "balanced",
-      agent: "openclaw",
-    });
-
-    listSandboxPolicies("test-sandbox");
-
-    const output = printedText();
-    expect(output).not.toContain("● npm [from balanced tier]");
-    expect(output).toContain("● npm [source unverified (gateway unreachable)]");
   });
 });

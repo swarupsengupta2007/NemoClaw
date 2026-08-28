@@ -137,75 +137,74 @@ afterEach(() => {
 describe("preset no-op egress disclosure (#7179)", () => {
   it("repairs single-preset attribution without claiming or submitting new egress", () => {
     const { output, payload } = runScenario({
-      currentPolicy: policyWithPresets(["npm"]),
-      presetNames: ["npm"],
+      currentPolicy: policyWithPresets(["github"]),
+      presetNames: ["github"],
     });
 
-    expect(output).toContain("Preset 'npm' is already effective; no new egress would be opened.");
+    expect(output).toContain(
+      "Preset 'github' is already effective; no new egress would be opened.",
+    );
     expect(output).not.toContain("Effective egress that would be opened:");
     expect(payload.calls).toEqual([]);
-    expect(payload.registry.policies).toEqual(["npm"]);
   });
 
   it("skips the gateway set when every batch preset already matches", () => {
     const { output, payload } = runScenario({
-      currentPolicy: policyWithPresets(["npm", "pypi"]),
-      presetNames: ["npm", "pypi"],
+      currentPolicy: policyWithPresets(["github", "pypi"]),
+      presetNames: ["github", "pypi"],
       batch: true,
     });
 
-    expect(output).toContain("Preset 'npm' is already effective");
+    expect(output).toContain("Preset 'github' is already effective");
     expect(output).toContain("Preset 'pypi' is already effective");
     expect(payload.calls).toEqual([]);
-    expect(payload.registry.policies).toEqual(["npm", "pypi"]);
   });
 
   it("discloses and submits only the absent part of a mixed batch", () => {
     const { output, payload } = runScenario({
-      currentPolicy: policyWithPresets(["npm"]),
-      presetNames: ["npm", "pypi"],
+      currentPolicy: policyWithPresets(["github"]),
+      presetNames: ["github", "pypi"],
       batch: true,
     });
 
-    expect(output).toContain("Preset 'npm' is already effective");
+    expect(output).toContain("Preset 'github' is already effective");
     expect(output).toContain("Effective egress that would be opened:");
     expect(output).toContain("policy 'pypi'");
     expect(payload.calls).toEqual(["policy set"]);
   });
 
   it("treats same-key drift as an effective-scope replacement", () => {
-    const drifted = policyWithPresets(["npm"]).replace("registry.npmjs.org", "drift.example");
-    const { output, payload } = runScenario({ currentPolicy: drifted, presetNames: ["npm"] });
+    const drifted = policyWithPresets(["github"]).replace("api.github.com", "drift.example");
+    const { output, payload } = runScenario({ currentPolicy: drifted, presetNames: ["github"] });
 
     expect(output).toContain(
       "Effective egress scope that would replace the current preset policy:",
     );
-    expect(output).not.toContain("Preset 'npm' is already effective");
+    expect(output).not.toContain("Preset 'github' is already effective");
     expect(payload.calls).toEqual(["policy set"]);
   });
 
   it("does not print a duplicate scope when the caller already disclosed it", () => {
     const { output, payload } = runScenario({
       currentPolicy: "version: 1\nnetwork_policies: {}\n",
-      presetNames: ["npm"],
+      presetNames: ["github"],
       suppressDisclosure: true,
     });
 
     expect(output).not.toContain("Effective egress");
-    expect(output).not.toContain("Preset 'npm' is already effective");
+    expect(output).not.toContain("Preset 'github' is already effective");
     expect(payload.calls).toEqual(["policy set"]);
-    expect(payload.registry.policies).toEqual(["npm"]);
   });
 
   it("discloses again when the live policy changed after an earlier no-op preview (#7179)", () => {
     const { output, payload } = runScenario({
       currentPolicy: "version: 1\nnetwork_policies: {}\n",
-      presetNames: ["npm"],
+      presetNames: ["github"],
       disclosedPresetState: "match",
     });
 
     expect(output).toContain("Effective egress that would be opened:");
-    expect(output).not.toContain("Preset 'npm' is already effective");
+    expect(output).not.toContain("Preset 'github' is already effective");
     expect(payload.calls).toEqual(["policy set"]);
   });
 });

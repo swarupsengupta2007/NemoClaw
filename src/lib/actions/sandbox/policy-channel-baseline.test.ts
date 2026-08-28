@@ -295,16 +295,6 @@ describe("restoreSandboxBaseline (#7178)", () => {
     });
   });
 
-  it("binds stale exclusion cleanup to an absent preview", async () => {
-    vi.mocked(policies.getSandboxBaselineEntry).mockReturnValue(null);
-
-    await restoreSandboxBaseline("alpha", { key: "legacy_entry", force: true });
-
-    expect(restoreBaselineEntryMock).toHaveBeenCalledWith("alpha", "legacy_entry", {
-      expectedTargetDigest: null,
-    });
-  });
-
   it("discloses the restored egress before interactive acknowledgement (#8114)", async () => {
     promptMock.mockImplementation(async () => {
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining("re-allows:"));

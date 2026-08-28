@@ -949,8 +949,6 @@ describe("launch readiness validation", () => {
       [
         "agent",
         "agentVersion",
-        "baselineExclusions",
-        "customPolicies",
         "dashboardPort",
         "dashboardRemoteBindPrepared",
         "dcodeAutoApprovalMode",
@@ -980,9 +978,6 @@ describe("launch readiness validation", () => {
         "openclawImagePluginInstalls",
         "openshellDriver",
         "openshellVersion",
-        "policies",
-        "policyPresetsFinalized",
-        "policyTier",
         "sandboxGpuDevice",
         "sandboxGpuEnabled",
         "sandboxGpuMode",

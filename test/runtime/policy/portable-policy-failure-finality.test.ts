@@ -354,7 +354,7 @@ describe.each(POLICY_SET_FAILURES)(
       const registry = JSON.parse(
         fs.readFileSync(path.join(run.homeDir, ".nemoclaw", "sandboxes.json"), "utf-8"),
       ) as { sandboxes: Record<string, { policies?: string[] }> };
-      expect(registry.sandboxes[SANDBOX_NAME]?.policies).toEqual([]);
+      expect(registry.sandboxes[SANDBOX_NAME]?.policies).toBeUndefined();
     });
   },
 );

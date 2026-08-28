@@ -388,7 +388,7 @@ describe("addSandboxPolicy", () => {
 
 describe("removeSandboxPolicy", () => {
   beforeEach(() => {
-    getAppliedPresetsMock.mockReturnValue(["pypi"]);
+    getGatewayPresetsMock.mockReturnValue(["pypi"]);
   });
 
   it("prompts for confirmation before removing an interactively selected preset", async () => {
@@ -452,8 +452,7 @@ describe("removeSandboxPolicy", () => {
     expect(removePresetMock).not.toHaveBeenCalled();
   });
 
-  it("removes a preset the gateway enforces but the registry never recorded (#9295)", async () => {
-    getAppliedPresetsMock.mockReturnValue([]);
+  it("removes a preset enforced by the live OpenShell policy (#9295)", async () => {
     getGatewayPresetsMock.mockReturnValue(["npm"]);
 
     await removeSandboxPolicy("test-sandbox", { preset: "npm", yes: true });
@@ -461,8 +460,7 @@ describe("removeSandboxPolicy", () => {
     expect(removePresetMock).toHaveBeenCalledWith("test-sandbox", "npm");
   });
 
-  it("refuses a preset neither the registry nor the gateway holds (#9295)", async () => {
-    getAppliedPresetsMock.mockReturnValue([]);
+  it("refuses a preset absent from the live OpenShell policy (#9295)", async () => {
     getGatewayPresetsMock.mockReturnValue(["pypi"]);
 
     await expect(
@@ -473,31 +471,29 @@ describe("removeSandboxPolicy", () => {
     expect(removePresetMock).not.toHaveBeenCalled();
   });
 
-  it("names the unreachable gateway when it refuses on local state alone (#9295)", async () => {
-    getAppliedPresetsMock.mockReturnValue([]);
+  it("fails closed when the live OpenShell policy is unreadable (#9295)", async () => {
     getGatewayPresetsMock.mockReturnValue(null);
 
     await expect(
       captureExit(() => removeSandboxPolicy("test-sandbox", { preset: "npm", yes: true })),
     ).resolves.toBe(1);
 
-    expect(printedText()).toContain(
-      "Could not query the gateway, so only local state was checked.",
-    );
+    expect(printedText()).toContain("Could not query the live OpenShell policy");
+    expect(printedText()).toContain("no policy changes were made");
     expect(removePresetMock).not.toHaveBeenCalled();
   });
 
-  it("offers a gateway-only preset in the removal picker (#9295)", async () => {
+  it("offers a live preset in the removal picker (#9295)", async () => {
     getGatewayPresetsMock.mockReturnValue(["npm"]);
 
     await removeSandboxPolicy("test-sandbox");
 
     expect(selectForRemovalMock).toHaveBeenCalledWith(POLICY_PRESETS, {
-      applied: ["pypi", "npm"],
+      applied: ["npm"],
     });
   });
 
-  it("lists a preset both sources hold only once in the removal picker (#9295)", async () => {
+  it("lists each live preset once in the removal picker (#9295)", async () => {
     getGatewayPresetsMock.mockReturnValue(["pypi", "npm"]);
 
     await removeSandboxPolicy("test-sandbox");

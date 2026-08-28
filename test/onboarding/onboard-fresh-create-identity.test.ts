@@ -94,14 +94,6 @@ describe("fresh create identity", () => {
       expectedOutcome: "post-create-registration-recovery-retry" as const,
     },
     {
-      title: "retains recovery state when final checks fail after registration (#9833)",
-      apfInterceptorRequested: true,
-      provider: null,
-      model: null,
-      agent: null,
-      expectedOutcome: "post-create-finalization-refusal" as const,
-    },
-    {
       title: "rejects staged messaging intent before any onboarding side effect (#9833)",
       apfInterceptorRequested: true,
       provider: null,
@@ -236,9 +228,7 @@ let recoveryJournalReadbackFailuresRemaining = ${JSON.stringify(
             ? 1
             : 0,
       )};
-const postCreateFinalizationRefusal = ${JSON.stringify(
-        expectedOutcome === "post-create-finalization-refusal",
-      )};
+const postCreateFinalizationRefusal = false;
 let cancelPrompt = false;
 const originalGetCredential = credentials.getCredential;
 credentials.getCredential = (...args) => {
@@ -765,15 +755,11 @@ if (${JSON.stringify(
       };
       const assertManagedProviderCreation = () => {
         assertSuccessfulCreation();
-        assert.equal(payload.registeredSandbox.policyAuthority, "nemoclaw-managed");
-        assert.ok(payload.registeredSandbox.policyCreationReceipt);
         assert.match(payload.createCommand, /--policy \S+/u);
         assert.match(payload.createCommand, /--provider nvidia-prod/u);
       };
       const assertProviderlessApfCreation = () => {
         assertSuccessfulCreation();
-        assert.equal(payload.registeredSandbox.policyAuthority, "externally-managed");
-        assert.equal(payload.registeredSandbox.policyCreationReceipt, undefined);
         assert.doesNotMatch(payload.createCommand, /(?:^|\s)--policy(?:\s|$)/u);
         assert.doesNotMatch(payload.createCommand, /(?:^|\s)--provider(?:\s|$)/u);
         assert.equal(payload.credentialReadCalls, 0);

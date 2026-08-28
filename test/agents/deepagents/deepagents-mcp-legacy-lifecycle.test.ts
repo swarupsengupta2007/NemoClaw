@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   getLiveSandboxPolicyEntryDigest: vi.fn(),
   getPresetContentGatewayState: vi.fn(),
   recoverNamedGatewayRuntime: vi.fn(),
-  removePreset: vi.fn(),
+  removePolicyContent: vi.fn(),
   runOpenshellProviderCommand: vi.fn(),
 }));
 
@@ -34,7 +34,7 @@ vi.mock("../../../src/lib/policy", () => ({
   applyPresetContent: mocks.applyPresetContent,
   getLiveSandboxPolicyEntryDigest: mocks.getLiveSandboxPolicyEntryDigest,
   getPresetContentGatewayState: mocks.getPresetContentGatewayState,
-  removePreset: mocks.removePreset,
+  removePolicyContent: mocks.removePolicyContent,
 }));
 
 vi.mock("../../../src/lib/actions/sandbox/process-recovery", () => ({
@@ -183,7 +183,7 @@ beforeEach(() => {
     policyState = "match";
     return true;
   });
-  mocks.removePreset.mockReset().mockImplementation(() => {
+  mocks.removePolicyContent.mockReset().mockImplementation(() => {
     policyState = "absent";
     return true;
   });
@@ -255,6 +255,7 @@ beforeEach(() => {
     providerName: "alpha-mcp-github",
     providerId,
     policyName: "mcp-bridge-github",
+    allowedIps: ["8.8.8.8"],
     addedAt: "2026-06-27T00:00:00.000Z",
   };
   registry.registerSandbox({

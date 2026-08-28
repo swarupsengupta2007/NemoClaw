@@ -60,7 +60,7 @@ providerCommands.runOpenshellProviderCommand = (args) => {
   return { status: 0, stdout: "", stderr: "" };
 };
 policies.getPresetContentGatewayState = () => policyState;
-policies.removePreset = () => {
+policies.removePolicyContent = () => {
   policyState = "absent";
   return true;
 };
@@ -76,6 +76,7 @@ const entry = {
   server: "fake",
   agent: "openclaw",
   url: "https://mcp.example.test/mcp",
+  allowedIps: ["8.8.8.8"],
   env: ["EXPECTED_TOKEN"],
   providerName: "alpha-mcp-fake",
   providerId: expectedId,
@@ -87,11 +88,6 @@ registry.registerSandbox({
   name: "alpha",
   agent: "legacy-disabled",
   mcp: { bridges: { fake: entry } },
-});
-registry.addCustomPolicy("alpha", {
-  name: entry.policyName,
-  content: "network_policies: {}\\n",
-  sourcePath: "generated:nemoclaw-mcp-bridge",
 });
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 bridge.removeMcpBridge("alpha", "fake").then(
@@ -166,7 +162,7 @@ providerCommands.runOpenshellProviderCommand = (args) => {
   throw new Error("unexpected call: " + args.join(" "));
 };
 policies.getPresetContentGatewayState = () => policyState;
-policies.removePreset = () => { policyState = "absent"; return true; };
+policies.removePolicyContent = () => { policyState = "absent"; return true; };
 const runSandboxChild = () => {
   calls.push("sandbox-child attached=" + attached);
   if (attached) throw new Error("sandbox child started while LD_PRELOAD remained attached");
@@ -179,6 +175,7 @@ const entry = {
   agent: "openclaw",
   adapter: "mcporter",
   url: "https://mcp.example.test/mcp",
+  allowedIps: ["8.8.8.8"],
   env: ["LD_PRELOAD"],
   providerName: "alpha-mcp-fake",
   providerId: expectedId,
@@ -189,11 +186,6 @@ registry.registerSandbox({
   name: "alpha",
   agent: "legacy-disabled",
   mcp: { bridges: { fake: entry } },
-});
-registry.addCustomPolicy("alpha", {
-  name: entry.policyName,
-  content: "network_policies: {}\n",
-  sourcePath: "generated:nemoclaw-mcp-bridge",
 });
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 bridge.removeMcpBridge("alpha", "fake").then(
@@ -312,6 +304,7 @@ registry.registerSandbox({
     server: "fake",
     agent: "openclaw",
     url: "https://mcp.example.test/mcp",
+    allowedIps: ["8.8.8.8"],
     env: ["EXPECTED_TOKEN"],
     providerName: "alpha-mcp-fake",
     providerId: "11111111-2222-4333-8444-555555555555",
@@ -586,6 +579,7 @@ registry.registerSandbox({
   mcp: { bridges: { fake: {
     server: "fake",
     url: "https://mcp.example.test/mcp",
+    allowedIps: ["8.8.8.8"],
     env: ["EXPECTED_TOKEN"],
     providerName: "alpha-mcp-fake",
     providerId: "11111111-2222-4333-8444-555555555555",

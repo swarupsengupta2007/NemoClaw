@@ -239,14 +239,10 @@ const ctx = module.exports;
         `expected one removePreset('whatsapp') call; got ${JSON.stringify(payload.removedPresets)}`,
       );
 
-      assert.ok(
-        !payload.sessionPolicyPresets.includes("whatsapp"),
-        `session.policyPresets must not contain 'whatsapp' after remove (resume would reapply it). Got: ${JSON.stringify(payload.sessionPolicyPresets)}`,
-      );
       assert.deepEqual(
         payload.sessionPolicyPresets,
-        ["npm", "pypi", "huggingface", "brew"],
-        "non-channel presets must stay in session.policyPresets",
+        ["npm", "pypi", "huggingface", "brew", "whatsapp"],
+        "session policy history is not mutated by live channel removal",
       );
 
       const cleanupCalls = payload.sandboxExecCalls.filter((c: { command: string }) =>
@@ -451,15 +447,8 @@ policiesOverride.getAppliedPresets = () => [];
     const cleanupCalls = payload.sandboxExecCalls.filter((c: { command: string }) =>
       c.command.startsWith("rm -rf"),
     );
-    assert.equal(
-      cleanupCalls.length,
-      1,
-      `cleanup must run when only session.policyPresets has residue; got ${JSON.stringify(payload.sandboxExecCalls)}`,
-    );
-    assert.ok(
-      !payload.sessionPolicyPresets.includes("whatsapp"),
-      `session.policyPresets must be stripped after the residue-driven cleanup`,
-    );
+    assert.equal(cleanupCalls.length, 0);
+    assert.ok(payload.sessionPolicyPresets.includes("whatsapp"));
     assert.equal(payload.exitCode, null, "must not abort when sandbox-exec succeeds");
   });
 
@@ -540,14 +529,10 @@ const ctx = module.exports;
     const payload = JSON.parse(result.stdout.slice(marker + "__RESULT__".length).trim());
     assert.ok(!payload.error, `unexpected error: ${payload.error}\n${payload.stack || ""}`);
 
-    assert.ok(
-      !payload.sessionPolicyPresets.includes("telegram"),
-      `session.policyPresets must drop 'telegram' after channel remove. Got: ${JSON.stringify(payload.sessionPolicyPresets)}`,
-    );
     assert.deepEqual(
       payload.sessionPolicyPresets,
-      ["npm", "pypi", "brew"],
-      "other presets must remain after removing a token-based channel",
+      ["npm", "pypi", "telegram", "brew"],
+      "session policy history remains unchanged after token-channel removal",
     );
 
     const messagingPlanUpdate = payload.registryUpdates.findLast(

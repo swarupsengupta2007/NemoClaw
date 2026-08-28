@@ -36,6 +36,7 @@ const entries = {
     agent: "openclaw",
     adapter: "mcporter",
     url: "https://8.8.8.8/mcp",
+    allowedIps: ["8.8.8.8"],
     env: ["FIRST_MCP_TOKEN"],
     providerName: "alpha-mcp-first",
     providerId: "11111111-2222-4333-8444-555555555555",
@@ -47,6 +48,7 @@ const entries = {
     agent: "openclaw",
     adapter: "mcporter",
     url: "https://1.1.1.1/mcp",
+    allowedIps: ["1.1.1.1"],
     env: ["SECOND_MCP_TOKEN"],
     providerName: "alpha-mcp-second",
     providerId: "22222222-3333-4444-8555-666666666666",
@@ -123,16 +125,6 @@ registry.registerSandbox({
   gatewayName: "nemoclaw",
   mcp: { bridges: entries },
 });
-for (const entry of Object.values(entries)) {
-  registry.addCustomPolicy("alpha", {
-    name: entry.policyName,
-    content: generated.buildMcpBridgePolicyYaml(entry.server, entry.url, entry.adapter, {
-      addresses: [new URL(entry.url).hostname],
-    }, entry.providerName),
-    sourcePath: "generated:nemoclaw-mcp-bridge",
-  });
-}
-
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 const restart = require("./src/lib/actions/sandbox/mcp-bridge-restart.js");
 const operationPromise =
@@ -195,6 +187,7 @@ const entry = {
   agent: "openclaw",
   adapter: "mcporter",
   url: "https://8.8.8.8/mcp",
+  allowedIps: ["8.8.8.8"],
   env: ["MCP_TOKEN"],
   providerName: "alpha-mcp-example",
   providerId: "11111111-2222-4333-8444-555555555555",
@@ -273,14 +266,6 @@ registry.registerSandbox({
   mcp: { bridges: { example: entry } },
 });
 registry.addExtraProvider("foreign-registered");
-registry.addCustomPolicy("alpha", {
-  name: entry.policyName,
-  content: generated.buildMcpBridgePolicyYaml(entry.server, entry.url, entry.adapter, {
-    addresses: ["8.8.8.8"],
-  }, entry.providerName),
-  sourcePath: "generated:nemoclaw-mcp-bridge",
-});
-
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 bridge.restartMcpBridge("alpha", "example").then(
   () => process.stdout.write(JSON.stringify({ observations, proofScripts, providerCalls, registeredProviderGets })),

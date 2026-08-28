@@ -287,7 +287,7 @@ processRecovery.executeSandboxExecCommand = (_sandboxName, command) => {
   return { status: 0, stdout: "", stderr: "" };
 };
 policies.getPresetContentGatewayState = () => policyState;
-policies.removePreset = () => {
+policies.removePolicyContent = () => {
   events.push("policy:remove");
   policyState = "absent";
   return true;
@@ -301,6 +301,7 @@ const entry = {
   providerName,
   providerId: expectedId,
   policyName: "mcp-bridge-github",
+  allowedIps: ["8.8.8.8"],
   addedAt: "2026-06-01T00:00:00.000Z",
 };
 registry.registerSandbox({
@@ -311,11 +312,6 @@ registry.registerSandbox({
     managedServerNames: ["github"],
     destroyPreparedAt: "2026-06-27T01:00:00.000Z",
   },
-});
-registry.addCustomPolicy("stuck-sandbox", {
-  name: entry.policyName,
-  content: "network_policies: {}",
-  sourcePath: "generated:nemoclaw-mcp-bridge",
 });
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 bridge.removeMcpBridge("stuck-sandbox", "github", { force: true }).then(

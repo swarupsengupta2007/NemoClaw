@@ -1261,10 +1261,6 @@ describe("sandbox inference route reservation qualification (#9203)", () => {
 
   it.each([
     ["invalid dashboard port", { dashboardPort: 0 }],
-    ["duplicate policies", { policies: ["github", "github"] }],
-    ["control character in a policy", { policies: ["github\u0000"] }],
-    ["control character in the policy tier", { policyTier: "personal\u0000" }],
-    ["non-boolean policy finalization", { policyPresetsFinalized: "yes" }],
     ["non-boolean web search state", { webSearchEnabled: "yes" }],
     ["unknown web search provider", { webSearchProvider: "unknown" }],
   ])("rejects %s in carried route metadata (#10056)", async (_case, updates) => {

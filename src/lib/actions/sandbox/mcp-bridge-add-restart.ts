@@ -265,10 +265,10 @@ async function addMcpBridgeUnlocked(
     adapter,
     url: normalizedUrl,
     env: envNames,
+    allowedIps: [...target.addresses],
     ...(target.trustedPrivateHost
       ? {
           trustedPrivateHost: target.trustedPrivateHost,
-          allowedIps: [...target.addresses],
         }
       : {}),
     ...(providerName ? { providerName } : {}),

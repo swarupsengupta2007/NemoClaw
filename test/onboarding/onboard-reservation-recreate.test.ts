@@ -450,7 +450,6 @@ if (mode === "resume" && scenario === "changed-checkpoint") {
       const data = registry.load();
       const changed = data.sandboxes["my-assistant"].pendingCreateVerification;
       changed.policyVersion += 1;
-      changed.policyCreationReceipt.policyVersion += 1;
       registry.save(data);
     }
     return current;
@@ -621,7 +620,6 @@ createArgs[16] = async () => {
         registryEntry: {
           pendingRouteReservation?: boolean;
           pendingCreateVerification?: unknown;
-          policyAuthority?: string;
         };
       }>(second.stdout);
       const createEvents = fs
@@ -642,10 +640,6 @@ createArgs[16] = async () => {
       assert.equal(recovered.sandboxName, resumes ? "my-assistant" : null);
       assert.equal(recovered.registryEntry.pendingRouteReservation, resumes ? undefined : true);
       assert.equal(Boolean(recovered.registryEntry.pendingCreateVerification), !resumes);
-      assert.equal(
-        recovered.registryEntry.policyAuthority,
-        resumes ? "nemoclaw-managed" : undefined,
-      );
       assert.deepEqual(effectEvents, resumes ? ["seed", "resume"] : ["seed"]);
     },
   );

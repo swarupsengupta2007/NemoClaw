@@ -70,18 +70,14 @@ registry.registerSandbox({
     server: "fake",
     agent: "openclaw",
     adapter: "mcporter",
-    url: "https://host.openshell.internal:31337/mcp",
+    url: "https://mcp.example.test/mcp",
+    allowedIps: ["8.8.8.8"],
     env: ["LD_PRELOAD"],
     providerName: "alpha-mcp-fake",
     providerId: "11111111-2222-4333-8444-555555555555",
     policyName: "mcp-bridge-fake",
     addedAt: "2026-06-01T00:00:00.000Z",
   } } },
-});
-registry.addCustomPolicy("alpha", {
-  name: "mcp-bridge-fake",
-  content: "network_policies: {}\n",
-  sourcePath: "generated:nemoclaw-mcp-bridge",
 });
 const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
 (async () => {
@@ -121,12 +117,10 @@ const bridge = require("./src/lib/actions/sandbox/mcp-bridge.js");
       detail: expect.stringMatching(/inspection was skipped.*legacy credential/i),
     });
     expect(payload.status.warnings).toEqual([
-      expect.stringMatching(/persisted MCP URL no longer satisfies.*remove this server/i),
       expect.stringMatching(
         /persisted MCP credential name no longer satisfies.*remove this server/i,
       ),
     ]);
-    expect(payload.text).toMatch(/warning: This persisted MCP URL no longer satisfies/i);
     expect(payload.text).toMatch(
       /warning: This persisted MCP credential name no longer satisfies/i,
     );

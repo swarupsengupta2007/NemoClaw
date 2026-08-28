@@ -11,6 +11,7 @@ import * as agentRuntime from "../../agent/runtime";
 import * as gatewayRuntime from "../../gateway-runtime-action";
 import * as nim from "../../inference/nim";
 import * as gatewayTeardownAuthority from "../../onboard/gateway-teardown-authority";
+import * as runner from "../../runner";
 import * as sessionRecovery from "../../onboard/session-recovery";
 import * as sandboxList from "../../openshell-sandbox-list";
 import * as sandboxVersion from "../../sandbox/version";
@@ -108,6 +109,7 @@ describe("rebuild resume snapshot repair", () => {
     spies.push(
       vi.spyOn(gatewayDrift, "detectOpenShellStateRpcPreflightIssue").mockReturnValue(null),
       vi.spyOn(gatewayDrift, "detectOpenShellStateRpcResultIssue").mockReturnValue(null),
+      vi.spyOn(runner, "runCapture").mockReturnValue("version: 1\nnetwork_policies: {}\n"),
       vi
         .spyOn(gatewayTeardownAuthority, "resolveGatewayTeardownAuthority")
         .mockImplementation(resolveGatewayAuthority),
@@ -211,6 +213,13 @@ describe("rebuild resume snapshot repair", () => {
           timestamp: "2026-06-01T00:00:00.000Z",
         },
       } as never),
+      vi.spyOn(sandboxState, "attachRebuildPolicyHandoff").mockImplementation((manifest) => ({
+        ...manifest,
+        rebuildPolicyHandoff: {
+          file: "rebuild-policy-handoff.yaml",
+          sha256: "a".repeat(64),
+        },
+      })),
       vi
         .spyOn(openshellRuntime, "runOpenshell")
         .mockReturnValue({ status: 0, output: "" } as never),

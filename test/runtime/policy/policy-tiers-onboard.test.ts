@@ -314,51 +314,6 @@ process.exit = (code = 0) => {
     assert.match(result.stderr, /Interactive onboarding requires a TTY/);
     assert.ok(!result.stdout.includes("UNEXPECTED_SUCCESS"));
   });
-
-  it("persists the selected tier through the onboard registry adapter", () => {
-    const onboardPath = JSON.stringify(path.join(repoRoot, "src", "lib", "onboard.ts"));
-    const policyPath = JSON.stringify(path.join(repoRoot, "src", "lib", "policy", "index.ts"));
-    const registryPath = JSON.stringify(path.join(repoRoot, "src", "lib", "state", "registry.ts"));
-    const refreshPath = JSON.stringify(
-      path.join(repoRoot, "src", "lib", "actions", "sandbox", "policy-context-refresh.ts"),
-    );
-    const script = String.raw`
-const registry = require(${registryPath});
-const updates = [];
-registry.getSandbox = () => ({ name: "test-sb", model: null, provider: null });
-registry.updateSandbox = (_name, fields) => { updates.push(fields); return true; };
-
-process.env.NEMOCLAW_NON_INTERACTIVE = "1";
-process.env.NEMOCLAW_POLICY_TIER = "open";
-process.env.NEMOCLAW_POLICY_MODE = "skip";
-process.env.NEMOCLAW_POLICY_PRESETS = "";
-
-const { setupPoliciesWithSelection } = require(${onboardPath});
-const policies = require(${policyPath});
-policies.getAppliedPresets = () => [];
-require(${refreshPath}).refreshSandboxPolicyContextFile = () => ({ status: "ok" });
-console.log = () => {};
-
-(async () => {
-  try {
-    const applied = await setupPoliciesWithSelection("test-sb", {});
-    process.stdout.write(JSON.stringify({ applied, updates }) + "\n");
-  } catch (err) {
-    process.stdout.write(JSON.stringify({ error: err.message, stack: err.stack, updates }) + "\n");
-  }
-})();
-`;
-    const result = runAdapterScript(script);
-    assert.equal(result.status, 0, result.stderr);
-    const payload = JSON.parse(result.stdout.trim().split(/\n/).at(-1) || "{}");
-    assert.ok(!payload.error, `unexpected error: ${payload.error}`);
-    assert.deepEqual(payload.applied, []);
-    assert.equal(
-      payload.updates.find((update: { policyTier?: string }) => update.policyTier !== undefined)
-        ?.policyTier,
-      "open",
-    );
-  });
 });
 
 describe("policy tier selection", () => {

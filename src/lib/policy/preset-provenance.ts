@@ -15,12 +15,6 @@ export interface PresetProvenanceContext {
   agentName?: string | null;
 }
 
-export interface PresetVerificationState {
-  active: boolean;
-  inRegistry: boolean;
-  inGateway: boolean | null;
-}
-
 /**
  * Infer display-only provenance from the sandbox's current tier and agent.
  * A current tier-name match takes precedence over agent and user fallbacks;
@@ -64,13 +58,9 @@ export function formatPresetProvenanceTag(provenance: PresetProvenance): string 
 export function formatPresetProvenanceSuffix(
   presetName: string,
   context: PresetProvenanceContext,
-  state: PresetVerificationState,
+  active: boolean,
 ): string {
-  if (!state.active) return "";
-  if (state.inRegistry && state.inGateway === true) {
-    return ` [${formatPresetProvenanceTag(classifyPresetProvenance(presetName, context))}]`;
-  }
-  return state.inGateway === null
-    ? " [source unverified (gateway unreachable)]"
-    : " [source unverified]";
+  return active
+    ? ` [${formatPresetProvenanceTag(classifyPresetProvenance(presetName, context))}]`
+    : "";
 }

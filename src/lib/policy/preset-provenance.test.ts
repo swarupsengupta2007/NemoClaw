@@ -197,34 +197,10 @@ describe("formatPresetProvenanceTag", () => {
 });
 
 describe("formatPresetProvenanceSuffix", () => {
-  it("only reports inferred provenance for registry and gateway agreement", () => {
-    expect(
-      formatPresetProvenanceSuffix(
-        "npm",
-        { tierName: "balanced" },
-        { active: true, inRegistry: true, inGateway: true },
-      ),
-    ).toBe(" [from balanced tier]");
-    expect(
-      formatPresetProvenanceSuffix(
-        "npm",
-        { tierName: "balanced" },
-        { active: true, inRegistry: false, inGateway: true },
-      ),
-    ).toBe(" [source unverified]");
-    expect(
-      formatPresetProvenanceSuffix(
-        "npm",
-        { tierName: "balanced" },
-        { active: true, inRegistry: true, inGateway: null },
-      ),
-    ).toBe(" [source unverified (gateway unreachable)]");
-    expect(
-      formatPresetProvenanceSuffix(
-        "npm",
-        { tierName: "balanced" },
-        { active: false, inRegistry: true, inGateway: false },
-      ),
-    ).toBe("");
+  it("reports inferred provenance only for presets active in the live policy", () => {
+    expect(formatPresetProvenanceSuffix("npm", { tierName: "balanced" }, true)).toBe(
+      " [from balanced tier]",
+    );
+    expect(formatPresetProvenanceSuffix("npm", { tierName: "balanced" }, false)).toBe("");
   });
 });

@@ -91,7 +91,13 @@ describe("policy and channel sandbox mutation locking", () => {
 
   it.each([
     ["policy add", () => addSandboxPolicy("alpha", { preset: "pypi", dryRun: true })],
-    ["policy remove", () => removeSandboxPolicy("alpha", { preset: "pypi", dryRun: true })],
+    [
+      "policy remove",
+      () => {
+        vi.mocked(policies.getGatewayPresets).mockReturnValue(["pypi"]);
+        return removeSandboxPolicy("alpha", { preset: "pypi", dryRun: true });
+      },
+    ],
     [
       "policy exclude",
       () => excludeSandboxBaseline("alpha", { key: "nous_research", dryRun: true }),
