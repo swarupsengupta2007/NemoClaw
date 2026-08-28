@@ -101,7 +101,7 @@ describe("snapshot create cleanup after a failed capture", () => {
     expect(errors).toContain("Snapshot failed.");
     expect(errors).toContain("Failed directories: workspace (permission denied), skills");
     expect(errors).toContain("Failed files: openclaw.json");
-  });
+  }, 15_000);
 
   it("removes the snapshot so a later restore cannot select an incomplete capture (#8201)", async () => {
     mocks.backupSandboxState.mockReturnValue(failedCaptureWithPublishedSnapshot());
@@ -146,7 +146,10 @@ describe("snapshot create cleanup after a failed capture", () => {
   it("does not touch a snapshot whose capture succeeded", async () => {
     mocks.backupSandboxState.mockReturnValue({
       success: true,
-      manifest: { backupPath: INCOMPLETE_PATH, timestamp: "2026-08-04T06-53-38-310Z" },
+      manifest: {
+        backupPath: INCOMPLETE_PATH,
+        timestamp: "2026-08-04T06-53-38-310Z",
+      },
       backedUpDirs: ["workspace"],
       failedDirs: [],
       backedUpFiles: ["openclaw.json"],

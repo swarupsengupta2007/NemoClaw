@@ -65,7 +65,10 @@ const streamSandboxCreateMock = vi.fn<SnapshotStreamSandboxCreateMock>(async () 
 }));
 const removeSandboxRegistryEntryOutcomeMock = vi.fn((name: string) => {
   const removed = harness.entries.delete(name);
-  return { status: removed ? ("complete" as const) : ("not-found" as const), removed };
+  return {
+    status: removed ? ("complete" as const) : ("not-found" as const),
+    removed,
+  };
 });
 
 const managedRuntime: HostLocalInferenceRuntime = {
@@ -151,7 +154,10 @@ vi.mock("../../credentials/store", () => ({
   saveCredential: vi.fn(),
 }));
 vi.mock("../../domain/sandbox/destroy", () => ({
-  getSandboxDeleteOutcome: vi.fn(() => ({ alreadyGone: false, gatewayUnreachable: false })),
+  getSandboxDeleteOutcome: vi.fn(() => ({
+    alreadyGone: false,
+    gatewayUnreachable: false,
+  })),
 }));
 vi.mock("../../inference/gateway-route-compatibility", () => ({
   checkGatewayRouteCompatibility: vi.fn(() => ({ ok: true })),
@@ -176,28 +182,44 @@ vi.mock("../../messaging/channels", () => ({
 vi.mock("../../policy", () => ({
   applyPreset: vi.fn(() => true),
   applyPresetContent: vi.fn(() => true),
+  buildPolicyGetCommand: vi.fn((sandboxName: string, gatewayName: string) => [
+    "policy",
+    "get",
+    "-g",
+    gatewayName,
+    sandboxName,
+  ]),
   getAppliedPresets: vi.fn(() => []),
   getCustomPolicies: vi.fn(() => []),
   getPresetContentGatewayState: vi.fn(() => "absent"),
+  inspectPolicyRecoveryBoundary: vi.fn(() => ({ gatewayName: "nemoclaw" })),
   loadPresetForSandbox: vi.fn(() => null),
+  parseCurrentPolicy: vi.fn((raw: string) => raw.trim() || null),
   removePreset: vi.fn(() => true),
   resolveAgentBaselinePolicy: resolveTestAgentBaselinePolicy,
 }));
 vi.mock("../../runner", () => ({
   ROOT: "/repo",
   run: vi.fn(() => ({ status: 0 })),
+  runCapture: vi.fn(() => "version: 1\nnetwork_policies: {}"),
   shellQuote: (value: string) => `'${value}'`,
   validateName: vi.fn((value: string) => value),
 }));
 vi.mock("../../runtime-recovery", () => ({
   parseLiveSandboxNames: vi.fn(() => new Set(["alpha"])),
 }));
-vi.mock("../../sandbox/create-stream", () => ({ streamSandboxCreate: streamSandboxCreateMock }));
+vi.mock("../../sandbox/create-stream", () => ({
+  streamSandboxCreate: streamSandboxCreateMock,
+}));
 vi.mock("../../shields", () => ({
   get isShieldsDown() {
     return true;
   },
-  repairMutableConfigPerms: vi.fn(() => ({ applied: true, verified: true, errors: [] })),
+  repairMutableConfigPerms: vi.fn(() => ({
+    applied: true,
+    verified: true,
+    errors: [],
+  })),
   shieldsUp: vi.fn(),
 }));
 vi.mock("../../shields/timer-bound-lock", () => ({
@@ -244,7 +266,9 @@ vi.mock("../../state/sandbox", () => ({
 vi.mock("./destroy", () => ({
   cleanupShieldsDestroyArtifacts: vi.fn(),
   removeSandboxRegistryEntryOutcome: removeSandboxRegistryEntryOutcomeMock,
-  requireSandboxDestructiveCleanupAuthority: vi.fn(() => ({ provider: runtimeProvider })),
+  requireSandboxDestructiveCleanupAuthority: vi.fn(() => ({
+    provider: runtimeProvider,
+  })),
 }));
 vi.mock("./restore-gateway-pairing", () => ({
   establishRestoredSandboxGatewayPairing: vi.fn(),
@@ -401,7 +425,10 @@ describe("snapshot restore auto-create failures", () => {
 
     expect(harness.preserveForRebuild).toHaveBeenCalledTimes(2);
     expect(registerSandboxMock).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "beta", hostLocalInferenceReceipt: receipt }),
+      expect.objectContaining({
+        name: "beta",
+        hostLocalInferenceReceipt: receipt,
+      }),
       undefined,
       { pending: true },
     );

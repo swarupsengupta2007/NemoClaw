@@ -39,7 +39,11 @@ class ExitError extends Error {
 }
 
 const POLICY_PRESETS: PresetInfo[] = [
-  { file: "pypi.yaml", name: "pypi", description: "Python Package Index access" },
+  {
+    file: "pypi.yaml",
+    name: "pypi",
+    description: "Python Package Index access",
+  },
 ];
 
 let logSpy: MockInstance;
@@ -63,7 +67,10 @@ async function captureExit(action: () => Promise<void>): Promise<number | undefi
 beforeEach(() => {
   delete process.env.NEMOCLAW_NON_INTERACTIVE;
   stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+  Object.defineProperty(process.stdin, "isTTY", {
+    configurable: true,
+    value: true,
+  });
 
   logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
   errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
@@ -75,10 +82,7 @@ beforeEach(() => {
   vi.spyOn(registry, "getSandbox").mockReturnValue({
     name: "alpha",
     agent: null,
-    policies: ["pypi"],
   });
-  vi.spyOn(registry, "getCustomPolicies").mockReturnValue([]);
-
   vi.spyOn(onboardSession, "loadSession").mockReturnValue(null);
   vi.spyOn(onboardSession, "updateSession").mockReturnValue(
     undefined as unknown as onboardSession.Session,
@@ -128,7 +132,9 @@ describe("addSandboxPolicy drift-aware named re-add", () => {
         "Effective egress scope that would replace the current preset policy",
       ),
     );
-    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", { suppressDisclosure: true });
+    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", {
+      suppressDisclosure: true,
+    });
     expect(refreshSpy).toHaveBeenCalledTimes(1);
     expect(refreshSpy).toHaveBeenCalledWith("alpha");
   });
@@ -149,7 +155,6 @@ describe("addSandboxPolicy drift-aware named re-add", () => {
     vi.spyOn(registry, "getSandbox").mockReturnValue({
       name: "alpha",
       agent: "openclaw",
-      policies: ["npm"],
     });
     vi.spyOn(policies, "listPresets").mockReturnValue([
       { file: "npm.yaml", name: "npm", description: "npm registry access" },
@@ -158,7 +163,6 @@ describe("addSandboxPolicy drift-aware named re-add", () => {
     vi.spyOn(policies, "loadPresetForSandbox").mockReturnValue(
       "network_policies:\n  npm_yarn:\n    name: npm_yarn\n",
     );
-    vi.spyOn(registry, "getBaselineExclusions").mockReturnValue([]);
     const disclosureSpy = vi
       .spyOn(policies, "logOpenClawNpmCompatibilityDisclosure")
       .mockImplementation(() => undefined);
@@ -190,14 +194,20 @@ describe("addSandboxPolicy drift-aware named re-add", () => {
     expect(logSpy).toHaveBeenCalledWith(
       "  Preset 'pypi' is recorded as applied but missing from the live policy.",
     );
-    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", { suppressDisclosure: true });
+    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", {
+      suppressDisclosure: true,
+    });
     expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 
   it("previews a drift re-apply without mutating on --dry-run", async () => {
     gatewayStateMock.mockReturnValue("drift");
 
-    await addSandboxPolicy("alpha", { preset: "pypi", yes: true, dryRun: true });
+    await addSandboxPolicy("alpha", {
+      preset: "pypi",
+      yes: true,
+      dryRun: true,
+    });
 
     expect(gatewayStateMock).toHaveBeenCalledTimes(1);
     expect(logSpy).toHaveBeenCalledWith("  Preset 'pypi' no longer matches the live policy.");
@@ -224,13 +234,19 @@ describe("addSandboxPolicy drift-aware named re-add", () => {
     await addSandboxPolicy("alpha", { preset: "pypi" });
 
     expect(promptSpy).not.toHaveBeenCalled();
-    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", { suppressDisclosure: true });
+    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", {
+      suppressDisclosure: true,
+    });
     expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 
   it("refuses a built-in re-add when the name is owned by a custom preset", async () => {
-    vi.spyOn(registry, "getCustomPolicies").mockReturnValue([
-      { name: "pypi", content: "network_policies:\n  pypi:\n    host: custom.example.com\n" },
+    vi.spyOn(policies, "listCustomPresets").mockReturnValue([
+      {
+        name: "pypi",
+        description: "sandbox-scoped custom preset",
+        file: "/tmp/pypi.yaml",
+      },
     ]);
 
     await expect(
@@ -284,7 +300,9 @@ describe("addSandboxPolicy drift-aware named re-add", () => {
     await addSandboxPolicy("alpha", { preset: "pypi", yes: true });
 
     expect(gatewayStateMock).not.toHaveBeenCalled();
-    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", { suppressDisclosure: true });
+    expect(applyPresetMock).toHaveBeenCalledWith("alpha", "pypi", {
+      suppressDisclosure: true,
+    });
     expect(refreshSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -81,7 +81,6 @@ const recreateOptions: RebuildRecreateOnboardOpts = {
   dcodeAutoApprovalRequestedExplicitly: false,
   observabilityEnabled: false,
   observabilityRequestedExplicitly: false,
-  policyTier: null,
   baseImageResolutionHint: null,
   rebuildGatewayAuthority: GATEWAY_AUTHORITY,
 };
@@ -103,7 +102,9 @@ function makeInput(overrides: Partial<RebuildRecreatePhaseInput> = {}): RebuildR
   return {
     sandboxName: SANDBOX_NAME,
     sandboxEntry: { name: SANDBOX_NAME, agent: "openclaw" },
-    sessionSnapshot: onboardSession.createSession({ sandboxName: SANDBOX_NAME }),
+    sessionSnapshot: onboardSession.createSession({
+      sandboxName: SANDBOX_NAME,
+    }),
     sessionMatchesSandbox: true,
     durableConfig,
     resumeConfig: compatibleResumeConfig,
@@ -115,7 +116,6 @@ function makeInput(overrides: Partial<RebuildRecreatePhaseInput> = {}): RebuildR
     rebuildsHermesSandbox: false,
     hermesToolGateways: [],
     hasHermesToolGateways: false,
-    sessionPolicyPresets: ["telegram"],
     credentialEnv: "COMPATIBLE_API_KEY",
     baseImagePreflight: { ok: true, imageRef: null, overrideEnvVar: null },
     recoveryRecreate: true,
@@ -144,7 +144,10 @@ describe("rebuild recreate compatible-endpoint reasoning handoff (#7940)", () =>
     session = onboardSession.createSession({ sandboxName: SANDBOX_NAME });
     session.checkpoint = {
       ...deriveCheckpointFromSession(session),
-      sandboxIdentity: decisionSelected({ name: SANDBOX_NAME, agent: "openclaw" }),
+      sandboxIdentity: decisionSelected({
+        name: SANDBOX_NAME,
+        agent: "openclaw",
+      }),
       gatewayAuthority: decisionSelected(GATEWAY_AUTHORITY),
       sandboxRecreate: {
         version: 1,
@@ -225,7 +228,10 @@ describe("rebuild recreate compatible-endpoint reasoning handoff (#7940)", () =>
     await expect(
       runRebuildRecreatePhase(
         makeInput({
-          resumeConfig: { ...compatibleResumeConfig, compatibleEndpointReasoningEffort: null },
+          resumeConfig: {
+            ...compatibleResumeConfig,
+            compatibleEndpointReasoningEffort: null,
+          },
         }),
       ),
     ).resolves.toBe(true);

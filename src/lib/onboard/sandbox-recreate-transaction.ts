@@ -33,7 +33,10 @@ const ORDERED_PHASES: readonly CheckpointSandboxRecreatePhase[] = [
 
 export type ReplacedSandboxWorkloadCleanupResult =
   | RuntimeProviderWorkloadCleanupResult
-  | { readonly status: "skipped"; readonly reason: "replacement-unproven" | "image-reused" };
+  | {
+      readonly status: "skipped";
+      readonly reason: "replacement-unproven" | "image-reused";
+    };
 
 export type ReplacedSandboxSourceEntry = Omit<SandboxEntry, "workload"> & {
   readonly workload?:
@@ -125,7 +128,10 @@ export function retireReplacedSandboxWorkload(
   ) {
     return { status: "skipped", reason: "image-reused" };
   }
-  return authority.provider.cleanup.removeOwnedWorkload({ sandbox: cleanupSource, sandboxName });
+  return authority.provider.cleanup.removeOwnedWorkload({
+    sandbox: cleanupSource,
+    sandboxName,
+  });
 }
 
 function canonicalJsonValue(value: unknown): unknown {
@@ -199,14 +205,7 @@ const ROUTE_RESERVATION_FIELDS: readonly (keyof SandboxEntry)[] = [
   "gatewayPort",
 ];
 // Rebuild may update these independently receipt-bound projections before delete.
-// The source fingerprint still binds policyAuthority and every sandbox, gateway,
-// lifecycle, agent, and workload ownership field.
-const RECEIPT_BOUND_PROJECTION_FIELDS: readonly (keyof SandboxEntry)[] = [
-  "policyCreationReceipt",
-  "policies",
-  "customPolicies",
-  "mcp",
-];
+const RECEIPT_BOUND_PROJECTION_FIELDS: readonly (keyof SandboxEntry)[] = ["mcp"];
 
 export function fingerprintSandboxRegistryEntry(entry: SandboxEntry): string {
   const durable: Record<string, unknown> = { ...entry };

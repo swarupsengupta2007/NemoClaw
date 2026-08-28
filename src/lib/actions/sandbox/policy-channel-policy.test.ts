@@ -18,8 +18,16 @@ class ExitError extends Error {
 }
 
 const POLICY_PRESETS: PresetInfo[] = [
-  { file: "npm.yaml", name: "npm", description: "npm and Yarn registry access" },
-  { file: "pypi.yaml", name: "pypi", description: "Python Package Index access" },
+  {
+    file: "npm.yaml",
+    name: "npm",
+    description: "npm and Yarn registry access",
+  },
+  {
+    file: "pypi.yaml",
+    name: "pypi",
+    description: "Python Package Index access",
+  },
   { file: "discord.yaml", name: "discord", description: "Discord API access" },
   {
     file: "openclaw-pricing.yaml",
@@ -36,7 +44,11 @@ const POLICY_PRESETS: PresetInfo[] = [
     name: "nous-code",
     description: "Nous Portal managed sandboxed code gateway",
   },
-  { file: "telegram.yaml", name: "telegram", description: "Telegram API access" },
+  {
+    file: "telegram.yaml",
+    name: "telegram",
+    description: "Telegram API access",
+  },
   { file: "wechat.yaml", name: "wechat", description: "WeChat API access" },
 ];
 
@@ -70,7 +82,11 @@ async function captureExit(action: () => Promise<void>): Promise<number | undefi
 }
 
 function arrangeSandbox(agent: string | null = null): void {
-  getSandboxMock.mockReturnValue({ name: "test-sandbox", agent, policies: ["pypi"] });
+  getSandboxMock.mockReturnValue({
+    name: "test-sandbox",
+    agent,
+    policies: ["pypi"],
+  });
 }
 
 let stdinIsTty: PropertyDescriptor | undefined;
@@ -97,10 +113,7 @@ beforeEach(() => {
   getSandboxMock = vi.spyOn(registry, "getSandbox").mockReturnValue({
     name: "test-sandbox",
     agent: null,
-    policies: ["pypi"],
   });
-  vi.spyOn(registry, "getCustomPolicies").mockReturnValue([]);
-
   vi.spyOn(onboardSession, "loadSession").mockReturnValue(null);
   vi.spyOn(onboardSession, "updateSession").mockReturnValue(
     undefined as unknown as onboardSession.Session,
@@ -216,7 +229,9 @@ describe("addSandboxPolicy", () => {
   });
 
   it("propagates a non-EOF picker failure instead of exiting (#7418)", async () => {
-    const failure = Object.assign(new Error("stdin read failed"), { code: "EIO" });
+    const failure = Object.assign(new Error("stdin read failed"), {
+      code: "EIO",
+    });
     selectFromListMock.mockRejectedValueOnce(failure);
 
     await expect(addSandboxPolicy("test-sandbox")).rejects.toBe(failure);
@@ -270,7 +285,10 @@ describe("addSandboxPolicy", () => {
 
     await expect(
       captureExit(() =>
-        addSandboxPolicy("test-sandbox", { preset: "openclaw-pricing", yes: true }),
+        addSandboxPolicy("test-sandbox", {
+          preset: "openclaw-pricing",
+          yes: true,
+        }),
       ),
     ).resolves.toBe(1);
 
@@ -282,9 +300,21 @@ describe("addSandboxPolicy", () => {
   it("treats messaging channel policy presets unavailable to terminal-runtime agents as unknown before preview or prompt", async () => {
     arrangeSandbox("langchain-deepagents-code");
     vi.spyOn(policies, "listPresets").mockReturnValue([
-      { file: "npm.yaml", name: "npm", description: "npm and Yarn registry access" },
-      { file: "pypi.yaml", name: "pypi", description: "Python Package Index access" },
-      { file: "tavily.yaml", name: "tavily", description: "Tavily Search API access" },
+      {
+        file: "npm.yaml",
+        name: "npm",
+        description: "npm and Yarn registry access",
+      },
+      {
+        file: "pypi.yaml",
+        name: "pypi",
+        description: "Python Package Index access",
+      },
+      {
+        file: "tavily.yaml",
+        name: "tavily",
+        description: "Tavily Search API access",
+      },
     ]);
 
     await expect(
@@ -319,21 +349,20 @@ describe("addSandboxPolicy", () => {
       expected: "curl is not in the preset binary allowlist, so curl probes can fail",
       detail: "https://discord.com/api/v10/gateway",
     },
-  ])("prints validation guidance when $preset is selected interactively", async ({
-    preset,
-    expected,
-    detail,
-  }) => {
-    selectFromListMock.mockResolvedValue(preset);
+  ])(
+    "prints validation guidance when $preset is selected interactively",
+    async ({ preset, expected, detail }) => {
+      selectFromListMock.mockResolvedValue(preset);
 
-    await addSandboxPolicy("test-sandbox");
+      await addSandboxPolicy("test-sandbox");
 
-    expect(printedText()).toContain(expected);
-    expect(printedText()).toContain(detail);
-    expect(applyPresetMock).toHaveBeenCalledWith("test-sandbox", preset, {
-      suppressDisclosure: true,
-    });
-  });
+      expect(printedText()).toContain(expected);
+      expect(printedText()).toContain(detail);
+      expect(applyPresetMock).toHaveBeenCalledWith("test-sandbox", preset, {
+        suppressDisclosure: true,
+      });
+    },
+  );
 
   it("prints Discord validation guidance when the preset name is provided", async () => {
     await addSandboxPolicy("test-sandbox", { preset: "discord", yes: true });

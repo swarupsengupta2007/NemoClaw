@@ -11,7 +11,6 @@ import { collectSandboxStatusSnapshot, getSandboxStatusReport } from "./status-s
 const sandbox: SandboxEntry = {
   name: "alpha",
   agent: "openclaw",
-  policies: [],
   provider: "nvidia",
   model: "nvidia/nemotron",
   openshellDriver: "docker",
@@ -67,7 +66,10 @@ function snapshotDeps(recoveryResult: unknown) {
   const probeSandboxInferenceGatewayHealthImpl = vi.fn(async () => healthyRoute);
   return {
     getSandbox: () => sandbox,
-    listSandboxes: () => ({ sandboxes: [sandbox], defaultSandbox: sandbox.name }),
+    listSandboxes: () => ({
+      sandboxes: [sandbox],
+      defaultSandbox: sandbox.name,
+    }),
     reconcile: recoveredLookup,
     captureOpenshellForStatusImpl: async () => {
       throw new Error("live route lookup not needed");
@@ -98,7 +100,9 @@ describe("collectSandboxStatusSnapshot Docker recovery", () => {
 
     const snapshot = await collectSandboxStatusSnapshot("alpha", { deps });
 
-    expect(deps.recoverSandboxProcesses).toHaveBeenCalledWith("alpha", { quiet: true });
+    expect(deps.recoverSandboxProcesses).toHaveBeenCalledWith("alpha", {
+      quiet: true,
+    });
     expect(snapshot.lookup.state).toBe("present");
   });
 

@@ -160,7 +160,6 @@ export function resolveSandboxCreateIntent({
   extraPlaceholderKeys = [],
   agentName,
   policyTier,
-  baselineExclusions = [],
 }: ResolveSandboxCreateIntentInput): SandboxCreateIntent {
   const selectedChannelNames = enabledChannels == null ? null : new Set(enabledChannels);
   const enabledMessagingProviderRequests = filterMessagingProviderRequestsByEnabledChannel(
@@ -189,7 +188,9 @@ export function resolveSandboxCreateIntent({
     sandboxName,
     inferenceProvider: normalizedInferenceProvider,
     activeMessagingChannels,
-    messagingProviderRequests: messagingProviderRequests.map((request) => ({ ...request })),
+    messagingProviderRequests: messagingProviderRequests.map((request) => ({
+      ...request,
+    })),
     reusableMessagingProviders: enabledReusableMessagingProviders,
     extraProviders: [...new Set(extraProviders ?? [])].filter(Boolean),
     staleExtraProviders: [...new Set(staleExtraProviders ?? [])].filter(Boolean),
@@ -206,7 +207,6 @@ export function resolveSandboxCreateIntent({
         ...(hostLocalInferenceRouteOnly ? { hostLocalInferenceRouteOnly: true as const } : {}),
         ...(agentName !== undefined ? { agentName } : {}),
         policyTier,
-        baselineExclusions: [...baselineExclusions].map((exclusion) => ({ ...exclusion })),
       },
     },
     sandboxGpuDevice: sandboxGpuConfig.sandboxGpuDevice?.trim() || null,

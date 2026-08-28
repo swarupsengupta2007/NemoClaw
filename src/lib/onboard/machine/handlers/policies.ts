@@ -2,11 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { SandboxMessagingPlan } from "../../../messaging/manifest";
-import {
-  assertRecordedPolicyAuthority,
-  PolicyAuthorityRefusalError,
-  type SandboxPolicyAuthority,
-} from "../../../adapters/openshell/policy-authority";
 import type { Session, SessionUpdates } from "../../../state/onboard-session";
 import { normalizeAgentNameForResumeState } from "../../agent-resume-state";
 import {
@@ -24,10 +19,6 @@ export interface PolicyPresetEntry {
 
 export interface ActiveSandboxPolicyState {
   messaging?: { plan: SandboxMessagingPlan } | null;
-  policyAuthority?: SandboxPolicyAuthority;
-  policyTier?: string | null;
-  /** Preset names already applied to the sandbox, as recorded in the registry. */
-  policies?: string[] | null;
 }
 
 export interface PolicyResumeSelection {
@@ -39,8 +30,6 @@ export interface PolicyResumeSelection {
 
 export interface PoliciesStateOptions<Agent, WebSearchConfig> {
   resume: boolean;
-  /** Internal rebuild tier that takes precedence over a not-yet-complete registry row. */
-  authoritativePolicyTier?: string | null;
   sandboxName: string;
   provider: string;
   hostLocalInferenceRouteOnly?: boolean;
@@ -58,6 +47,7 @@ export interface PoliciesStateOptions<Agent, WebSearchConfig> {
   deps: {
     loadSession(): Session | null;
     getActiveSandbox(sandboxName: string): ActiveSandboxPolicyState | null | undefined;
+    getAppliedPolicyPresets(sandboxName: string): string[];
     mergePolicyMessagingChannels(
       selectedMessagingChannels: string[],
       recordedMessagingChannels: string[],
@@ -104,7 +94,7 @@ export interface PoliciesStateOptions<Agent, WebSearchConfig> {
     ): Promise<Session>;
     startRecordedStep(
       stepName: string,
-      updates: { sandboxName: string; provider: string; model: string; policyPresets: string[] },
+      updates: { sandboxName: string; provider: string; model: string },
     ): Promise<void>;
     setupPoliciesWithSelection(
       sandboxName: string,
@@ -127,13 +117,6 @@ export interface PoliciesStateOptions<Agent, WebSearchConfig> {
     updateSession(mutator: (session: Session) => Session | void): Session;
     recordStepComplete(stepName: string, updates: SessionUpdates): Promise<Session>;
     toSessionUpdates(updates: Record<string, unknown>): SessionUpdates;
-    // Persist the operator's effective policy preset selection back to the
-    // sandbox registry. The sandbox is registered earlier with only the
-    // create-time/boot presets (messaging/Hermes setup), so without this
-    // write-back the registry keeps a stale `policies` list and recreate /
-    // re-onboard reintroduces removed tier defaults (e.g. a removed Balanced
-    // `npm`). See #4621.
-    persistAppliedPolicyPresets(sandboxName: string, appliedPolicyPresets: string[]): boolean;
   };
 }
 
@@ -147,7 +130,6 @@ export interface PoliciesStateResult {
 
 export async function handlePoliciesState<Agent, WebSearchConfig>({
   resume,
-  authoritativePolicyTier,
   sandboxName,
   provider,
   hostLocalInferenceRouteOnly = false,
@@ -166,32 +148,12 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
 }: PoliciesStateOptions<Agent, WebSearchConfig>): Promise<PoliciesStateResult> {
   const latestSession = deps.loadSession();
   const observabilityEnabled = latestSession?.observabilityEnabled === true;
-  const rawRecordedPolicyPresets = Array.isArray(latestSession?.policyPresets)
-    ? latestSession.policyPresets
-    : null;
+  const rawRecordedPolicyPresets = deps.getAppliedPolicyPresets(sandboxName);
   const recordedPolicyPresets = hostLocalInferenceRouteOnly
-    ? (rawRecordedPolicyPresets?.filter((name) => name !== "local-inference") ?? null)
+    ? rawRecordedPolicyPresets.filter((name) => name !== "local-inference")
     : rawRecordedPolicyPresets;
   const recordedMessagingChannels = getActiveChannelsFromPlan(latestSession?.messagingPlan);
   const activeSandbox = deps.getActiveSandbox(sandboxName);
-  const sessionPolicyAuthority = latestSession?.policyAuthority ?? null;
-  const registryPolicyAuthority = activeSandbox?.policyAuthority ?? null;
-  const authorityOperation = `continue policy setup for sandbox '${sandboxName}'`;
-  if (sessionPolicyAuthority && registryPolicyAuthority) {
-    assertRecordedPolicyAuthority(
-      sessionPolicyAuthority,
-      registryPolicyAuthority,
-      authorityOperation,
-    );
-  }
-  const policyAuthority = registryPolicyAuthority ?? sessionPolicyAuthority;
-  if (!policyAuthority) {
-    throw new PolicyAuthorityRefusalError(
-      `Refusing to ${authorityOperation}: policy authority is not recorded. Resume onboarding so NemoClaw can inspect and bind the live authority.`,
-    );
-  }
-  const externallyManagedPolicy = policyAuthority === "externally-managed";
-  const effectivePolicyTier = authoritativePolicyTier ?? activeSandbox?.policyTier ?? null;
   const activePlan = activeSandbox?.messaging?.plan;
   const activeMessagingChannels = getActiveChannelsFromPlan(activePlan);
   const planDisabledChannels = getDisabledChannelsFromPlan(activePlan);
@@ -205,7 +167,8 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
   // the plans: a sandbox can carry a channel's egress in `policies` after every
   // plan that named the channel is gone, and only a candidate here can retire
   // it.
-  const appliedPresetMessagingChannels = messagingChannelsForPolicyPresets(activeSandbox?.policies);
+  const appliedPresetMessagingChannels =
+    messagingChannelsForPolicyPresets(rawRecordedPolicyPresets);
   const unconfiguredMessagingChannels = deps.detectUnconfiguredMessagingChannels(
     [...recordedMessagingChannels, ...activeMessagingChannels, ...appliedPresetMessagingChannels],
     selectedMessagingChannels,
@@ -232,40 +195,15 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
       agent,
       ...(hostLocalInferenceRouteOnly ? { forceCanonicalRoute: true } : {}),
       ...(hostLocalInferenceRouteOnly
-        ? { hostLocalInferenceProofAuthority: hostLocalInferenceSandboxProofAuthority ?? undefined }
+        ? {
+            hostLocalInferenceProofAuthority: hostLocalInferenceSandboxProofAuthority ?? undefined,
+          }
         : {}),
       beforeSuccess: () =>
         revalidatePolicyRequirements?.(
           `publish verified inference route for sandbox '${sandboxName}'`,
         ),
     });
-  if (externallyManagedPolicy) {
-    revalidatePolicyRequirements?.(
-      `verify the externally managed policy for sandbox '${sandboxName}'`,
-    );
-    verifySandboxInferenceRoute();
-    revalidatePolicyRequirements?.(`record verified external policy for sandbox '${sandboxName}'`);
-    deps.skippedStepMessage("policies", "externally managed");
-    await deps.recordStateSkipped("policies", {
-      reason: "externally_managed",
-    });
-    revalidatePolicyRequirements?.(
-      `complete externally managed policy setup for sandbox '${sandboxName}'`,
-    );
-    const session = await deps.recordStepComplete(
-      "policies",
-      deps.toSessionUpdates({ sandboxName, provider, model, policyPresets: null }),
-    );
-    return {
-      session,
-      recordedMessagingChannels,
-      selectedMessagingChannels: policyMessagingChannels,
-      appliedPolicyPresets: [],
-      stateResult: advanceTo("finalizing", {
-        metadata: { state: "policies" },
-      }),
-    };
-  }
   if (!hostLocalInferenceRouteOnly) verifySandboxInferenceRoute();
 
   const policyResumeSelection = deps.preparePolicyPresetResumeSelection(sandboxName, {
@@ -278,12 +216,12 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
     webSearchConfig,
     webSearchConfigChanged,
     webSearchSupported,
-    tierName: effectivePolicyTier,
+    tierName: null,
   });
   const recordedPolicyPresetsForSupport = policyResumeSelection.policyPresets;
   const staleLocalInferencePolicy =
     hostLocalInferenceRouteOnly &&
-    (rawRecordedPolicyPresets?.includes("local-inference") === true ||
+    (rawRecordedPolicyPresets.includes("local-inference") ||
       deps.arePolicyPresetsApplied(sandboxName, ["local-inference"]));
   const resumePolicies =
     resume &&
@@ -324,7 +262,6 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
         sandboxName,
         provider,
         model,
-        policyPresets: recordedPolicyPresetsForSupport,
       }),
     );
   } else {
@@ -333,13 +270,10 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
       sandboxName,
       provider,
       model,
-      policyPresets: recordedPolicyPresetsForSupport,
     });
     revalidatePolicyRequirements?.(`apply policy presets to sandbox '${sandboxName}'`);
     appliedPolicyPresets = await deps.setupPoliciesWithSelection(sandboxName, {
-      selectedPresets: Array.isArray(recordedPolicyPresets)
-        ? recordedPolicyPresetsForSupport
-        : null,
+      selectedPresets: recordedPolicyPresetsForSupport,
       enabledChannels: policyMessagingChannels,
       disabledChannels,
       webSearchConfig,
@@ -351,7 +285,7 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
       // Hermes runs keep their own name.
       agent: normalizeAgentNameForResumeState((agent as { name?: string } | null)?.name),
       observabilityEnabled,
-      tierName: effectivePolicyTier,
+      tierName: null,
       webSearchSupported,
       hermesToolGateways,
       revalidatePolicyRequirements,
@@ -364,10 +298,7 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
           `record selected policy presets for sandbox '${sandboxName}'`,
         );
         reflectsLiveAppliedSet = true;
-        deps.updateSession((current) => {
-          current.policyPresets = policyPresets;
-          return current;
-        });
+        void policyPresets;
       },
     });
     // Reconcile the registry with the *effective* preset selection so a later
@@ -379,12 +310,7 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
     // without exclusions or a missing tier requirement), which leaves the live
     // applied set untouched and would otherwise be clobbered with []. See
     // #4621.
-    if (reflectsLiveAppliedSet) {
-      revalidatePolicyRequirements?.(`persist policy presets for sandbox '${sandboxName}'`);
-      if (!deps.persistAppliedPolicyPresets(sandboxName, appliedPolicyPresets)) {
-        throw new Error(`Failed to persist finalized policy presets for sandbox '${sandboxName}'.`);
-      }
-    }
+    void reflectsLiveAppliedSet;
     if (hostLocalInferenceRouteOnly) verifySandboxInferenceRoute();
     revalidatePolicyRequirements?.(`complete policy setup for sandbox '${sandboxName}'`);
     session = await deps.recordStepComplete(
@@ -393,7 +319,6 @@ export async function handlePoliciesState<Agent, WebSearchConfig>({
         sandboxName,
         provider,
         model,
-        policyPresets: appliedPolicyPresets,
       }),
     );
   }

@@ -143,7 +143,9 @@ describe("RuntimeProviderBundle registry contract", () => {
           ] as const
         ).every((surface) => Object.is(bundle[surface].providerId, providerId)),
       ).toBe(true);
-      expect(bundle.bootstrap).toMatchObject({ supported: providerId === "docker" });
+      expect(bundle.bootstrap).toMatchObject({
+        supported: providerId === "docker",
+      });
       expect(bundle.stateMutation).toMatchObject({
         supported: providerId === "docker",
         ...(providerId === "docker" ? { contractVersion: 2 } : {}),
@@ -175,7 +177,11 @@ describe("RuntimeProviderBundle registry contract", () => {
     });
     expect(
       requireRuntimeProviderStateMutationSurface(CURRENT_RUNTIME_PROVIDER_BUNDLES.docker!),
-    ).toMatchObject({ providerId: "docker", supported: true, contractVersion: 2 });
+    ).toMatchObject({
+      providerId: "docker",
+      supported: true,
+      contractVersion: 2,
+    });
     expect(() =>
       requireRuntimeProviderStateMutationSurface(CURRENT_RUNTIME_PROVIDER_BUNDLES.kubernetes!),
     ).toThrow(/no state-mutation implementation/u);
@@ -277,7 +283,10 @@ describe("RuntimeProviderBundle registry contract", () => {
       isNativeCreateRoutingFailure: vi.fn(() => false),
       isTrustedNativeRuntimeError: vi.fn(() => false),
       isNativeReadinessRoutingFailure: vi.fn(() => false),
-      prepareCompatibilityLaunch: vi.fn(() => ({ createArgv: [], registryImageRef: null })),
+      prepareCompatibilityLaunch: vi.fn(() => ({
+        createArgv: [],
+        registryImageRef: null,
+      })),
     }));
     const createAuthorityStore = vi.fn(() => ({
       recordPreparedAuthority: vi.fn(),
@@ -419,7 +428,10 @@ describe("RuntimeProviderBundle registry contract", () => {
       "workload",
       (bundle: RuntimeProviderBundle) => ({
         ...bundle.workload,
-        profile: { ...bundle.workload.profile, hostArchitectures: ["amd64", "amd64"] },
+        profile: {
+          ...bundle.workload.profile,
+          hostArchitectures: ["amd64", "amd64"],
+        },
       }),
     ],
     [
@@ -599,9 +611,12 @@ describe("RuntimeProviderBundle registry contract", () => {
     const sandboxBefore = structuredClone(sandbox);
     const runtimeStateBefore = structuredClone(runtimeState);
 
-    expect(docker.cleanup.planOwnedWorkloadCleanup({ sandbox, sandboxName: sandbox.name })).toEqual(
-      { action: "block", reason: "authority-unproven" },
-    );
+    expect(
+      docker.cleanup.planOwnedWorkloadCleanup({
+        sandbox,
+        sandboxName: sandbox.name,
+      }),
+    ).toEqual({ action: "block", reason: "authority-unproven" });
     expect(sandbox).toEqual(sandboxBefore);
     expect(runtimeState).toEqual(runtimeStateBefore);
   });
@@ -650,7 +665,9 @@ describe("RuntimeProviderBundle registry contract", () => {
     const bundle = mxcBundle();
 
     expect(() =>
-      requireRuntimeProviderHostLocalInferenceOperation(bundle, "llama-cpp", { env: {} }),
+      requireRuntimeProviderHostLocalInferenceOperation(bundle, "llama-cpp", {
+        env: {},
+      }),
     ).toThrow(
       new RuntimeProviderSelectionError(
         "Runtime provider 'mxc' does not provide the host-local-inference capability required for llama-cpp: Unsupported by this in-memory contract fixture.",
@@ -681,21 +698,29 @@ describe("RuntimeProviderBundle registry contract", () => {
     const first = createInMemoryRuntimeProviderBundle({
       providerId: "first",
       workloadProfile: PORTABLE_PROFILE,
-      hostLocalInference: { services: ["llama-cpp"], createOperation: firstFactory },
+      hostLocalInference: {
+        services: ["llama-cpp"],
+        createOperation: firstFactory,
+      },
     });
     const second = createInMemoryRuntimeProviderBundle({
       providerId: "second",
       workloadProfile: PORTABLE_PROFILE,
-      hostLocalInference: { services: ["llama-cpp"], createOperation: secondFactory },
+      hostLocalInference: {
+        services: ["llama-cpp"],
+        createOperation: secondFactory,
+      },
     });
 
     expect(
-      requireRuntimeProviderHostLocalInferenceOperation(first, "llama-cpp", { env: {} }).engine
-        .authorityId,
+      requireRuntimeProviderHostLocalInferenceOperation(first, "llama-cpp", {
+        env: {},
+      }).engine.authorityId,
     ).toBe("first-authority");
     expect(
-      requireRuntimeProviderHostLocalInferenceOperation(second, "llama-cpp", { env: {} }).engine
-        .authorityId,
+      requireRuntimeProviderHostLocalInferenceOperation(second, "llama-cpp", {
+        env: {},
+      }).engine.authorityId,
     ).toBe("second-authority");
     expect(firstFactory).toHaveBeenCalledOnce();
     expect(secondFactory).toHaveBeenCalledOnce();
@@ -1005,7 +1030,6 @@ describe("socket-free MXC action contract", () => {
           reference: imageTag,
           shared: false,
         },
-        appliedPolicies: [],
         plannedMessagingState: undefined,
         hermesToolGateways: [],
         hermesDashboardState: { enabled: false, config: null },

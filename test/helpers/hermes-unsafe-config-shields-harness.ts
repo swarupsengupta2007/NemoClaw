@@ -281,16 +281,16 @@ export function createHermesUnsafeConfigHarness(
       );
       vi.spyOn(policy, "parseCurrentPolicy").mockImplementation((raw: unknown) => String(raw));
       vi.spyOn(policy, "resolvePermissivePolicyPath").mockReturnValue(permissivePolicyPath);
-      vi
-        .spyOn(policy, "inspectPolicyMutationAuthority")
-        .mockReturnValue(managedPolicyMutationAuthority);
-      vi
-        .spyOn(policy, "inspectPolicyRecoveryAuthority")
-        .mockReturnValue(managedPolicyMutationAuthority);
-      vi
-        .spyOn(policy, "recheckPolicyMutationAuthority")
-        .mockReturnValue(managedPolicyMutationAuthority);
-      vi.spyOn(policy, "finalizePolicyMutationReceipt").mockImplementation(() => undefined);
+      vi.spyOn(policy, "inspectPolicyMutationBoundary").mockReturnValue(
+        managedPolicyMutationAuthority,
+      );
+      vi.spyOn(policy, "inspectPolicyRecoveryBoundary").mockReturnValue(
+        managedPolicyMutationAuthority,
+      );
+      vi.spyOn(policy, "recheckPolicyMutationBoundary").mockReturnValue(
+        managedPolicyMutationAuthority,
+      );
+      vi.spyOn(policy, "verifyLivePolicyDocument").mockImplementation(() => undefined);
       vi.spyOn(agentConfig, "resolveAgentConfig").mockReturnValue(hermesTarget);
       vi.spyOn(registry, "getSandbox").mockImplementation((name: unknown) => ({
         name: String(name),
@@ -322,7 +322,9 @@ export function createHermesUnsafeConfigHarness(
         Number(pid) === fakeTimerPid || Number(pid) === process.pid ? "test-start" : null,
       );
       vi.spyOn(timerControl, "isProcessAlive").mockReturnValue(true);
-      vi.spyOn(timerControl, "verifyTimerMarkerIdentity").mockReturnValue({ verified: true });
+      vi.spyOn(timerControl, "verifyTimerMarkerIdentity").mockReturnValue({
+        verified: true,
+      });
       vi.spyOn(childProcess, "fork").mockImplementation((_module: unknown, args: unknown) => {
         const sandboxName = String((args as unknown[])[0]);
         return {
@@ -331,7 +333,10 @@ export function createHermesUnsafeConfigHarness(
           unref: vi.fn(),
           kill: vi.fn(() => true),
           send: vi.fn((message: unknown) => {
-            const request = message as { type?: unknown; processToken?: unknown };
+            const request = message as {
+              type?: unknown;
+              processToken?: unknown;
+            };
             if (request.type === "authorize" && typeof request.processToken === "string") {
               const marker = timerControl.readTimerMarker(sandboxName);
               if (marker?.timerProcessStartIdentity) {

@@ -47,13 +47,16 @@ async function loadShieldsModule() {
 }
 
 describe("Shields status state lock plan drift", () => {
-  it("reports unavailable policy authority during temporary unlock (#9833)", async () => {
+  it("reports an unavailable live policy during temporary unlock", async () => {
     const sandboxName = "openclaw";
     const stateDir = path.join(tmpDir, ".nemoclaw", "state");
     fs.mkdirSync(stateDir, { recursive: true });
     fs.writeFileSync(
       path.join(stateDir, `shields-${sandboxName}.json`),
-      JSON.stringify({ shieldsDown: true, shieldsDownAt: new Date().toISOString() }),
+      JSON.stringify({
+        shieldsDown: true,
+        shieldsDownAt: new Date().toISOString(),
+      }),
       { mode: 0o600 },
     );
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -67,7 +70,14 @@ describe("Shields status state lock plan drift", () => {
       shieldsStatus(sandboxName, false, {
         inspectPolicyRecovery: () => ({
           status: "unavailable",
-          detail: "OpenShell sandbox policy authority inspection failed: the query timed out.",
+          detail: "OpenShell live policy read failed: the query timed out.",
+        }),
+        resolveConfig: () => ({
+          agentName: "openclaw",
+          configPath: "/sandbox/.openclaw/openclaw.json",
+          configDir: "/sandbox/.openclaw",
+          configFile: "openclaw.json",
+          format: "json",
         }),
       }),
     ).toThrow("exit 2");
@@ -77,10 +87,10 @@ describe("Shields status state lock plan drift", () => {
     expect(exitSpy).toHaveBeenCalledWith(2);
     expect(output).not.toContain("DOWN (temporarily unlocked)");
     expect(output).not.toContain("Auto-lockdown in:");
-    expect(errors).toContain("Shields: DOWN (RECOVERY REQUIRED — policy authority unavailable)");
-    expect(errors).toContain("OpenShell sandbox policy authority inspection failed");
+    expect(errors).toContain("Shields: DOWN (RECOVERY REQUIRED — live policy unavailable)");
+    expect(errors).toContain("OpenShell live policy read failed");
     expect(errors).toContain(
-      "Recovery: restore policy authority inspection for sandbox 'openclaw'",
+      "Recovery: restore live OpenShell policy access for sandbox 'openclaw'",
     );
   });
 

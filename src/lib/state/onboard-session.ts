@@ -11,7 +11,6 @@ import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import type { SandboxPolicyAuthority } from "../adapters/openshell/policy-authority";
 import { isErrnoException } from "../core/errno";
 import { isObjectRecord, type JsonObject, type JsonValue } from "../core/json-types";
 import { GATEWAY_PORT } from "../core/ports";
@@ -86,7 +85,6 @@ export const LOCK_FILE = path.join(SESSION_DIR, "onboard.lock");
 export const RETAINED_SANDBOX_RECOVERY_FILE = retainedSandboxRecoveryFile(SESSION_DIR);
 const SAFE_VLLM_INSTALL_MODEL = /^[A-Za-z0-9._:/-]+$/;
 
-export class InvalidPersistedPolicyAuthorityError extends Error {}
 export class InvalidPersistedApfInterceptorIntentError extends Error {}
 
 // Session-specific aliases for the shared JSON types.
@@ -265,9 +263,6 @@ export interface Session {
   /** Operator-selected APF create mode; this is not observed policy provenance. */
   apfInterceptorRequested: boolean;
   hermesToolGateways: string[] | null;
-  policyPresets: string[] | null;
-  /** Policy authority selected from OpenShell metadata before policy-dependent effects. */
-  policyAuthority: SandboxPolicyAuthority | null;
   messagingPlan: SandboxMessagingPlan | null;
   /** Non-secret names of credential providers registered before sandbox setup completed. */
   stagedCredentialProviders: string[];
@@ -344,8 +339,6 @@ export interface SessionUpdates {
   toolDisclosure?: ToolDisclosure;
   observabilityEnabled?: boolean;
   hermesToolGateways?: string[] | null;
-  policyPresets?: string[] | null;
-  policyAuthority?: SandboxPolicyAuthority | null;
   messagingPlan?: SandboxMessagingPlan | null;
   migratedLegacyValueHashes?: Record<string, string>;
   gpuPassthrough?: boolean;
@@ -382,8 +375,6 @@ export interface DebugSessionSummary {
   observabilityRequestedExplicitly: boolean;
   apfInterceptorRequested: boolean;
   hermesToolGateways: string[] | null;
-  policyPresets: string[] | null;
-  policyAuthority: SandboxPolicyAuthority | null;
   gpuPassthrough: boolean;
   lastStepStarted: string | null;
   lastCompletedStep: string | null;
@@ -485,14 +476,54 @@ export function sessionPath(): string {
 
 function defaultSteps(): Record<string, StepState> {
   return {
-    preflight: { status: "pending", startedAt: null, completedAt: null, error: null },
-    gateway: { status: "pending", startedAt: null, completedAt: null, error: null },
-    sandbox: { status: "pending", startedAt: null, completedAt: null, error: null },
-    provider_selection: { status: "pending", startedAt: null, completedAt: null, error: null },
-    inference: { status: "pending", startedAt: null, completedAt: null, error: null },
-    openclaw: { status: "pending", startedAt: null, completedAt: null, error: null },
-    agent_setup: { status: "pending", startedAt: null, completedAt: null, error: null },
-    policies: { status: "pending", startedAt: null, completedAt: null, error: null },
+    preflight: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
+    gateway: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
+    sandbox: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
+    provider_selection: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
+    inference: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
+    openclaw: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
+    agent_setup: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
+    policies: {
+      status: "pending",
+      startedAt: null,
+      completedAt: null,
+      error: null,
+    },
   };
 }
 
@@ -526,10 +557,6 @@ function parseVllmGpuDevice(value: unknown): string | null {
 
 function readHermesAuthMethod(value: SessionJsonValue | undefined): HermesAuthMethod | null {
   return value === "oauth" || value === "api_key" ? value : null;
-}
-
-function readPolicyAuthority(value: unknown): SandboxPolicyAuthority | null {
-  return value === "nemoclaw-managed" || value === "externally-managed" ? value : null;
 }
 
 function readPositiveInteger(value: SessionJsonValue | undefined): number | null {
@@ -886,7 +913,11 @@ export function syncCheckpointMachineState(
   updatedAt: string,
 ): void {
   if (!session.checkpoint) return;
-  session.checkpoint = { ...session.checkpoint, machineState: state, updatedAt };
+  session.checkpoint = {
+    ...session.checkpoint,
+    machineState: state,
+    updatedAt,
+  };
 }
 
 export function createSession(overrides: Partial<Session> = {}): Session {
@@ -897,7 +928,6 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     ...defaultSteps(),
     ...(overrides.steps ?? {}),
   };
-  const policyAuthority = readPolicyAuthority(overrides.policyAuthority);
   const session: Session = {
     version: SESSION_VERSION,
     sessionId,
@@ -947,9 +977,6 @@ export function createSession(overrides: Partial<Session> = {}): Session {
     observabilityRequestedExplicitly: overrides.observabilityRequestedExplicitly === true,
     apfInterceptorRequested: overrides.apfInterceptorRequested === true,
     hermesToolGateways: readStringArray(overrides.hermesToolGateways),
-    policyPresets:
-      policyAuthority === "externally-managed" ? null : readStringArray(overrides.policyPresets),
-    policyAuthority,
     messagingPlan: parseSandboxMessagingPlan(overrides.messagingPlan),
     stagedCredentialProviders: readStringArray(overrides.stagedCredentialProviders) ?? [],
     migratedLegacyValueHashes: overrides.migratedLegacyValueHashes
@@ -962,7 +989,11 @@ export function createSession(overrides: Partial<Session> = {}): Session {
       gatewayName: overrides.metadata?.gatewayName ?? "nemoclaw",
       fromDockerfile: overrides.metadata?.fromDockerfile ?? null,
       ...(overrides.metadata?.hostMounts?.length
-        ? { hostMounts: overrides.metadata.hostMounts.map((mount) => ({ ...mount })) }
+        ? {
+            hostMounts: overrides.metadata.hostMounts.map((mount) => ({
+              ...mount,
+            })),
+          }
         : {}),
     },
     machine:
@@ -984,12 +1015,6 @@ export function normalizeSession(data: Session | SessionJsonValue | undefined): 
   ) {
     throw new InvalidPersistedApfInterceptorIntentError(
       "Refusing to load the onboarding session: the saved APF selection is invalid.",
-    );
-  }
-  const policyAuthority = readPolicyAuthority(data.policyAuthority);
-  if (hasOwn(data, "policyAuthority") && data.policyAuthority !== null && !policyAuthority) {
-    throw new InvalidPersistedPolicyAuthorityError(
-      "Refusing to load the onboarding session: the saved policy authority is invalid.",
     );
   }
   const servingProfileProvenance = parseServingProfileProvenance(data.servingProfileProvenance);
@@ -1077,8 +1102,6 @@ export function normalizeSession(data: Session | SessionJsonValue | undefined): 
     observabilityRequestedExplicitly: data.observabilityRequestedExplicitly === true,
     apfInterceptorRequested: data.apfInterceptorRequested === true,
     hermesToolGateways: readStringArray(data.hermesToolGateways),
-    policyPresets: readStringArray(data.policyPresets),
-    policyAuthority,
     messagingPlan: parseSandboxMessagingPlan(data.messagingPlan),
     stagedCredentialProviders: readStringArray(data.stagedCredentialProviders) ?? [],
     migratedLegacyValueHashes: readStringRecord(data.migratedLegacyValueHashes),
@@ -1175,10 +1198,7 @@ export function loadSession(): Session | null {
     const parsed = JSON.parse(fs.readFileSync(SESSION_FILE, "utf-8"));
     return normalizeSession(parsed);
   } catch (error) {
-    if (
-      error instanceof InvalidPersistedPolicyAuthorityError ||
-      error instanceof InvalidPersistedApfInterceptorIntentError
-    ) {
+    if (error instanceof InvalidPersistedApfInterceptorIntentError) {
       throw error;
     }
     return null;
@@ -1766,20 +1786,6 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
       (value) => typeof value === "string",
     );
   }
-  if (updates.policyPresets === null) {
-    safe.policyPresets = null;
-  } else if (Array.isArray(updates.policyPresets)) {
-    safe.policyPresets = updates.policyPresets.filter((value) => typeof value === "string");
-  }
-  if (updates.policyAuthority === null) {
-    safe.policyAuthority = null;
-  } else {
-    const policyAuthority = readPolicyAuthority(updates.policyAuthority);
-    if (policyAuthority) {
-      safe.policyAuthority = policyAuthority;
-      if (policyAuthority === "externally-managed") safe.policyPresets = null;
-    }
-  }
   if (updates.messagingPlan === null) {
     safe.messagingPlan = null;
   } else {
@@ -1800,7 +1806,9 @@ export function filterSafeUpdates(updates: SessionUpdates): Partial<Session> {
     isObject(updates.telegramConfig) &&
     typeof updates.telegramConfig.requireMention === "boolean"
   ) {
-    safe.telegramConfig = { requireMention: updates.telegramConfig.requireMention };
+    safe.telegramConfig = {
+      requireMention: updates.telegramConfig.requireMention,
+    };
   } else if (updates.telegramConfig === null) {
     safe.telegramConfig = null;
   }
@@ -2355,8 +2363,6 @@ export function summarizeForDebug(
     observabilityRequestedExplicitly: session.observabilityRequestedExplicitly,
     apfInterceptorRequested: session.apfInterceptorRequested,
     hermesToolGateways: session.hermesToolGateways,
-    policyPresets: session.policyPresets,
-    policyAuthority: session.policyAuthority,
     gpuPassthrough: session.gpuPassthrough,
     lastStepStarted: session.lastStepStarted,
     lastCompletedStep: session.lastCompletedStep,

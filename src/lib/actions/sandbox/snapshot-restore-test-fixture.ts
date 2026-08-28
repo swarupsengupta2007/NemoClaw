@@ -63,8 +63,6 @@ export type SandboxRecord = {
   preferredInferenceApi?: string | null;
   lifecycleGeneration?: string;
   lifecycleLiveIdentityFingerprint?: string;
-  policyAuthority?: SandboxEntry["policyAuthority"];
-  policyCreationReceipt?: SandboxEntry["policyCreationReceipt"];
   hostLocalInferenceReceipt?: string | null;
   hostLocalInferenceProvenance?: SandboxHostLocalInferenceProvenance;
   dashboardPort?: number | null;
@@ -174,6 +172,19 @@ export const getCustomPoliciesMock = vi.fn(
   () => [] as Array<{ name: string; content: string; sourcePath?: string }>,
 );
 export const getLatestBackupMock = vi.fn(() => null as Record<string, unknown> | null);
+export const inspectPolicyRecoveryBoundaryMock = vi.fn(() => ({
+  gatewayName: "nemoclaw",
+}));
+export const buildPolicyGetCommandMock = vi.fn((sandboxName: string, gatewayName: string) => [
+  "policy",
+  "get",
+  "-g",
+  gatewayName,
+  sandboxName,
+]);
+export const livePolicyDocument = "version: 1\nnetwork_policies:\n  host-owned: {}";
+export const parseCurrentPolicyMock = vi.fn((raw: string) => raw.trim() || null);
+export const runCaptureMock = vi.fn(() => livePolicyDocument);
 export const applyPresetMock = vi.fn((_sandbox: string, _preset: string) => true);
 export const applyPresetContentMock = vi.fn(
   (_sandbox: string, _name: string, _content: string, _options?: unknown) => true,
@@ -198,7 +209,11 @@ export const waitForRestoredSandboxGatewaySupervisorMock = vi.fn(() => true);
 export const prepareInitialSandboxCreatePolicyMock = vi.fn(
   (
     policyPath: string,
-  ): { policyPath: string; appliedPresets: string[]; cleanup?: () => boolean } => ({
+  ): {
+    policyPath: string;
+    appliedPresets: string[];
+    cleanup?: () => boolean;
+  } => ({
     policyPath,
     appliedPresets: [],
   }),
@@ -258,7 +273,10 @@ vi.mock("../../credentials/store", () => ({
 }));
 
 vi.mock("../../domain/sandbox/destroy", () => ({
-  getSandboxDeleteOutcome: vi.fn(() => ({ alreadyGone: false, gatewayUnreachable: false })),
+  getSandboxDeleteOutcome: vi.fn(() => ({
+    alreadyGone: false,
+    gatewayUnreachable: false,
+  })),
 }));
 
 vi.mock("../../inference/nim", () => ({
@@ -269,9 +287,12 @@ vi.mock("../../inference/nim", () => ({
 vi.mock("../../policy", () => ({
   applyPreset: applyPresetMock,
   applyPresetContent: applyPresetContentMock,
+  buildPolicyGetCommand: buildPolicyGetCommandMock,
   getAppliedPresets: getAppliedPresetsMock,
   getPresetContentGatewayState: getPresetContentGatewayStateMock,
+  inspectPolicyRecoveryBoundary: inspectPolicyRecoveryBoundaryMock,
   loadPresetForSandbox: loadPresetForSandboxMock,
+  parseCurrentPolicy: parseCurrentPolicyMock,
   removePreset: removePresetMock,
   resolveAgentBaselinePolicy: resolveAgentBaselinePolicyMock,
 }));
@@ -279,6 +300,7 @@ vi.mock("../../policy", () => ({
 vi.mock("../../runner", () => ({
   ROOT: "/repo",
   run: vi.fn(() => ({ status: 0 })),
+  runCapture: runCaptureMock,
   shellQuote: (value: string) => `'${value}'`,
   validateName: vi.fn((value: string) => value),
 }));
@@ -395,6 +417,18 @@ export function resetSnapshotRestoreMocks(): void {
   getAppliedPresetsMock.mockReturnValue([]);
   getCustomPoliciesMock.mockReturnValue([]);
   getLatestBackupMock.mockReturnValue(null);
+  inspectPolicyRecoveryBoundaryMock.mockReturnValue({
+    gatewayName: "nemoclaw",
+  });
+  buildPolicyGetCommandMock.mockImplementation((sandboxName, gatewayName) => [
+    "policy",
+    "get",
+    "-g",
+    gatewayName,
+    sandboxName,
+  ]);
+  parseCurrentPolicyMock.mockImplementation((raw) => raw.trim() || null);
+  runCaptureMock.mockReturnValue(livePolicyDocument);
   applyPresetMock.mockReturnValue(true);
   applyPresetContentMock.mockReturnValue(true);
   removePresetMock.mockReturnValue(true);
@@ -417,7 +451,10 @@ export function resetSnapshotRestoreMocks(): void {
   registerSandboxMock.mockReset();
   reserveSandboxInferenceRouteMock.mockReset().mockReturnValue(true);
   removeSandboxMock.mockReset();
-  removeSandboxRegistryEntryOutcomeMock.mockReturnValue({ status: "complete", removed: true });
+  removeSandboxRegistryEntryOutcomeMock.mockReturnValue({
+    status: "complete",
+    removed: true,
+  });
   updateSandboxMock.mockReset().mockReturnValue(true);
   finalizePendingSandboxRegistrationMock.mockReset().mockReturnValue(true);
   restoreSandboxStateMock.mockReturnValue({

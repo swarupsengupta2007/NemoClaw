@@ -19,13 +19,11 @@ import {
 } from "./helpers";
 
 describe("CLI dispatch", () => {
-  it.each(
-    [
-        "inference set 2>&1",
-        "inference set --provider nvidia-prod 2>&1",
-        "inference set --model nvidia/model 2>&1",
-      ],
-  )(
+  it.each([
+    "inference set 2>&1",
+    "inference set --provider nvidia-prod 2>&1",
+    "inference set --model nvidia/model 2>&1",
+  ])(
     "keeps `inference set` inside NemoClaw when provider or model is missing [%s]",
     (argv) => {
       const r = run(argv);
@@ -184,7 +182,7 @@ describe("CLI dispatch", () => {
     });
   });
 
-  it("list --json emits structured sandbox details", () => {
+  it("list --json emits structured sandbox details without legacy policy mirrors", () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-cli-list-json-"));
     const localBin = path.join(home, "bin");
     const registryDir = path.join(home, ".nemoclaw");
@@ -245,7 +243,7 @@ describe("CLI dispatch", () => {
           model: "configured-model",
           provider: "configured-provider",
           gpuEnabled: true,
-          policies: ["pypi"],
+          policies: [],
           agent: "openclaw",
           isDefault: true,
           activeSessionCount: 1,
@@ -301,7 +299,9 @@ describe("CLI dispatch", () => {
       }),
       { mode: 0o600 },
     );
-    fs.writeFileSync(path.join(localBin, "openshell"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+    fs.writeFileSync(path.join(localBin, "openshell"), "#!/bin/sh\nexit 1\n", {
+      mode: 0o755,
+    });
     const env = { HOME: home, PATH: `${localBin}:${process.env.PATH || ""}` };
 
     try {

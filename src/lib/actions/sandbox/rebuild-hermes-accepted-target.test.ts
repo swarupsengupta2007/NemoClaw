@@ -121,8 +121,7 @@ describe("Hermes accepted replacement recovery", () => {
         preservedEnv: [],
       },
       backupWasForceSkipped: false,
-      policyPresets: [],
-      sessionPolicyPresets: [],
+      policyDocument: "version: 1\nnetwork_policies: {}\n",
     });
     phaseMocks.openRecreateJournal.mockReturnValue({
       id: "journal-1",

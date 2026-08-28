@@ -520,27 +520,6 @@ export function buildLaunchReadinessRegistryProjection(
   if (entry.pendingRouteReservation === true) {
     throw new ObservationError("config");
   }
-  if (entry.baselineExclusionTransition) throw new ObservationError("config");
-
-  const customPolicies = (entry.customPolicies ?? []).map((policy) => ({
-    name: policy.name,
-    contentSha256: exactContentDigest(policy.content),
-    pendingContentSha256:
-      typeof policy.pendingContent === "string" ? exactContentDigest(policy.pendingContent) : null,
-    pinAuthoritySha256: policy.trustedPrivatePins
-      ? launchReadinessDigest({
-          version: policy.trustedPrivatePins.version,
-          contentDigest: policy.trustedPrivatePins.contentDigest,
-        })
-      : null,
-  }));
-  const baselineExclusions = (entry.baselineExclusions ?? []).map((exclusion) => ({
-    version: exclusion.version,
-    agent: exclusion.agent,
-    key: exclusion.key,
-    digest: exclusion.digest,
-    appliedAgentVersion: exclusion.appliedAgentVersion ?? null,
-  }));
   const inference = normalizeInferenceSelection(entry);
   if (
     inference.credentialEnv !== null &&
@@ -617,17 +596,12 @@ export function buildLaunchReadinessRegistryProjection(
         }
       : null,
     inference,
-    policies: [...(entry.policies ?? [])],
-    policyTier: normalizedString(entry.policyTier),
-    policyPresetsFinalized: entry.policyPresetsFinalized === true,
     ...(portableRuntimeAuthoritySha256
       ? {
           portableLifecycleReceipt: "current",
           portableRuntimeAuthoritySha256,
         }
       : {}),
-    customPolicies,
-    baselineExclusions,
     webSearchEnabled: entry.webSearchEnabled === true,
     webSearchProvider: entry.webSearchProvider ?? null,
     toolDisclosure: entry.toolDisclosure ?? null,
@@ -693,7 +667,11 @@ async function captureLaunchIdentity(
   gatewayName: string,
   gatewayPort: number,
   deps: LaunchReadinessDeps,
-): Promise<{ identity: LaunchReadinessIdentity; agent: AgentDefinition; sb: SandboxEntry }> {
+): Promise<{
+  identity: LaunchReadinessIdentity;
+  agent: AgentDefinition;
+  sb: SandboxEntry;
+}> {
   try {
     assertNoOpenShellGatewayEndpointOverride();
   } catch {
@@ -711,10 +689,7 @@ async function captureLaunchIdentity(
   if (entry.agent === "openclaw") {
     if (portableReceipt.kind === "invalid-or-legacy") throw new ObservationError("config");
     if (portableReceipt.kind === "current") {
-      if (
-        entry.policyPresetsFinalized !== true ||
-        entry.lifecycleGeneration !== portableReceipt.registryGeneration
-      ) {
+      if (entry.lifecycleGeneration !== portableReceipt.registryGeneration) {
         throw new ObservationError("config");
       }
       portableRuntimeAuthoritySha256 = launchReadinessDigest(portableReceipt.runtimeAuthority);
@@ -995,7 +970,10 @@ export function resolveOrdinaryOpenClawPairingTarget(
  * never another write.
  */
 type PortablePairingWaitResult =
-  | { readonly kind: "observed"; readonly value: OpenClawPairingRepairObservation }
+  | {
+      readonly kind: "observed";
+      readonly value: OpenClawPairingRepairObservation;
+    }
   | { readonly kind: "rejected" }
   | { readonly kind: "timeout" };
 
@@ -1069,7 +1047,6 @@ export async function settlePortableOpenClawPairing(
     if (
       firstEntry?.agent === null &&
       options.portableRequired === true &&
-      firstEntry.policyPresetsFinalized === true &&
       portableLifecycleReceiptMatchesGeneration(firstReceipt, firstEntry.lifecycleGeneration)
     ) {
       revalidatePolicyRequirements?.(`update the recorded agent for sandbox '${sandboxName}'`);
@@ -1095,9 +1072,6 @@ export async function settlePortableOpenClawPairing(
     if (firstReceipt.kind !== "current") {
       return incompletePortablePairing("portable-receipt-invalid");
     }
-    if (firstEntry.policyPresetsFinalized !== true) {
-      return incompletePortablePairing("portable-policy-incomplete");
-    }
     const firstTarget = resolveOpenClawPairingSettlementTarget(
       sandboxName,
       firstEntry,
@@ -1111,9 +1085,6 @@ export async function settlePortableOpenClawPairing(
       const lockedEntry = getSandbox(sandboxName);
       if (lockedReceipt.kind !== "current" || portableReceiptChanged(firstReceipt, lockedReceipt)) {
         return incompletePortablePairing("portable-receipt-invalid");
-      }
-      if (lockedEntry?.policyPresetsFinalized !== true) {
-        return incompletePortablePairing("portable-policy-incomplete");
       }
       const target = resolveOpenClawPairingSettlementTarget(
         sandboxName,

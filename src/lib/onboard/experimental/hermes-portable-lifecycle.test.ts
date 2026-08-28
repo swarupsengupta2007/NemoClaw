@@ -316,7 +316,11 @@ function lifecycleDeps(
   const captureOpenShell = vi.fn((args: readonly string[]) => {
     const sandboxExecOutput = args.includes("python3") ? "200\n" : "";
     const responses = {
-      "policy:get": { status: 0, stdout: options.livePolicy ?? POLICY, stderr: "" },
+      "policy:get": {
+        status: 0,
+        stdout: options.livePolicy ?? POLICY,
+        stderr: "",
+      },
       "sandbox:list": {
         status: 0,
         stdout: sandboxListJson(SANDBOX_ID, sandboxPhase()),
@@ -365,7 +369,10 @@ function lifecycleDeps(
           XDG_CONFIG_HOME: receipt.runtimeAuthority.configHome,
           XDG_RUNTIME_DIR: receipt.runtimeAuthority.runtimeDir,
         },
-        captureSocketAuthority: () => ({ ...receipt.socketAuthority, inode: "102" }),
+        captureSocketAuthority: () => ({
+          ...receipt.socketAuthority,
+          inode: "102",
+        }),
         captureOpenShellExecutableAuthority: () => receipt.openshellExecutableAuthority,
         capturePodmanExecutableAuthority: () => receipt.podmanExecutableAuthority,
       },
@@ -403,7 +410,9 @@ describe("Hermes portable lifecycle", () => {
   it("migrates an identical same-path schema-5 copy only under both probe fences (#10423)", async () => {
     const receipt = activeReceipt(stateDir);
     const copiedPolicy = `${receipt.policy.sourcePath}.copy`;
-    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), { mode: 0o600 });
+    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), {
+      mode: 0o600,
+    });
     fs.renameSync(copiedPolicy, receipt.policy.sourcePath);
     const fixture = lifecycleDeps(receipt);
 
@@ -508,7 +517,9 @@ describe("Hermes portable lifecycle", () => {
   it("rejects policy generation replacement during schema-6 publication (#10423)", async () => {
     const receipt = activeReceipt(stateDir);
     const copiedPolicy = `${receipt.policy.sourcePath}.copy`;
-    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), { mode: 0o600 });
+    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), {
+      mode: 0o600,
+    });
     fs.renameSync(copiedPolicy, receipt.policy.sourcePath);
     const fixture = lifecycleDeps(receipt);
     const publishWithReplacement: typeof publishHermesPortableSuccessorReceipt = (
@@ -708,11 +719,19 @@ describe("Hermes portable lifecycle", () => {
                 security: { rootless: true },
                 idMappings: {
                   uidmap: [
-                    { container_id: 0, host_id: receipt.runtimeAuthority.uid, size: 1 },
+                    {
+                      container_id: 0,
+                      host_id: receipt.runtimeAuthority.uid,
+                      size: 1,
+                    },
                     { container_id: 1, host_id: 100000, size: 65536 },
                   ],
                   gidmap: [
-                    { container_id: 0, host_id: receipt.runtimeAuthority.uid, size: 1 },
+                    {
+                      container_id: 0,
+                      host_id: receipt.runtimeAuthority.uid,
+                      size: 1,
+                    },
                     { container_id: 1, host_id: 100000, size: 65536 },
                   ],
                 },
@@ -1080,17 +1099,16 @@ describe("Hermes portable lifecycle", () => {
 
   it("recovers against the finalized Personal policy authority (#9211)", () => {
     const receipt = activeReceipt();
-    const registry = {
-      policyTier: "personal",
-      policies: ["personal-open-internet"],
-      policyPresetsFinalized: true,
-    } satisfies Partial<SandboxEntry>;
+    const registry = {} satisfies Partial<SandboxEntry>;
     const livePolicy = resolveHermesPortableExpectedPolicyBytes(Buffer.from(POLICY), {
       name: SANDBOX,
       agent: "hermes",
       ...registry,
     } as SandboxEntry).bytes.toString("utf8");
-    const { deps, podman } = lifecycleDeps(receipt, false, { livePolicy, registry });
+    const { deps, podman } = lifecycleDeps(receipt, false, {
+      livePolicy,
+      registry,
+    });
 
     const result = withMcpLifecycleLockSync(
       SANDBOX,
@@ -1127,34 +1145,6 @@ describe("Hermes portable lifecycle", () => {
       ["sandbox", "list", "-g", GATEWAY, "-o", "json"],
       5_000,
     );
-  });
-
-  it("rejects Personal policy without finalized registry authority (#9211)", () => {
-    const receipt = activeReceipt();
-    const finalized = {
-      name: SANDBOX,
-      agent: "hermes",
-      policyTier: "personal",
-      policies: ["personal-open-internet"],
-      policyPresetsFinalized: true,
-    } as SandboxEntry;
-    const livePolicy = resolveHermesPortableExpectedPolicyBytes(
-      Buffer.from(POLICY),
-      finalized,
-    ).bytes.toString("utf8");
-    const { deps, podman } = lifecycleDeps(receipt, false, {
-      livePolicy,
-      registry: { ...finalized, policyPresetsFinalized: undefined },
-    });
-
-    expect(() =>
-      withMcpLifecycleLockSync(
-        SANDBOX,
-        () => recoverHermesPortableSandboxLifecycle(SANDBOX, lifecycleContext(), deps),
-        { stateDir: path.join(stateDir, "state") },
-      ),
-    ).toThrow("base policy disagrees with create input");
-    expect(podman).not.toHaveBeenCalled();
   });
 
   it("rejects an ambient OpenShell endpoint before Podman or OpenShell effects (#9203)", () => {
@@ -1251,7 +1241,11 @@ describe("Hermes portable lifecycle", () => {
     const defaultCapture = captureOpenShell.getMockImplementation()!;
     captureOpenShell.mockImplementation((args: readonly string[]) =>
       args.slice(0, 2).join(":") === "sandbox:list"
-        ? { status: 0, stdout: sandboxListJson(SANDBOX_ID, "Ready"), stderr: "" }
+        ? {
+            status: 0,
+            stdout: sandboxListJson(SANDBOX_ID, "Ready"),
+            stderr: "",
+          }
         : defaultCapture(args),
     );
 
@@ -1271,7 +1265,11 @@ describe("Hermes portable lifecycle", () => {
     const defaultCapture = captureOpenShell.getMockImplementation()!;
     captureOpenShell.mockImplementation((args: readonly string[]) =>
       args.slice(0, 2).join(":") === "sandbox:list"
-        ? { status: 0, stdout: sandboxListJson(SANDBOX_ID, "Ready"), stderr: "" }
+        ? {
+            status: 0,
+            stdout: sandboxListJson(SANDBOX_ID, "Ready"),
+            stderr: "",
+          }
         : defaultCapture(args),
     );
 
@@ -1335,7 +1333,11 @@ describe("Hermes portable lifecycle", () => {
       args[0] === "policy"
         ? { status: 0, stdout: POLICY, stderr: "" }
         : args[1] === "list"
-          ? { status: 0, stdout: sandboxListJson("replacement", "Ready"), stderr: "" }
+          ? {
+              status: 0,
+              stdout: sandboxListJson("replacement", "Ready"),
+              stderr: "",
+            }
           : {
               status: 0,
               stdout: `Name: ${SANDBOX}\nID: replacement\n`,
@@ -1359,7 +1361,11 @@ describe("Hermes portable lifecycle", () => {
       args[0] === "policy"
         ? { status: 0, stdout: POLICY, stderr: "" }
         : args[1] === "list"
-          ? { status: 0, stdout: sandboxListJson(SANDBOX_ID, "Creating"), stderr: "" }
+          ? {
+              status: 0,
+              stdout: sandboxListJson(SANDBOX_ID, "Creating"),
+              stderr: "",
+            }
           : {
               status: 0,
               stdout: `Name: ${SANDBOX}\nID: ${SANDBOX_ID}\n`,
@@ -1394,7 +1400,11 @@ describe("Hermes portable lifecycle", () => {
               ? { status: 125, stdout: "", stderr: "no such container" }
               : originalPodman(args);
           case "ps":
-            return { status: 0, stdout: containerPresent ? `${CONTAINER_ID}\n` : "", stderr: "" };
+            return {
+              status: 0,
+              stdout: containerPresent ? `${CONTAINER_ID}\n` : "",
+              stderr: "",
+            };
           default:
             return originalPodman(args);
         }
@@ -1474,7 +1484,11 @@ describe("Hermes portable lifecycle", () => {
       const command = args.slice(0, 2).join(":");
       switch (command) {
         case "sandbox:get":
-          return { status: 1, stdout: "", stderr: `sandbox ${SANDBOX} not found` };
+          return {
+            status: 1,
+            stdout: "",
+            stderr: `sandbox ${SANDBOX} not found`,
+          };
         case "sandbox:list":
           return { status: 0, stdout: "warning: stale cache", stderr: "" };
         default:

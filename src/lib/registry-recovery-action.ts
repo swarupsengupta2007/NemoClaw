@@ -44,7 +44,6 @@ type RecoveredSandboxMetadata = Partial<
     | "model"
     | "provider"
     | "gpuEnabled"
-    | "policies"
     | "nimContainer"
     | "agent"
     | "observabilityEnabled"
@@ -52,9 +51,7 @@ type RecoveredSandboxMetadata = Partial<
     | "credentialEnv"
     | "preferredInferenceApi"
   >
-> & {
-  policyPresets?: string[] | null;
-};
+>;
 
 /**
  * Build a minimal-safe registry entry for a recovered sandbox from whatever
@@ -70,11 +67,6 @@ function buildRecoveredSandboxEntry(
     model: metadata.model || null,
     provider: metadata.provider || null,
     gpuEnabled: metadata.gpuEnabled === true,
-    policies: Array.isArray(metadata.policies)
-      ? metadata.policies
-      : Array.isArray(metadata.policyPresets)
-        ? metadata.policyPresets
-        : [],
     nimContainer: metadata.nimContainer || null,
     endpointUrl: metadata.endpointUrl ?? null,
     credentialEnv: metadata.credentialEnv ?? null,
@@ -158,7 +150,10 @@ function upsertRecoveredSandbox(
  * requested name) points at a sandbox the registry does not yet contain.
  */
 function shouldRecoverRegistryEntries(
-  current: { sandboxes: Array<{ name: string }>; defaultSandbox?: string | null },
+  current: {
+    sandboxes: Array<{ name: string }>;
+    defaultSandbox?: string | null;
+  },
   session: Session | null,
   requestedSandboxName: string | null,
 ) {
@@ -228,7 +223,6 @@ function seedRecoveryMetadata(
       model: session.model || null,
       provider: session.provider || null,
       nimContainer: session.nimContainer || null,
-      policyPresets: session.policyPresets || null,
       agent: session.agent || null,
       endpointUrl: session.endpointUrl ?? null,
       credentialEnv: session.credentialEnv ?? null,
@@ -273,7 +267,9 @@ function canInspectLiveGatewayReadOnly(): boolean {
   // and never advertises a sandbox the next command cannot act on. Probes are
   // non-fatal so a hung gateway falls back to the empty registry instead of
   // exiting the process.
-  const lifecycle = getNamedGatewayLifecycleState(undefined, { ignoreProbeErrors: true });
+  const lifecycle = getNamedGatewayLifecycleState(undefined, {
+    ignoreProbeErrors: true,
+  });
   return lifecycle.state === "healthy_named";
 }
 
@@ -487,6 +483,10 @@ export async function recoverRegistryEntries({
           requestedSandboxName,
           gatewayName,
         )
-      : { ...lockedCurrent, recoveredFromSession: false, recoveredFromGateway: 0 };
+      : {
+          ...lockedCurrent,
+          recoveredFromSession: false,
+          recoveredFromGateway: 0,
+        };
   });
 }

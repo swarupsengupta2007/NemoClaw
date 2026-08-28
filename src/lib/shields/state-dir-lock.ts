@@ -52,7 +52,11 @@ type GuardSummary = {
 };
 
 function resultFailure(label: string, result: PrivilegedExecResult): string {
-  const details = [result.error, result.stderr.trim(), result.stdout.trim()]
+  const details = [
+    result.error,
+    String(result.stderr ?? "").trim(),
+    String(result.stdout ?? "").trim(),
+  ]
     .filter((value): value is string => Boolean(value))
     .join("; ");
   const termination =
@@ -129,7 +133,10 @@ function inspectRuntimePlan(
   }
   const read = privileged.run(["cat", CONTAINER_STATE_LOCK_PLAN]);
   if (!successful(read) || read.stderr.trim()) {
-    return { kind: "error", issue: resultFailure("installed state lock plan read failed", read) };
+    return {
+      kind: "error",
+      issue: resultFailure("installed state lock plan read failed", read),
+    };
   }
   const parsed = parseInstalledPlan(read.stdout);
   if (typeof parsed === "string") return { kind: "error", issue: parsed };
@@ -157,7 +164,7 @@ function parseGuardOutput(action: GuardAction, result: PrivilegedExecResult): st
   const summaries: GuardSummary[] = [];
   const contractIssues: string[] = [];
 
-  for (const line of result.stdout.split("\n")) {
+  for (const line of String(result.stdout ?? "").split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     let value: unknown;
@@ -220,8 +227,9 @@ function parseGuardOutput(action: GuardAction, result: PrivilegedExecResult): st
   } else if (result.status !== 0 && issues.length === 0) {
     contractIssues.push(resultFailure("state-dir guard failed without a diagnostic", result));
   }
-  if (result.stderr.trim()) {
-    contractIssues.push(`state-dir guard wrote unexpected stderr: ${result.stderr.trim()}`);
+  const stderr = String(result.stderr ?? "").trim();
+  if (stderr) {
+    contractIssues.push(`state-dir guard wrote unexpected stderr: ${stderr}`);
   }
 
   return [

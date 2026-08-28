@@ -100,7 +100,10 @@ afterAll(() => {
 });
 
 beforeEach(() => {
-  fs.rmSync(path.dirname(registry.REGISTRY_FILE), { recursive: true, force: true });
+  fs.rmSync(path.dirname(registry.REGISTRY_FILE), {
+    recursive: true,
+    force: true,
+  });
   restoreEnvironmentVariable("OPENSHELL_GATEWAY", ORIGINAL_OPENSHELL_GATEWAY);
 
   providerExists = true;
@@ -120,8 +123,13 @@ beforeEach(() => {
       case command === "status --output json":
         return { status: 0, stdout: "ready", stderr: "" };
       case args[0] === "provider" && args[1] === "profile":
-        return mockManagedEndpointlessProviderProfileRun(args) ??
-          { status: 0, stdout: "Imported provider profile", stderr: "" };
+        return (
+          mockManagedEndpointlessProviderProfileRun(args) ?? {
+            status: 0,
+            stdout: "Imported provider profile",
+            stderr: "",
+          }
+        );
       case args[0] === "provider" && args[1] === "get":
         return providerExists
           ? {
@@ -188,7 +196,11 @@ beforeEach(() => {
       switch (true) {
         case command === "/usr/local/bin/deepagents-code --nemoclaw-mcp-capability":
           return deepAgentsCapability
-            ? { status: 0, stdout: "NEMOCLAW_DEEPAGENTS_MCP_CAPABILITY=2\n", stderr: "" }
+            ? {
+                status: 0,
+                stdout: "NEMOCLAW_DEEPAGENTS_MCP_CAPABILITY=2\n",
+                stderr: "",
+              }
             : { status: 2, stdout: "", stderr: "unknown option" };
         case command.includes("servers.pop(payload['server'])"): {
           const outcome = adapterRemovalOutcome || (adapterRegistered ? "removed" : "absent");
@@ -251,17 +263,6 @@ beforeEach(() => {
     gatewayName: "nemoclaw",
     mcp: { bridges: { github: entry } },
   });
-  registry.addCustomPolicy("alpha", {
-    name: entry.policyName,
-    content: bridge.buildMcpBridgePolicyYaml(
-      entry.server,
-      entry.url,
-      entry.adapter,
-      { addresses: ["8.8.8.8"] },
-      entry.providerName,
-    ),
-    sourcePath: "generated:nemoclaw-mcp-bridge",
-  });
 });
 
 describe("legacy Deep Agents managed MCP lifecycle", () => {
@@ -323,7 +324,10 @@ describe("legacy Deep Agents managed MCP lifecycle", () => {
       providerType = caseProviderType;
       const preparation = await bridge[method]("alpha");
 
-      expect({ entryCount: preparation.entries.length, ...lifecycleResult() }).toMatchObject({
+      expect({
+        entryCount: preparation.entries.length,
+        ...lifecycleResult(),
+      }).toMatchObject({
         entryCount: 1,
         attached: false,
         adapterRegistered: false,

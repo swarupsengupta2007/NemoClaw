@@ -15,13 +15,8 @@ import { withPortableOnboardRetirementBoundary } from "../../onboard/portable-re
 import { withMcpLifecycleLock } from "../../state/mcp-lifecycle-lock";
 import * as onboardSession from "../../state/onboard-session";
 import { load as loadRegistry, REGISTRY_FILE } from "../../state/registry/persistence";
-import {
-  excludePolicyPresetsByName,
-  normalizeRebuildTargetPolicyPresets,
-  runRebuildBackupPhase,
-} from "./rebuild-backup-phase";
+import { runRebuildBackupPhase } from "./rebuild-backup-phase";
 import { buildRefreshMutableOpenClawConfigHashCommand } from "./rebuild-config-hash";
-import { DCODE_AGENT_NAME } from "./rebuild-dcode-target";
 import { runRebuildDestroyPhase } from "./rebuild-destroy-phase";
 import { REBUILD_HERMES_DASHBOARD_ENV_KEYS } from "./rebuild-durable-config";
 import { disposeRebuildAgentBaseImagePreflight } from "./rebuild-flow-helpers";
@@ -98,30 +93,31 @@ export async function rebuildSandbox(
       sessionFile: onboardSession.SESSION_FILE,
       stateDir: path.dirname(onboardSession.SESSION_FILE),
     },
-    () => withMcpLifecycleLock(sandboxName, async () => {
-    assertSandboxRebuildCommandAvailable(sandboxName);
-    const scopedEnvKeys = [
-      BRAVE_API_KEY_ENV,
-      TAVILY_API_KEY_ENV,
-      MESSAGING_SETUP_APPLIER_ENV_KEY,
-      "OPENSHELL_GATEWAY",
-      DOCKER_GPU_PATCH_NETWORK_ENV,
-      ...REBUILD_HERMES_DASHBOARD_ENV_KEYS,
-      ...MESSAGING_CHANNEL_CONFIG_ENV_KEYS,
-    ];
-    const savedEnv = scopedEnvKeys.map((key) => [key, process.env[key]] as const);
-    try {
-      await rebuildSandboxUnlocked(sandboxName, options, opts);
-    } finally {
-      for (const key of scopedEnvKeys) delete process.env[key];
-      Object.assign(
-        process.env,
-        Object.fromEntries(
-          savedEnv.filter((entry): entry is [string, string] => entry[1] !== undefined),
-        ),
-      );
-    }
-    }),
+    () =>
+      withMcpLifecycleLock(sandboxName, async () => {
+        assertSandboxRebuildCommandAvailable(sandboxName);
+        const scopedEnvKeys = [
+          BRAVE_API_KEY_ENV,
+          TAVILY_API_KEY_ENV,
+          MESSAGING_SETUP_APPLIER_ENV_KEY,
+          "OPENSHELL_GATEWAY",
+          DOCKER_GPU_PATCH_NETWORK_ENV,
+          ...REBUILD_HERMES_DASHBOARD_ENV_KEYS,
+          ...MESSAGING_CHANNEL_CONFIG_ENV_KEYS,
+        ];
+        const savedEnv = scopedEnvKeys.map((key) => [key, process.env[key]] as const);
+        try {
+          await rebuildSandboxUnlocked(sandboxName, options, opts);
+        } finally {
+          for (const key of scopedEnvKeys) delete process.env[key];
+          Object.assign(
+            process.env,
+            Object.fromEntries(
+              savedEnv.filter((entry): entry is [string, string] => entry[1] !== undefined),
+            ),
+          );
+        }
+      }),
     { loadRegistry, withLifecycleLock: withMcpLifecycleLock },
   );
 }
@@ -163,9 +159,6 @@ async function rebuildSandboxUnlocked(
   } = targetConfig;
   const { staleRecovery } = liveState;
   let preparedImage = initiallyPreparedImage;
-  const preservedCustomPolicies = (sandboxEntry.customPolicies ?? []).map((entry) => ({
-    ...entry,
-  }));
   let recoveryManifest = validatedRecoveryManifest;
   const preparedBackupRecovery = recoveryManifest !== null;
   const recoveryRecreate = staleRecovery || preparedBackupRecovery;
@@ -444,7 +437,6 @@ async function rebuildSandboxUnlocked(
           rebuildsHermesSandbox: rebuildAgent === "hermes",
           hermesToolGateways,
           hasHermesToolGateways,
-          sessionPolicyPresets: backup.sessionPolicyPresets,
           credentialEnv,
           baseImagePreflight,
           recoveryRecreate,
@@ -464,49 +456,13 @@ async function rebuildSandboxUnlocked(
       }
       if (!recreated) return;
 
-      const completedInnerSession = onboardSession.loadSession();
-      const freshInnerOnboardPolicyPresets =
-        completedInnerSession?.sandboxName === sandboxName &&
-        Array.isArray(completedInnerSession.policyPresets)
-          ? completedInnerSession.policyPresets
-          : [];
-      const targetPolicyPresets = excludePolicyPresetsByName(
-        normalizeRebuildTargetPolicyPresets(
-          [...backup.policyPresets, ...freshInnerOnboardPolicyPresets],
-          {
-            ...sandboxEntry,
-            observabilityEnabled: recreateOptions.observabilityEnabled,
-          },
-          durableConfig.webSearchConfig,
-        ),
-        mcpPreparation.entries.map((entry) => entry.policyName),
-      );
-      const capturedCustomPolicies =
-        backup.backupManifest?.customPolicies?.map((entry) => ({ ...entry })) ??
-        preservedCustomPolicies;
-      const customPoliciesWithRegistryPinAuthority = capturedCustomPolicies.map((entry) => {
-        const { trustedPrivatePins: _capturedPinAuthority, ...captured } = entry;
-        const registryAuthority = preservedCustomPolicies.find(
-          (candidate) =>
-            candidate.name === entry.name &&
-            candidate.content === entry.content &&
-            candidate.trustedPrivatePins?.contentDigest === entry.trustedPrivatePins?.contentDigest,
-        )?.trustedPrivatePins;
-        return {
-          ...captured,
-          ...(registryAuthority ? { trustedPrivatePins: registryAuthority } : {}),
-        };
-      });
-
       const restore = () =>
         runRebuildRestorePhase({
           sandboxName,
           targetAgentType: rebuildAgent || "openclaw",
           targetImageIsCustom: Boolean(fromDockerfile),
           backupManifest: backup.backupManifest,
-          policyPresets: targetPolicyPresets,
-          customPolicies: customPoliciesWithRegistryPinAuthority,
-          reconcileManagedDcodeObservability: rebuildAgent === DCODE_AGENT_NAME,
+          policyDocument: backup.policyDocument,
           log,
         });
       let hermesCronRestoreIdentity: HermesCronRestoreIdentity | undefined;

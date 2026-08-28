@@ -13,13 +13,13 @@ export type PolicyTestWebSearchConfig = { fetchEnabled: true };
 export function createPolicyHandlerDeps(
   overrides: Partial<PoliciesStateOptions<PolicyTestAgent, PolicyTestWebSearchConfig>["deps"]> = {},
 ) {
-  let session = createSession({ policyAuthority: "nemoclaw-managed" });
+  let session = createSession();
   const calls = {
     load: vi.fn(() => session),
     activeSandbox: vi.fn(() => ({
       messaging: { plan: makeMessagingPlan({ channels: ["telegram"] }) },
-      policyAuthority: "nemoclaw-managed" as const,
     })),
+    livePresets: vi.fn(() => [] as string[]),
     mergeChannels: vi.fn(
       (selected: string[], recorded: string[], active: string[] | null | undefined) =>
         selected.length > 0 ? selected : (active ?? recorded),
@@ -65,6 +65,7 @@ export function createPolicyHandlerDeps(
     deps: {
       loadSession: calls.load,
       getActiveSandbox: calls.activeSandbox,
+      getAppliedPolicyPresets: calls.livePresets,
       mergePolicyMessagingChannels: calls.mergeChannels,
       detectUnconfiguredMessagingChannels: calls.unconfiguredChannels,
       verifyCompatibleEndpointSandboxSmoke: calls.smoke,
@@ -77,11 +78,9 @@ export function createPolicyHandlerDeps(
       updateSession: calls.updateSession,
       recordStepComplete: calls.complete,
       toSessionUpdates: (updates: Record<string, unknown>) => updates as SessionUpdates,
-      persistAppliedPolicyPresets: calls.persistPolicies,
       ...overrides,
     },
     setSession(next: Session) {
-      if (!next.policyAuthority) next.policyAuthority = "nemoclaw-managed";
       session = next;
     },
     getSession: () => session,

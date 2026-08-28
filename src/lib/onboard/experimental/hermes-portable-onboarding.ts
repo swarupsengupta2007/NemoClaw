@@ -102,7 +102,10 @@ export type HermesPortableSandboxObservation =
 export type HermesPortableRegistryDisposition =
   | { readonly kind: "missing" }
   | { readonly kind: "matching"; readonly entry: SandboxEntry }
-  | { readonly kind: "matching-without-gateway-port"; readonly entry: SandboxEntry }
+  | {
+      readonly kind: "matching-without-gateway-port";
+      readonly entry: SandboxEntry;
+    }
   | { readonly kind: "conflict"; readonly detail: string };
 
 export interface HermesPortableOnboardingInput {
@@ -702,7 +705,10 @@ export function observeHermesPortableSandbox(
   readClockMs: () => number = performance.now.bind(performance),
 ): HermesPortableSandboxObservation {
   if (timeoutBudgetMs !== undefined && (!Number.isFinite(timeoutBudgetMs) || timeoutBudgetMs < 1)) {
-    return { kind: "ambiguous", detail: HERMES_PORTABLE_READY_PUBLICATION_TIMEOUT_DETAIL };
+    return {
+      kind: "ambiguous",
+      detail: HERMES_PORTABLE_READY_PUBLICATION_TIMEOUT_DETAIL,
+    };
   }
   const deadlineMs = timeoutBudgetMs === undefined ? null : readClockMs() + timeoutBudgetMs;
   const captureWithinDeadline = (args: readonly string[]): HermesPortableOpenShellResult | null => {
@@ -712,10 +718,16 @@ export function observeHermesPortableSandbox(
   };
   const list = captureWithinDeadline(["sandbox", "list", "-g", gatewayName]);
   if (!list) {
-    return { kind: "ambiguous", detail: HERMES_PORTABLE_READY_PUBLICATION_TIMEOUT_DETAIL };
+    return {
+      kind: "ambiguous",
+      detail: HERMES_PORTABLE_READY_PUBLICATION_TIMEOUT_DETAIL,
+    };
   }
   if (list.status !== 0 || list.error) {
-    return { kind: "ambiguous", detail: "the selected OpenShell gateway is not proven reachable" };
+    return {
+      kind: "ambiguous",
+      detail: "the selected OpenShell gateway is not proven reachable",
+    };
   }
   const current = captureWithinDeadline([
     "sandbox",
@@ -727,13 +739,19 @@ export function observeHermesPortableSandbox(
     sandboxName,
   ]);
   if (!current) {
-    return { kind: "ambiguous", detail: HERMES_PORTABLE_READY_PUBLICATION_TIMEOUT_DETAIL };
+    return {
+      kind: "ambiguous",
+      detail: HERMES_PORTABLE_READY_PUBLICATION_TIMEOUT_DETAIL,
+    };
   }
   if (current.status === 0 && !current.error) {
     const output = strictOpenShellText(current.stdout);
     const identity = parseHermesPortableSandboxJson(output, sandboxName);
     if (!identity) {
-      return { kind: "ambiguous", detail: "sandbox get returned no exact durable sandbox ID" };
+      return {
+        kind: "ambiguous",
+        detail: "sandbox get returned no exact durable sandbox ID",
+      };
     }
     if (identity.phase !== "Ready") {
       return { kind: "ambiguous", detail: HERMES_PORTABLE_NOT_READY_DETAIL };
@@ -745,7 +763,10 @@ export function observeHermesPortableSandbox(
     };
   }
   if (current.error || current.status === null) {
-    return { kind: "ambiguous", detail: "sandbox get ended without a status-bearing response" };
+    return {
+      kind: "ambiguous",
+      detail: "sandbox get ended without a status-bearing response",
+    };
   }
   const output =
     `${strictOpenShellText(current.stderr)}\n${strictOpenShellText(current.stdout)}`.trim();
@@ -759,7 +780,10 @@ export function observeHermesPortableSandbox(
       `Error:   × code: 'Some requested entity was not found', message: "sandbox not found"`;
   return named.test(output) || coded
     ? { kind: "absent" }
-    : { kind: "ambiguous", detail: "sandbox get did not prove exact sandbox absence" };
+    : {
+        kind: "ambiguous",
+        detail: "sandbox get did not prove exact sandbox absence",
+      };
 }
 
 async function settleCreatedHermesPortableSandboxReadyPublication(
@@ -823,13 +847,19 @@ export function classifyHermesPortableRegistry(
     entry.openshellDriver !== "docker" ||
     entry.openshellVersion !== receipt.openshellExecutableAuthority.version
   ) {
-    return { kind: "conflict", detail: "the saved row has another agent, gateway, or generation" };
+    return {
+      kind: "conflict",
+      detail: "the saved row has another agent, gateway, or generation",
+    };
   }
   if (entry.gatewayPort === undefined) {
     return { kind: "matching-without-gateway-port", entry };
   }
   if (entry.gatewayPort !== gatewayPort) {
-    return { kind: "conflict", detail: "the saved row has another gateway port" };
+    return {
+      kind: "conflict",
+      detail: "the saved row has another gateway port",
+    };
   }
   return { kind: "matching", entry };
 }
@@ -848,7 +878,10 @@ function classifyHermesPortableRegistryForCurrentRoute(
       normalizeSandboxInferenceRouteSelection(authority.selection),
     )
   ) {
-    return { kind: "conflict", detail: "the saved row has another inference route" };
+    return {
+      kind: "conflict",
+      detail: "the saved row has another inference route",
+    };
   }
   return disposition;
 }
@@ -1027,7 +1060,9 @@ function requireCurrentReceiptSnapshot<T extends HermesPortableLifecycleReceipt>
 
 function requireConfiguredReceiptSnapshot(
   snapshot: HermesPortableReceiptSnapshot,
-): HermesPortableReceiptSnapshot & { readonly receipt: HermesPortableConfiguredReceipt } {
+): HermesPortableReceiptSnapshot & {
+  readonly receipt: HermesPortableConfiguredReceipt;
+} {
   if (snapshot.receipt.phase === "pending") fail("configured receipt authority is required");
   return snapshot as HermesPortableReceiptSnapshot & {
     readonly receipt: HermesPortableConfiguredReceipt;
@@ -1216,7 +1251,7 @@ export async function runHermesPortableOnboardingTransaction<T>(
             detail: "the inference route reservation changed after admission",
           };
         }
-        if (entry?.pendingPolicyVerification !== undefined) {
+        if (entry?.pendingCreateVerification !== undefined) {
           if (committedRegistryEntry || !deps.revalidatePendingCreateRegistry) {
             return {
               kind: "conflict",

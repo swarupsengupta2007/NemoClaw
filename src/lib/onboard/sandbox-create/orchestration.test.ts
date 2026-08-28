@@ -10,9 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PolicyAuthorityRefusalError } from "../../adapters/openshell/policy-authority";
 import type { SandboxEntry } from "../../state/registry";
 import {
-  applyManagedSandboxRebuildPolicyCarryForward,
   assertApfCreateIntent,
-  backfillVerifiedExternalSandboxPolicyAuthority,
   completeHermesPortableSandboxRegistration,
   createProviderEffectBoundary,
   finalizeCreatedSandboxBeforeHermesCredentialReconciliation,
@@ -23,7 +21,7 @@ import {
   readManagedDcodeCreateSelectionDrift,
   readSandboxRecreateRegistryEntry,
   reconcileCreatedHermesCredentialEnvironment,
-  resolveSandboxCreatePolicyAuthority,
+  resolveInitialPolicyDelivery,
   runAsyncWithPostCreateRecovery,
   runSandboxCreateWithPolicyAuthorityChecks,
   runWithPostCreateRecovery,
@@ -200,7 +198,10 @@ describe("retained create recovery persistence", () => {
       gatewayName: "nemoclaw-18080",
       gatewayPort: 18080,
       lifecycleGeneration: "00000000-0000-4000-8000-000000000004",
-      verifiedEffectivePolicyIdentity: { hash: "sha256:policy-4", activeVersion: 4 },
+      verifiedEffectivePolicyIdentity: {
+        hash: "sha256:policy-4",
+        activeVersion: 4,
+      },
     } as const;
     const markRetainedSandboxRecovery = vi.fn(() => true);
     const input = {
@@ -391,20 +392,9 @@ describe("retained create recovery persistence", () => {
 });
 
 describe("APF create policy selection", () => {
-  it("selects a policyless external plan only from an absent global policy (#9833)", () => {
-    expect(resolveSandboxCreatePolicyAuthority("nemoclaw-managed", true)).toBe(
-      "externally-managed",
-    );
-    expect(resolveSandboxCreatePolicyAuthority("nemoclaw-managed", false)).toBe("nemoclaw-managed");
-    expect(resolveSandboxCreatePolicyAuthority("externally-managed", false)).toBe(
-      "externally-managed",
-    );
-  });
-
-  it("refuses APF creation when an active global policy exists (#9833)", () => {
-    expect(() => resolveSandboxCreatePolicyAuthority("externally-managed", true)).toThrow(
-      /active global policy to be absent/u,
-    );
+  it("selects whether OpenShell receives a supplied policy or APF interception", () => {
+    expect(resolveInitialPolicyDelivery(true)).toBe("apf-interceptor");
+    expect(resolveInitialPolicyDelivery(false)).toBe("supplied");
   });
 
   it("requires APF effects to use the generic post-create gate (#9833)", () => {
@@ -457,9 +447,6 @@ describe("deferred provider effect authority", () => {
     await expect(
       runAfterVerifiedCreate?.({
         registration: {
-          policyAuthority: "externally-managed",
-          policyCreationReceipt: null,
-          observedPolicyAuthority: "externally-managed",
           policyIdentity: { hash: "b".repeat(64), activeVersion: 1 },
         },
         sandboxName: "alpha",
@@ -479,36 +466,6 @@ describe("deferred provider effect authority", () => {
     expect(revalidatePolicyRequirements).toHaveBeenCalledWith(
       "attaching deferred providers to sandbox 'alpha'",
     );
-  });
-});
-
-describe("policy authority backfill", () => {
-  it("does not assign managed authority before completed sandbox registration (#9833)", () => {
-    const updateSandbox = vi.fn(() => true);
-
-    backfillVerifiedExternalSandboxPolicyAuthority({
-      sandboxName: "alpha",
-      existingEntry: { name: "alpha", pendingRouteReservation: true },
-      policyAuthority: "nemoclaw-managed",
-      updateSandbox,
-    });
-
-    expect(updateSandbox).not.toHaveBeenCalled();
-  });
-
-  it("records verified external authority on an unattributed existing row (#9833)", () => {
-    const updateSandbox = vi.fn(() => true);
-
-    backfillVerifiedExternalSandboxPolicyAuthority({
-      sandboxName: "alpha",
-      existingEntry: { name: "alpha" },
-      policyAuthority: "externally-managed",
-      updateSandbox,
-    });
-
-    expect(updateSandbox).toHaveBeenCalledExactlyOnceWith("alpha", {
-      policyAuthority: "externally-managed",
-    });
   });
 });
 
@@ -548,78 +505,12 @@ describe("managed MCP rebuild handoff", () => {
   });
 });
 
-describe("authoritative rebuild policy carry-forward", () => {
-  it("preserves an intentionally empty managed preset selection (#9792)", () => {
-    const note = vi.fn();
-    const applyRecreatePolicyCarryForward = vi.fn();
-    const revalidatePolicyAuthority = vi.fn();
-
-    applyManagedSandboxRebuildPolicyCarryForward(
-      {
-        sandboxName: "alpha",
-        policyAuthority: "nemoclaw-managed",
-        nonInteractive: true,
-        note,
-        rebuildPolicyPresets: [],
-        revalidatePolicyAuthority,
-      },
-      applyRecreatePolicyCarryForward,
-    );
-
-    expect(applyRecreatePolicyCarryForward).toHaveBeenCalledExactlyOnceWith(
-      "alpha",
-      true,
-      note,
-      [],
-    );
-  });
-
-  it("does not carry managed presets into a live external recreation (#9833)", () => {
-    const applyRecreatePolicyCarryForward = vi.fn();
-    const revalidatePolicyAuthority = vi.fn();
-
-    applyManagedSandboxRebuildPolicyCarryForward(
-      {
-        sandboxName: "alpha",
-        policyAuthority: "externally-managed",
-        nonInteractive: true,
-        note: vi.fn(),
-        rebuildPolicyPresets: ["github"],
-        revalidatePolicyAuthority,
-      },
-      applyRecreatePolicyCarryForward,
-    );
-
-    expect(revalidatePolicyAuthority).not.toHaveBeenCalled();
-    expect(applyRecreatePolicyCarryForward).not.toHaveBeenCalled();
-  });
-
-  it("revalidates managed authority before live recreate policy carry-forward (#9833)", () => {
-    const applyRecreatePolicyCarryForward = vi.fn();
-    const revalidatePolicyAuthority = vi.fn(() => {
-      throw new Error("policy authority changed");
-    });
-
-    expect(() =>
-      applyManagedSandboxRebuildPolicyCarryForward(
-        {
-          sandboxName: "alpha",
-          policyAuthority: "nemoclaw-managed",
-          nonInteractive: true,
-          note: vi.fn(),
-          rebuildPolicyPresets: ["github"],
-          revalidatePolicyAuthority,
-        },
-        applyRecreatePolicyCarryForward,
-      ),
-    ).toThrow("policy authority changed");
-    expect(applyRecreatePolicyCarryForward).not.toHaveBeenCalled();
-  });
-});
-
 describe("sandbox recreate registry authority", () => {
   it("re-reads the durable source row for Hermes portable recreation (#10056)", () => {
-    const durable = { name: "alpha", lifecycleGeneration: "source-generation" } as SandboxEntry;
+    const durable = {
+      name: "alpha",
+      lifecycleGeneration: "source-generation",
+    } as SandboxEntry;
     const readRegistry = vi.fn(() => durable);
 
     expect(
@@ -870,7 +761,10 @@ describe("sandbox create policy authority checks", () => {
   });
 
   it("retains verified policy evidence when checkpoint persistence fails (#9833)", async () => {
-    const verifiedEvidence = { policyHash: "sha256:policy-4", policyVersion: 4 } as const;
+    const verifiedEvidence = {
+      policyHash: "sha256:policy-4",
+      policyVersion: 4,
+    } as const;
     const persistRetainedSandboxRecovery = vi.fn(() => true);
 
     await expect(
@@ -1060,19 +954,7 @@ describe("sandbox create policy authority checks", () => {
       runVerifiedCreateEffects: async () => {
         await providerBoundary.runAfterVerifiedCreate?.({
           registration: {
-            policyAuthority: "nemoclaw-managed",
-            policyCreationReceipt: {
-              schemaVersion: 1,
-              origin: "sandbox-create",
-              gatewayName: "nemoclaw",
-              gatewayPort: 8080,
-              sandboxName: "alpha",
-              lifecycleGeneration: "00000000-0000-4000-8000-000000000001",
-              sandboxIdentityFingerprint: exactIdentity,
-              policyHash: "policy-alpha",
-              policyVersion: 1,
-            },
-            observedPolicyAuthority: "owner-unknown",
+            policyIdentity: { hash: "policy-alpha", activeVersion: 1 },
           },
           sandboxName: "alpha",
           gatewayName: "nemoclaw",
@@ -1114,7 +996,9 @@ describe("sandbox create policy authority checks", () => {
     expect((error as AggregateError).errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ message: "temporary source cleanup failed" }),
-        expect.objectContaining({ message: expect.stringContaining("left sandbox 'alpha'") }),
+        expect.objectContaining({
+          message: expect.stringContaining("left sandbox 'alpha'"),
+        }),
       ]),
     );
   });
@@ -1369,7 +1253,9 @@ describe("sandbox create policy authority checks", () => {
     );
     expect((error as AggregateError).errors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ message: expect.stringContaining("post-create verification") }),
+        expect.objectContaining({
+          message: expect.stringContaining("post-create verification"),
+        }),
       ]),
     );
     expect(cleanupTemporarySources).toHaveBeenCalledOnce();

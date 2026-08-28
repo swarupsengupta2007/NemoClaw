@@ -384,8 +384,8 @@ runner.run = (command, opts = {}) => {
 	  removeSandbox: (name) => { registryMutationCalls.push({ operation: "remove", name }); },
 	});
 if (postCreateRunnerRefusal) {
-  const requireCurrentCheckpoint = registry.requireCurrentPendingSandboxPolicyVerification;
-  registry.requireCurrentPendingSandboxPolicyVerification = (...args) => {
+  const requireCurrentCheckpoint = registry.requireCurrentPendingSandboxCreateVerification;
+  registry.requireCurrentPendingSandboxCreateVerification = (...args) => {
     checkpointReadCalls += 1;
     if (checkpointReadCalls === 6) {
       throw new Error("post-verification create runner checkpoint failed");
@@ -647,7 +647,10 @@ if (${JSON.stringify(
         NEMOCLAW_MESSAGING_PLAN_B64:
           expectedOutcome === "staged-messaging-refusal"
             ? encodeMessagingPlan(
-                makeMessagingPlan({ sandboxName: "my-assistant", channels: ["telegram"] }),
+                makeMessagingPlan({
+                  sandboxName: "my-assistant",
+                  channels: ["telegram"],
+                }),
               )
             : "",
       };

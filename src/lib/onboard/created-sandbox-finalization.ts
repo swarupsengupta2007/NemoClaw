@@ -29,7 +29,7 @@ import type { HermesPortableConfiguredReceipt } from "./experimental/hermes-port
 import { warnIfLandlockUnsupported } from "./landlock-warning";
 import * as managedWorkloadOnboard from "./managed-workload/onboard-orchestration";
 import { printMessagingProviderMissing } from "./preflight-messages";
-import { pendingSandboxPolicyVerificationForBoundary } from "./sandbox-create/policy-creation-receipt";
+import { pendingSandboxPolicyVerificationForBoundary } from "./sandbox-create/policy-verification";
 import type { SandboxGpuCreateFlowResult } from "./sandbox-gpu-create-flow";
 import type { VerifiedSandboxPolicyBoundary, VerifiedSandboxPolicyRegistration } from "./types";
 import type { SelectionDrift } from "./selection-drift";
@@ -465,9 +465,11 @@ export function createCreatedSandboxCompletionActions(
       deps.revalidatePolicyAuthority?.(
         `publishing sandbox '${options.finalization.sandboxName}' registry authority`,
       );
-      const verifiedPolicyRegistration = verifiedPolicyBoundary.registration;
       return finalizeCreatedSandbox(
-        { ...options.finalization, gatewayName: options.registration.gatewayName },
+        {
+          ...options.finalization,
+          gatewayName: options.registration.gatewayName,
+        },
         {
           ...deps,
           register: (openclawImagePluginInstalls) => {
@@ -501,16 +503,6 @@ export function createCreatedSandboxCompletionActions(
               hermesDashboardState,
               dashboardPort,
               ...finalLifecycle,
-              appliedPolicies:
-                verifiedPolicyRegistration.policyAuthority === "externally-managed"
-                  ? []
-                  : options.registration.appliedPolicies,
-              policyAuthority: verifiedPolicyRegistration.policyAuthority,
-              ...(verifiedPolicyRegistration.policyAuthority === "nemoclaw-managed"
-                ? {
-                    policyCreationReceipt: verifiedPolicyRegistration.policyCreationReceipt,
-                  }
-                : {}),
               inferenceRouteReservation: verifiedInferenceRouteReservation,
               verifiedCreate,
             });
@@ -559,11 +551,6 @@ type OnboardCreateIntent = {
   readonly observabilityEnabled?: boolean;
 } | null;
 type OnboardResolvedCreateIntent = {
-  readonly policy: {
-    readonly options: {
-      readonly baselineExclusions: NonNullable<RegistrationSeed["baselineExclusions"]>;
-    };
-  };
   readonly hostMounts?: RegistrationSeed["hostMounts"];
 };
 type OnboardCreateContext = {
@@ -600,11 +587,10 @@ type OnboardGatewayBinding = {
 type OnboardPreparedPolicy = Omit<
   Pick<
     managedWorkloadOnboard.PreparedOnboardSandboxWorkloadLaunch,
-    "initialSandboxPolicy" | "policyTier" | "policyAuthority" | "dashboardRemoteBindPrepared"
+    "initialSandboxPolicy" | "dashboardRemoteBindPrepared"
   >,
-  "policyAuthority"
+  never
 > & {
-  readonly policyAuthority: NonNullable<SandboxEntry["policyAuthority"]>;
   readonly compatibilityPolicyPath: string | null;
   readonly getVerifiedPolicyBoundary: () => VerifiedSandboxPolicyBoundary;
   readonly getVerifiedCreateRegistrationAuthority: () => NonNullable<
@@ -678,23 +664,16 @@ export function createOnboardCreatedSandboxCompletion(
         agent,
         agentVersionKnown: !fromDockerfile,
         portableLifecycle,
-        appliedPolicies:
-          preparedPolicy.policyAuthority === "externally-managed"
-            ? []
-            : preparedPolicy.initialSandboxPolicy.appliedPresets,
-        policyAuthority: preparedPolicy.policyAuthority,
         toolDisclosure: policyRegistration.toolDisclosure,
         observabilityEnabled: createIntent?.observabilityEnabled === true,
         ...(agentFlags.isManagedDcodeAgent
           ? { dcodeAutoApprovalMode: policyRegistration.dcodeAutoApprovalMode }
           : {}),
-        policyTier: preparedPolicy.policyTier,
         ...creationFidelity(
           creation.webSearchConfig,
           fromDockerfile,
           creation.hermesAuthMethod,
           preparedPolicy.dashboardRemoteBindPrepared,
-          resolvedCreateIntent.policy.options.baselineExclusions,
         ),
         ...messaging,
         hermesApiPort,

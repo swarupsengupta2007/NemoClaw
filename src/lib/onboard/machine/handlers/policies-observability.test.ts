@@ -10,7 +10,7 @@ type Agent = { name: string };
 
 describe("handlePoliciesState observability", () => {
   it("threads durable observability intent into policy reconciliation", async () => {
-    const session = createSession({ observabilityEnabled: true, policyAuthority: "nemoclaw-managed" });
+    const session = createSession({ observabilityEnabled: true });
     const prepareResume = vi.fn(() => ({
       policyPresets: [],
       recordedPolicyPresetsNeedReconcile: false,
@@ -21,6 +21,7 @@ describe("handlePoliciesState observability", () => {
     const deps = {
       loadSession: () => session,
       getActiveSandbox: () => null,
+      getAppliedPolicyPresets: () => [],
       mergePolicyMessagingChannels: () => [],
       detectUnconfiguredMessagingChannels: () => [],
       verifyCompatibleEndpointSandboxSmoke: vi.fn(),
@@ -33,7 +34,6 @@ describe("handlePoliciesState observability", () => {
       updateSession: () => session,
       recordStepComplete: vi.fn(async () => session),
       toSessionUpdates: (updates: Record<string, unknown>) => updates as SessionUpdates,
-      persistAppliedPolicyPresets: vi.fn(() => true),
     } satisfies PoliciesStateOptions<Agent, never>["deps"];
 
     await handlePoliciesState({
@@ -61,11 +61,9 @@ describe("handlePoliciesState observability", () => {
     );
   });
 
-  it("keeps an authoritative rebuild tier through resume preparation and policy setup", async () => {
+  it("does not replay a durable tier through resume preparation or policy setup", async () => {
     const session = createSession({
       observabilityEnabled: true,
-      policyAuthority: "nemoclaw-managed",
-      policyPresets: ["observability-otlp-local"],
     });
     const prepareResume = vi.fn(() => ({
       policyPresets: [],
@@ -76,7 +74,8 @@ describe("handlePoliciesState observability", () => {
     const setupPolicies = vi.fn(async () => []);
     const deps = {
       loadSession: () => session,
-      getActiveSandbox: () => ({ policyTier: null }),
+      getActiveSandbox: () => null,
+      getAppliedPolicyPresets: () => [],
       mergePolicyMessagingChannels: () => [],
       detectUnconfiguredMessagingChannels: () => [],
       verifyCompatibleEndpointSandboxSmoke: vi.fn(),
@@ -89,12 +88,10 @@ describe("handlePoliciesState observability", () => {
       updateSession: () => session,
       recordStepComplete: vi.fn(async () => session),
       toSessionUpdates: (updates: Record<string, unknown>) => updates as SessionUpdates,
-      persistAppliedPolicyPresets: vi.fn(() => true),
     } satisfies PoliciesStateOptions<Agent, never>["deps"];
 
     await handlePoliciesState({
       resume: true,
-      authoritativePolicyTier: "restricted",
       sandboxName: "my-assistant",
       provider: "provider",
       model: "model",
@@ -110,11 +107,11 @@ describe("handlePoliciesState observability", () => {
 
     expect(prepareResume).toHaveBeenCalledWith(
       "my-assistant",
-      expect.objectContaining({ tierName: "restricted" }),
+      expect.objectContaining({ tierName: null }),
     );
     expect(setupPolicies).toHaveBeenCalledWith(
       "my-assistant",
-      expect.objectContaining({ tierName: "restricted", selectedPresets: [] }),
+      expect.objectContaining({ tierName: null, selectedPresets: [] }),
     );
   });
 });

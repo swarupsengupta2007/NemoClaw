@@ -88,7 +88,9 @@ describe("rebuildSandbox flow: target image", () => {
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-rebuild-from-"));
       const dockerfile = path.join(tempDir, "Dockerfile.unreadable");
       fs.writeFileSync(dockerfile, "FROM scratch\n", { mode: 0o000 });
-      const harness = createRebuildFlowHarness({ sandboxEntry: { fromDockerfile: dockerfile } });
+      const harness = createRebuildFlowHarness({
+        sandboxEntry: { fromDockerfile: dockerfile },
+      });
       try {
         await expect(
           harness.rebuildSandbox("alpha", ["--yes"], { throwOnError: true }),
@@ -102,7 +104,9 @@ describe("rebuildSandbox flow: target image", () => {
   );
 
   it("fails closed on a corrupt durable custom Dockerfile value", async () => {
-    const harness = createRebuildFlowHarness({ sandboxEntry: { fromDockerfile: 42 } });
+    const harness = createRebuildFlowHarness({
+      sandboxEntry: { fromDockerfile: 42 },
+    });
 
     await expect(
       harness.rebuildSandbox("alpha", ["--yes"], { throwOnError: true }),
@@ -176,14 +180,18 @@ describe("rebuildSandbox flow: target image", () => {
     ).resolves.toBeUndefined();
 
     expect(finalizePreparedImage).toHaveBeenCalledWith(
-      expect.objectContaining({ rebuildTarget: { agentName: "hermes", fromDockerfile: null } }),
+      expect.objectContaining({
+        rebuildTarget: { agentName: "hermes", fromDockerfile: null },
+      }),
       messagingPlan,
       preservedEnv,
     );
     expect(harness.onboardSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         preparedImageRebuild: expect.objectContaining({
-          buildContext: expect.objectContaining({ buildId: "backup-finalized" }),
+          buildContext: expect.objectContaining({
+            buildId: "backup-finalized",
+          }),
         }),
       }),
     );
@@ -283,7 +291,9 @@ describe("rebuildSandbox flow: target image", () => {
       expect(harness.onboardSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           fromDockerfile: sourceDockerfile,
-          preparedImageRebuild: expect.objectContaining({ buildContext: prepared }),
+          preparedImageRebuild: expect.objectContaining({
+            buildContext: prepared,
+          }),
         }),
       );
       expect(cleanupBuildCtx).toHaveBeenCalledOnce();
@@ -431,7 +441,7 @@ describe("rebuildSandbox flow: target image", () => {
       expect(harness.session.endpointUrl).not.toBe(staleEndpoint);
       expect(harness.session.metadata).toMatchObject({ fromDockerfile: null });
       expect(harness.session.webSearchConfig).toBeNull();
-      expect(harness.session.policyPresets).toEqual(["npm", "bad", "throw"]);
+      expect(harness.session).not.toHaveProperty("policyPresets");
       expect(harness.session.gpuPassthrough).toBe(false);
       expect(harness.runOpenshellSpy).toHaveBeenCalledWith(
         ["sandbox", "delete", "-g", "nemoclaw", "alpha"],
@@ -502,7 +512,9 @@ describe("rebuildSandbox flow: target image", () => {
         status: "failed",
         failure: { step: "sandbox", message: "Rebuild recreate failed" },
         machine: { state: "failed" },
-        steps: { sandbox: { status: "failed", error: "Rebuild recreate failed" } },
+        steps: {
+          sandbox: { status: "failed", error: "Rebuild recreate failed" },
+        },
       });
       expect(harness.relockSpy).toHaveBeenCalledWith(
         "alpha",

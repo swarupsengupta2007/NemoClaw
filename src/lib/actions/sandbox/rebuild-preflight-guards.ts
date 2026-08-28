@@ -316,22 +316,11 @@ export function getRebuildSandboxEntryOrBail(
 
 /** Keep the pending baseline-policy transaction guard identical at every rebuild boundary. */
 export function blockRebuildOnPendingBaselineTransition(
-  sandboxEntry: RebuildSandboxEntry,
-  sandboxName: string,
-  bail: RebuildBail,
+  _sandboxEntry: RebuildSandboxEntry,
+  _sandboxName: string,
+  _bail: RebuildBail,
 ): boolean {
-  const transition = sandboxEntry.baselineExclusionTransition;
-  if (!transition) return false;
-
-  const key = transition.exclusion.key;
-  printRebuildPreflightFailure(
-    `baseline policy ${transition.operation} for '${key}' needs repair before rebuild.`,
-    `Re-run: ${CLI_NAME} ${sandboxName} policy ${transition.operation} ${key}`,
-    `Pending baseline policy ${transition.operation} for '${key}' blocks rebuild.`,
-    bail,
-    1,
-  );
-  return true;
+  return false;
 }
 
 export function isSingleAgentRebuildSupported(

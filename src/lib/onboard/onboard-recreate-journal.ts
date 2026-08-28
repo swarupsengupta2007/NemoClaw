@@ -36,7 +36,6 @@ export interface OnboardRecreateTargetIntent {
   readonly toolDisclosure: string;
   readonly dcodeAutoApprovalMode: string | null;
   readonly observabilityEnabled: boolean;
-  readonly policyTier: string | null;
 }
 
 export function fingerprintOnboardRecreateTargetIntent(
@@ -107,7 +106,10 @@ export function openOnboardRecreateJournal(
       ...checkpoint,
       machineState: current.machine.state,
       updatedAt: new Date().toISOString(),
-      sandboxIdentity: decisionSelected({ name: target.sandboxName, agent: agentName }),
+      sandboxIdentity: decisionSelected({
+        name: target.sandboxName,
+        agent: agentName,
+      }),
       gatewayAuthority: decisionSelected(checkpointGatewayAuthority(authority)),
     };
     beginSandboxRecreateTransaction(current, {

@@ -20,8 +20,8 @@ import type { SandboxEntry } from "../../state/registry";
 import {
   pendingSandboxPolicyVerificationForBoundary,
   revalidateCreatedSandboxPolicyRegistration,
-  type CreatedSandboxPolicyRegistrationInput,
-} from "../sandbox-create/policy-creation-receipt";
+  type CreatedSandboxPolicyVerificationInput,
+} from "../sandbox-create/policy-verification";
 import {
   runSandboxCreateWithPolicyAuthorityChecks,
   verifyCreatedSandboxEffectivePolicy,
@@ -39,12 +39,22 @@ type CreatedPolicyIdentity = { readonly route: SelectedDockerGpuRoute };
 let stateDir: string;
 let policyPath: string;
 
-function gatewayInfo(): { status: number; output: string; stdout: string; stderr: string } {
+function gatewayInfo(): {
+  status: number;
+  output: string;
+  stdout: string;
+  stderr: string;
+} {
   const output = `Gateway endpoint: http://127.0.0.1:${GATEWAY_PORT}\n`;
   return { status: 0, output, stdout: output, stderr: "" };
 }
 
-function metadata(): { status: number; output: string; stdout: string; stderr: string } {
+function metadata(): {
+  status: number;
+  output: string;
+  stdout: string;
+  stderr: string;
+} {
   const stdout = JSON.stringify({
     scope: "sandbox",
     sandbox: "alpha",
@@ -52,12 +62,17 @@ function metadata(): { status: number; output: string; stdout: string; stderr: s
     policy_source: "sandbox",
     active_version: 4,
     hash: "sha256:effective",
-    policy: { version: 1 },
+    policy: { version: 1, network_policies: {} },
   });
   return { status: 0, output: stdout, stdout, stderr: "" };
 }
 
-function readiness(): { status: number; output: string; stdout: string; stderr: string } {
+function readiness(): {
+  status: number;
+  output: string;
+  stdout: string;
+  stderr: string;
+} {
   const stdout = JSON.stringify([
     {
       id: HERMES_PORTABLE_TEST_SANDBOX_ID,
@@ -80,22 +95,9 @@ function checkpointFor(
   input: ReturnType<typeof createHermesPortableTestInput>,
   liveIdentityFingerprint = HERMES_PORTABLE_TEST_LIVE_IDENTITY,
 ) {
-  const policyCreationReceipt = {
-    schemaVersion: 1 as const,
-    origin: "sandbox-create" as const,
-    gatewayName: input.gatewayName,
-    gatewayPort: GATEWAY_PORT,
-    sandboxName: input.sandboxName,
-    lifecycleGeneration: input.lifecycleGeneration,
-    sandboxIdentityFingerprint: liveIdentityFingerprint,
-    policyHash: "sha256:effective",
-    policyVersion: 4,
-  };
   return pendingSandboxPolicyVerificationForBoundary({
     registration: {
-      policyAuthority: "nemoclaw-managed" as const,
-      policyCreationReceipt,
-      observedPolicyAuthority: "owner-unknown" as const,
+      policyIdentity: { hash: "sha256:effective", activeVersion: 4 },
     },
     sandboxName: input.sandboxName,
     gatewayName: input.gatewayName,
@@ -115,14 +117,13 @@ function checkpointEntry(
     gatewayPort: checkpoint.gatewayPort,
     lifecycleGeneration: checkpoint.lifecycleGeneration,
     lifecycleLiveIdentityFingerprint: checkpoint.sandboxIdentityFingerprint,
-    pendingPolicyVerification: checkpoint,
+    pendingCreateVerification: checkpoint,
   };
 }
 
-function policyRegistrationInput(boundary: EffectiveVerifiedSandboxPolicyBoundary): Omit<
-  CreatedSandboxPolicyRegistrationInput,
-  "plannedAuthority"
-> & {
+function policyRegistrationInput(
+  boundary: EffectiveVerifiedSandboxPolicyBoundary,
+): CreatedSandboxPolicyVerificationInput & {
   readonly registration: EffectiveVerifiedSandboxPolicyBoundary["registration"];
 } {
   return {
@@ -171,15 +172,16 @@ network_policies:
       .mockReturnValueOnce(gatewayInfo())
       .mockReturnValueOnce(metadata())
       .mockReturnValueOnce(readiness())
+      .mockReturnValueOnce(metadata())
       .mockReturnValueOnce({
         status: 0,
         output: HERMES_PORTABLE_TEST_POLICY,
         stdout: HERMES_PORTABLE_TEST_POLICY,
         stderr: "",
       })
-      .mockReturnValueOnce(metadata())
       .mockReturnValueOnce(gatewayInfo())
       .mockReturnValueOnce(metadata())
+      .mockReturnValueOnce(readiness())
       .mockReturnValueOnce(metadata());
     const readFile = vi.spyOn(fs, "readFileSync");
     let routeFallbackCalls = 0;
@@ -239,7 +241,6 @@ network_policies:
             effectivePolicySourcePath,
             policySourcePathForRoute: routeFallback,
             apfInterceptorRequested: false,
-            plannedAuthority: "nemoclaw-managed",
             operation: "verify composed Hermes Portable policy",
           }),
         persistVerifiedPolicy: (_identity, _exactIdentity, boundary) => {
@@ -399,7 +400,6 @@ network_policies:
             effectivePolicySourcePath: "/durable.yaml",
             policySourcePathForRoute: routeFallback,
             apfInterceptorRequested: false,
-            plannedAuthority: "nemoclaw-managed",
             operation: "verify incompatible Hermes Portable policy",
           }),
         persistVerifiedPolicy: () => {

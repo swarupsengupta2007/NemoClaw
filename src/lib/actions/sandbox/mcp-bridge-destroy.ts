@@ -133,7 +133,9 @@ export async function prepareMcpBridgesForDestroy(
     }
     for (const entry of entries) {
       inspectExactMcpDestroyProvider(entry, { allowMissing: false });
-      const detachOutcome = detachProvider(sandboxName, entry, { allowLegacyGeneric: true });
+      const detachOutcome = detachProvider(sandboxName, entry, {
+        allowLegacyGeneric: true,
+      });
       if (detachOutcome === "unknown") {
         throw new McpBridgeError(
           `Could not prove provider detach for MCP server '${entry.server}'.`,
@@ -178,9 +180,7 @@ export async function prepareMcpBridgesForDestroy(
       }
     }
     if (!runtimeRestored) {
-      rollbackFailures.push(
-        ...rollbackScrubbedMcpAdapters(sandboxName, sandbox, scrubbedAdapters),
-      );
+      rollbackFailures.push(...rollbackScrubbedMcpAdapters(sandboxName, sandbox, scrubbedAdapters));
     }
     const current = registry.getSandbox(sandboxName);
     if (current?.mcp?.destroyPreparedAt) {
@@ -340,15 +340,9 @@ export async function finalizeMcpBridgesAfterSandboxDelete(
     }
   }
 
-  const finalSandbox = assertMcpDestroySnapshotCurrent(sandboxName, entries);
-  const ownedPolicyNames = new Set(entries.map((entry) => entry.policyName));
-  const remainingCustomPolicies = (finalSandbox.customPolicies ?? []).filter(
-    (policy) =>
-      !(ownedPolicyNames.has(policy.name) && policy.sourcePath === MCP_BRIDGE_POLICY_SOURCE),
-  );
+  assertMcpDestroySnapshotCurrent(sandboxName, entries);
   const cleared = registry.updateSandbox(sandboxName, {
     mcp: undefined,
-    customPolicies: remainingCustomPolicies.length > 0 ? remainingCustomPolicies : undefined,
   });
   if (!cleared) {
     throw new McpBridgeError(

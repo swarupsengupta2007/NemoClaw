@@ -114,7 +114,7 @@ const { createSandbox } = require(${onboardPath});
   );
 
   it.each(["balanced", "restricted"])(
-    "recreate-sandbox records the %s policy tier and late replacement identity",
+    "recreate-sandbox applies the requested %s tier without persisting it and records the late replacement identity",
     {
       timeout: 60_000,
     },
@@ -258,9 +258,13 @@ const { createSandbox } = require(${onboardPath});
         "should delete existing sandbox when --recreate-sandbox is set",
       );
       assert.ok(
-        payload.commands.some((entry: CommandEntry) => entry.command.includes("sandbox create")) &&
-          payload.registeredSandbox?.policyTier === policyTier,
-        "should create a sandbox and persist its tier before policy finalization",
+        payload.commands.some((entry: CommandEntry) => entry.command.includes("sandbox create")),
+        "should create a replacement sandbox",
+      );
+      assert.equal(
+        payload.registeredSandbox?.policyTier,
+        undefined,
+        "the registry must not persist a policy tier",
       );
       assert.ok(
         !payload.commands.some((entry: CommandEntry) =>
@@ -442,7 +446,10 @@ const { createSandbox } = require(${onboardPath});
         cmd?: string;
         name?: string;
         backupPath?: string;
-        options?: { targetAgentType?: string; freshOpenClawImagePluginInstalls?: unknown[] };
+        options?: {
+          targetAgentType?: string;
+          freshOpenClawImagePluginInstalls?: unknown[];
+        };
       }>;
       const backupIndex = events.findIndex((e) => e.kind === "backup");
       const deleteIndex = events.findIndex(
@@ -801,7 +808,7 @@ const { createSandbox } = require(${onboardPath});
   );
 
   it(
-    "recreating a sandbox preserves the user's policy preset selections",
+    "recreating a sandbox does not replay registry policy preset selections",
     {
       timeout: 60_000,
     },
@@ -941,10 +948,10 @@ const { createSandbox } = require(${onboardPath});
       assert.ok(payloadLine, `expected JSON payload in stdout:\n${result.stdout}`);
       const payload = JSON.parse(payloadLine);
 
-      assert.deepEqual(
+      assert.equal(
         payload.policyPresets,
-        ["npm"],
-        "createSandbox should write the previous sandbox's policy presets to the onboard session before destroying it so they can be reapplied after recreation",
+        undefined,
+        "OpenShell live policy must remain the sole source instead of registry preset replay",
       );
     },
   );

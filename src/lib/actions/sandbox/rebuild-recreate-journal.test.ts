@@ -37,7 +37,7 @@ const HOST_MOUNT = {
   sourceIdentity: { device: "66306", inode: "12345" },
 } as const;
 const PRE_HOST_MOUNT_FINGERPRINT =
-  "99603c8bf987561b783e2f38a1dcf260703537e5a680cae2198605ab13e181fe";
+  "831bd40537ec3112f056079c89476ef2d62ce30664d0d11573c98301de81139e";
 
 const NON_DEFAULT_TARGET = {
   sandboxName: "alpha",
@@ -80,7 +80,6 @@ const recreateOptions: RebuildRecreateOnboardOpts = {
   dcodeAutoApprovalRequestedExplicitly: false,
   observabilityEnabled: true,
   observabilityRequestedExplicitly: true,
-  policyTier: "restricted",
   baseImageResolutionHint: null,
 };
 
@@ -122,14 +121,16 @@ describe("rebuild replacement target fingerprint", () => {
   it.each([
     { dcodeAutoApprovalMode: "thread-opt-in" },
     { endpointSource: "onboard" },
-    { policyTier: "balanced" },
     { recreateProvider: "compatible-endpoint" },
     { recreateModel: "model-b" },
     { recreatePreferredInferenceApi: "anthropic" },
   ] as const)("changes when a recorded replacement input changes [case %#]", (drift) => {
-    expect(fingerprintRebuildRecreateTargetIntent({ ...recreateOptions, ...drift })).not.toBe(
-      fingerprintRebuildRecreateTargetIntent(recreateOptions),
-    );
+    expect(
+      fingerprintRebuildRecreateTargetIntent({
+        ...recreateOptions,
+        ...drift,
+      }),
+    ).not.toBe(fingerprintRebuildRecreateTargetIntent(recreateOptions));
   });
 
   it("changes when the replacement targets another gateway", () => {
@@ -143,9 +144,12 @@ describe("rebuild replacement target fingerprint", () => {
   });
 
   it("preserves the previous fingerprint for a replacement without host mounts (#9451)", () => {
-    expect(fingerprintRebuildRecreateTargetIntent({ ...recreateOptions, hostMounts: [] })).toBe(
-      PRE_HOST_MOUNT_FINGERPRINT,
-    );
+    expect(
+      fingerprintRebuildRecreateTargetIntent({
+        ...recreateOptions,
+        hostMounts: [],
+      }),
+    ).toBe(PRE_HOST_MOUNT_FINGERPRINT);
   });
 
   it("separates a mounted replacement from the pre-binding fingerprint (#9451)", () => {

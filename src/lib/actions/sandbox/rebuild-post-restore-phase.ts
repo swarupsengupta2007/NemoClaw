@@ -6,11 +6,10 @@ import * as agentRuntime from "../../agent/runtime";
 import { CLI_NAME } from "../../cli/branding";
 import { D, G, R, YW } from "../../cli/terminal-style";
 import type { SandboxMessagingPlan } from "../../messaging";
-import { normalizePolicyTierName } from "../../onboard/policy-tier-suppression";
-import { BASELINE_EXCLUSION_SUPPORT_IMPACT } from "../../policy/baseline-exclusion";
 import type * as sandboxVersion from "../../sandbox/version";
 import * as shields from "../../shields";
 import * as registry from "../../state/registry";
+import * as sandboxState from "../../state/sandbox";
 import { ensureMessagingHostForwardAfterRebuild } from "./messaging-host-forward-lifecycle";
 import { executeSandboxExecCommand } from "./process-recovery";
 import type { RebuildBackupManifest } from "./rebuild-backup-phase";
@@ -106,19 +105,6 @@ interface SuccessfulRebuildSummaryInput {
   expectedVersion: string | null;
 }
 
-/** Disclose carried-over baseline exclusions and their support impact after a rebuild. */
-export function printBaselineExclusionsRebuildSummary(
-  sandboxName: string,
-  writeLine: (message: string) => void = console.log,
-): void {
-  const exclusions = registry.getBaselineExclusions(sandboxName);
-  if (exclusions.length === 0) return;
-  const keys = exclusions.map((exclusion) => exclusion.key).join(", ");
-  writeLine(
-    `    Baseline exclusions carried over: ${keys} \u2014 ${BASELINE_EXCLUSION_SUPPORT_IMPACT}`,
-  );
-}
-
 export function printSuccessfulRebuildSummary(
   input: SuccessfulRebuildSummaryInput,
   writeLine: (message: string) => void = console.log,
@@ -136,7 +122,6 @@ export function printSuccessfulRebuildSummary(
   if (input.expectedVersion) {
     writeLine(`    Now running: ${input.rebuiltAgentName} v${input.expectedVersion}`);
   }
-  printBaselineExclusionsRebuildSummary(input.sandboxName, writeLine);
 }
 
 function printHermesApiTokenChangeNotice(sandboxName: string, targetAgentName: string): void {
@@ -147,23 +132,6 @@ function printHermesApiTokenChangeNotice(sandboxName: string, targetAgentName: s
   console.log(
     `    Retrieve the new token with \`${CLI_NAME} ${sandboxName} gateway-token --quiet\`.`,
   );
-}
-
-export function resolveRestoredPolicyRegistryState(
-  sandboxEntry: Pick<RebuildSandboxEntry, "policyPresetsFinalized">,
-  restoredBuiltinPresets: readonly string[],
-  failedPresets: readonly string[],
-  policyPresetReconciliationVerified = true,
-): { policies: string[]; policyPresetsFinalized: true | undefined } {
-  return {
-    policies: [...new Set(restoredBuiltinPresets)],
-    policyPresetsFinalized:
-      sandboxEntry.policyPresetsFinalized === true &&
-      failedPresets.length === 0 &&
-      policyPresetReconciliationVerified
-        ? true
-        : undefined,
-  };
 }
 
 /**
@@ -391,24 +359,10 @@ export async function runRebuildPostRestorePhase(
   } else if (hermesGatewayRestoreState === "recovered") {
     console.log(`  ${G}\u2713${R} Hermes gateway recovered after state restore`);
   }
-  const { policies: restoredBuiltinPresets, policyPresetsFinalized } =
-    resolveRestoredPolicyRegistryState(
-      {
-        policyPresetsFinalized: sb.policyPresetsFinalized,
-      },
-      finalBuiltinPresets,
-      failedPresets,
-      policyPresetReconciliationVerified,
-    );
   registry.updateSandbox(sandboxName, {
     agentVersion: agentDef.expectedVersion || null,
-    policies: restoredBuiltinPresets,
-    policyTier: normalizePolicyTierName(sb.policyTier),
-    policyPresetsFinalized,
   });
-  log(
-    `Registry updated: agentVersion=${agentDef.expectedVersion}, policies=[${restoredBuiltinPresets.join(",")}], policyPresetsFinalized=${String(policyPresetsFinalized === true)}`,
-  );
+  log(`Registry updated: agentVersion=${agentDef.expectedVersion}`);
 
   if (!relockShieldsIfNeeded(true)) {
     bail("Failed to re-apply shields lockdown.");
@@ -477,11 +431,10 @@ export async function runRebuildPostRestorePhase(
     }
     printHermesGatewayRestoreRecovery(sandboxName, hermesGatewayRestoreState);
     printMcpRestoreRecovery(sandboxName, mcpBridgeRestoreUnverified);
-    printBaselineExclusionsRebuildSummary(sandboxName);
     if (policyPresetRestoreIncomplete) {
       if (failedPresets.length > 0) {
         console.log(
-          `    Policy presets failed to reapply: ${failedPresets.join(", ")} \u2014 re-apply manually with \`${CLI_NAME} ${sandboxName} policy add\``,
+          `    Exact live policy failed to restore and verify \u2014 retry \`${CLI_NAME} ${sandboxName} rebuild\` after OpenShell policy access is restored`,
         );
       }
       if (failedPresetRemovals.length > 0 || !policyPresetReconciliationVerified) {
@@ -518,6 +471,12 @@ export async function runRebuildPostRestorePhase(
   if (preparedBackupRecovery && !postRestoreComplete) {
     bail(
       `Prepared backup recovery for '${sandboxName}' completed with unverified post-restore state.`,
+    );
+    return;
+  }
+  if (backupManifest && !sandboxState.clearRebuildPolicyHandoff(backupManifest)) {
+    bail(
+      `Rebuild completed, but the bounded policy handoff for '${sandboxName}' could not be removed.`,
     );
     return;
   }

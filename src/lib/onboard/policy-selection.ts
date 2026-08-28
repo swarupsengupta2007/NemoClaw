@@ -73,7 +73,10 @@ export type OnboardPolicyApplicationDeps = Omit<
 };
 
 type Preset = { name: string; access?: string };
-type SupportOptions = { webSearchSupported?: boolean | null; agent?: string | null };
+type SupportOptions = {
+  webSearchSupported?: boolean | null;
+  agent?: string | null;
+};
 type PoliciesApi = {
   setupPolicyPresetSupported(name: string, options?: SupportOptions): boolean;
   listSetupPolicyPresets(sandboxName: string, options?: SupportOptions): Preset[];
@@ -189,6 +192,7 @@ export function createOnboardPolicyApplication(deps: OnboardPolicyApplicationDep
   };
 
   return {
+    getAppliedPolicyPresets: policies.getAppliedPresets,
     arePolicyPresetsApplied(sandboxName: string, selectedPresets: string[] = []): boolean {
       if (!Array.isArray(selectedPresets) || selectedPresets.length === 0) return false;
       const applied = new Set(policies.getAppliedPresets(sandboxName));
@@ -401,7 +405,10 @@ async function setupPoliciesWithSelectionInner(
 
   deps.step(8, 8, "Policy presets");
 
-  const supportOptions = { webSearchSupported: options.webSearchSupported, agent };
+  const supportOptions = {
+    webSearchSupported: options.webSearchSupported,
+    agent,
+  };
   const allPresets = filterSetupPolicyPresetsForAgent(
     deps.policies.listSetupPolicyPresets(sandboxName, supportOptions),
     agent,

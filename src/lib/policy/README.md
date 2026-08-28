@@ -3,44 +3,48 @@
 
 # Policy
 
-Policy modules own sandbox network-policy preset loading, tier resolution, and
-policy application helpers. They may orchestrate OpenShell policy commands while
-legacy flows are being migrated, but pure selection/planning helpers should move
-under `src/lib/domain/**` when they can be isolated.
+OpenShell is the sole durable store and authority for sandbox policy. NemoClaw
+provides convenience commands for selecting, explaining, and applying common
+policy changes; it does not keep a policy desired-state copy in its registry or
+completed onboarding session.
 
-## Policy authority
+## Live policy boundary
 
-The policy module reads the effective OpenShell policy through the sandbox's recorded gateway.
-NemoClaw records the first qualified authority before another policy read or set.
-NemoClaw refuses the operation when it cannot write that record.
+Every policy mutation:
 
-Immediately before each policy set, NemoClaw reads authority again and compares it with the record.
-NemoClaw refuses the policy set when:
+1. resolves the sandbox's current gateway,
+2. reads the current OpenShell base policy,
+3. computes only the requested scoped change,
+4. writes through OpenShell,
+5. reads the policy back and verifies the requested result, and
+6. persists no policy content, hash, version, owner, tier, preset attribution,
+   custom-policy content, or baseline-exclusion journal.
 
-- NemoClaw cannot determine authority.
-- Recorded and observed authority differ.
-- An external authority owns the policy.
+Policy source metadata such as `sandbox` or `global` is diagnostic. A host-side
+change made through the OpenShell TUI, CLI, gateway, interceptor, or an
+operator-managed file is valid and must survive unrelated NemoClaw mutations.
+When a write result is ambiguous, the live reread decides whether the requested
+change happened.
 
-For external authority, preset requests only verify the effective policy.
-NemoClaw requires the exact preset entries before it reports success.
-NemoClaw does not set policy or record preset or custom-policy attribution.
-The external authority must supply a missing or changed entry.
+Built-in preset state is derived from live rule content. Custom policy commands
+encode their identity in OpenShell-owned rule keys so list and remove operations
+do not need saved YAML.
 
-If policy authority becomes external while Shields is down, NemoClaw keeps the
-saved restrictive policy snapshot and refuses to set policy. The external
-policy authority must make the effective policy for the named sandbox match the
-saved restrictive snapshot and current managed MCP entries without changing
-policy authority. `shields status` identifies that required policy by its
-canonical JSON SHA-256 digest and network policy keys. The first status can
-report no artifact. Run `nemoclaw <sandbox> shields up` once to create and
-report the complete recovery artifact. The artifact contains no credential
-values. It contains the saved restrictive policy and current managed MCP policy
-entries, which may include credential bindings. Apply the artifact as the exact
-policy through the external authority; do not reconstruct it from the digest
-or key list. Then rerun `nemoclaw <sandbox> shields up`. NemoClaw verifies the
-exact effective policy and locks configuration. If policy changes during the
-lock, NemoClaw records the verified config lock and keeps Shields down until
-policy recovery succeeds.
+## Lifecycle operations
 
-A legacy sandbox record retains the first qualified `policyAuthority` after a later operation fails.
-An inspection that cannot determine authority does not change the record.
+Onboarding may supply an initial policy, including policyless creation through
+`--apf-interceptor`. Once OpenShell creates the sandbox, its live policy is
+authoritative.
+
+Rebuild and snapshot clone operations read the live policy before deletion or
+creation. They use a mode-`0600` exact handoff only for the active operation,
+and remove it after successful completion. A destructive operation stops before
+deletion when the current policy cannot be read.
+
+Shields-down state is also bounded to the active transaction. Shields restoration
+reverts only the relaxation delta and preserves policy changes made while Shields
+was down. A failed restore retains the transaction for recovery; a verified
+restore removes it.
+
+Policy-dependent credential and provider work runs only after the required live
+policy mutation has been verified.

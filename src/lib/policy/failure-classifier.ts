@@ -53,9 +53,7 @@ export interface AccessFailureClassification {
    * `high` when the underlying signal unambiguously maps to {@link kind}
    * AND the matched preset (if any) was confirmed by a live gateway
    * probe. `low` when either the signal is ambiguous (notably HTTP 403
-   * on an allowed host) or the matched preset is `registry-only` /
-   * `gateway-unavailable`, in which case the agent must treat the
-   * verdict as advisory.
+   * on an allowed host) or the gateway is unavailable.
    */
   confidence: "high" | "low";
 }
@@ -93,19 +91,12 @@ function findMatchingPreset(
 }
 
 function isVerified(preset: PolicyContextPreset): boolean {
-  return (
-    preset.verification === "verified" ||
-    preset.verification === "gateway-only" ||
-    preset.verification === "agent-base"
-  );
+  return preset.verification === "verified" || preset.verification === "agent-base";
 }
 
 function verificationNote(preset: PolicyContextPreset): string {
   if (isVerified(preset)) return "";
-  if (preset.verification === "registry-only") {
-    return " The local registry lists this preset but the OpenShell gateway is not enforcing it (drift); treat this verdict as advisory.";
-  }
-  return " The OpenShell gateway is unreachable, so this verdict is registry-derived and advisory.";
+  return " The current OpenShell policy is unavailable, so this verdict is advisory.";
 }
 
 function resolveContext(input: AccessFailureInput): PolicyContext {
@@ -170,14 +161,8 @@ export function classifyAccessFailure(input: AccessFailureInput): AccessFailureC
           confidence: "high",
         };
       }
-      // Registry-only or gateway-unavailable: the preset is listed locally
-      // but the OpenShell gateway is either drifting or unreachable. A
-      // network-block code on a host that *should* be allowed is the
-      // strongest signal we have that the gateway is in fact blocking
-      // egress to this host — surface it as `blocked-by-policy` so the
-      // agent's remediation matches the doc taxonomy, with the
-      // verification caveat baked into the wording and confidence
-      // downgrade.
+      // The live policy was unavailable. Treat this as advisory until a
+      // fresh OpenShell read proves whether the preset is active.
       return {
         kind: "blocked-by-policy",
         reason: `Host '${input.host}' is declared by preset '${matched.name}' but the request was refused with a network-block code (${code}) and the OpenShell gateway has not been confirmed to enforce this preset.${note}`,

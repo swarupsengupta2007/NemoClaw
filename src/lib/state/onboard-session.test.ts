@@ -121,7 +121,9 @@ describe("onboard session", () => {
     session.saveSession(session.createSession({ apfInterceptorRequested: true }));
     const malformed = JSON.parse(fs.readFileSync(session.SESSION_FILE, "utf8"));
     malformed.apfInterceptorRequested = "true";
-    fs.writeFileSync(session.SESSION_FILE, JSON.stringify(malformed), { mode: 0o600 });
+    fs.writeFileSync(session.SESSION_FILE, JSON.stringify(malformed), {
+      mode: 0o600,
+    });
     const refusal = /saved APF selection is invalid/u;
     expect(() => session.loadSession()).toThrow(refusal);
     expect(fs.readFileSync(session.SESSION_FILE, "utf8")).toContain(
@@ -196,7 +198,10 @@ describe("onboard session", () => {
 
   it("fails closed on malformed persisted serving profile provenance (#8246)", () => {
     const malformed = session.createSession() as unknown as Record<string, unknown>;
-    malformed.servingProfileProvenance = { schemaVersion: 1, catalogDigest: "latest" };
+    malformed.servingProfileProvenance = {
+      schemaVersion: 1,
+      catalogDigest: "latest",
+    };
     expect(session.normalizeSession(malformed as never)).toBeNull();
   });
 
@@ -219,7 +224,11 @@ describe("onboard session", () => {
     session.saveSession(
       session.createSession({
         mode: "non-interactive",
-        stationExpressIntent: { version: 1, kind: "spark", sandboxName: "my-assistant" },
+        stationExpressIntent: {
+          version: 1,
+          kind: "spark",
+          sandboxName: "my-assistant",
+        },
       }),
     );
     session.markStepComplete("provider_selection", {
@@ -282,7 +291,10 @@ describe("onboard session", () => {
         sessionId: current.sessionId,
         machineState: "init",
         updatedAt: new Date().toISOString(),
-        sandboxIdentity: decisionSelected({ name: "rejected-review", agent: "openclaw" }),
+        sandboxIdentity: decisionSelected({
+          name: "rejected-review",
+          agent: "openclaw",
+        }),
         webSearch: { kind: "unset" },
         messaging: { kind: "unset" },
         resourceProfile: { kind: "unset" },
@@ -428,7 +440,6 @@ describe("onboard session", () => {
       preferredInferenceApi: "openai-completions",
       compatibleEndpointReasoning: "true",
       nimContainer: "nim-123",
-      policyPresets: ["pypi", "npm"],
       apiKey: "nvapi-secret",
       metadata: {
         gatewayName: "nemoclaw",
@@ -446,7 +457,6 @@ describe("onboard session", () => {
     expect(loaded.preferredInferenceApi).toBe("openai-completions");
     expect(loaded.compatibleEndpointReasoning).toBe("true");
     expect(loaded.nimContainer).toBe("nim-123");
-    expect(loaded.policyPresets).toEqual(["pypi", "npm"]);
     expect(requireDebugSummary(session.summarizeForDebug()).compatibleEndpointReasoning).toBe(
       "true",
     );
@@ -539,7 +549,9 @@ describe("onboard session", () => {
     expect(raw).toContain(digest);
     expect(raw).not.toContain("BROKEN_NUMERIC");
     const loaded = requireLoadedSession(session.loadSession());
-    expect(loaded.migratedLegacyValueHashes).toEqual({ NVIDIA_API_KEY: digest });
+    expect(loaded.migratedLegacyValueHashes).toEqual({
+      NVIDIA_API_KEY: digest,
+    });
     expect(loaded.migratedLegacyValueHashes?.NVIDIA_API_KEY).toMatch(/^[0-9a-f]{64}$/);
   });
 
@@ -705,8 +717,16 @@ describe("onboard session", () => {
       workflow: "onboard",
       disabledChannels: ["slack"],
       channels: [
-        expect.objectContaining({ channelId: "telegram", configured: true, disabled: false }),
-        expect.objectContaining({ channelId: "slack", configured: true, disabled: true }),
+        expect.objectContaining({
+          channelId: "telegram",
+          configured: true,
+          disabled: false,
+        }),
+        expect.objectContaining({
+          channelId: "slack",
+          configured: true,
+          disabled: true,
+        }),
       ],
     });
     expect(loaded.messagingPlan?.channels[0]?.inputs.map((input) => input.inputId)).toContain(
@@ -750,7 +770,10 @@ describe("onboard session", () => {
     session.saveSession(created);
 
     const raw = JSON.parse(fs.readFileSync(session.SESSION_FILE, "utf-8"));
-    expect(raw.messagingPlan.networkPolicy).toEqual({ presets: [], entries: [] });
+    expect(raw.messagingPlan.networkPolicy).toEqual({
+      presets: [],
+      entries: [],
+    });
     expect(raw.messagingPlan.agentRender).toBeUndefined();
     expect(raw.messagingPlan.buildSteps).toBeUndefined();
     expect(raw.messagingPlan.runtimeSetup).toBeUndefined();
@@ -887,7 +910,11 @@ describe("onboard session", () => {
     const seed = session.createSession();
     session.saveSession(seed);
     const onDisk = JSON.parse(fs.readFileSync(session.SESSION_FILE, "utf-8"));
-    onDisk.wechatConfig = { accountId: 7, baseUrl: { nested: true }, userId: null };
+    onDisk.wechatConfig = {
+      accountId: 7,
+      baseUrl: { nested: true },
+      userId: null,
+    };
     fs.writeFileSync(session.SESSION_FILE, JSON.stringify(onDisk));
 
     const loaded = session.loadSession()!;
@@ -916,7 +943,10 @@ describe("onboard session", () => {
     });
 
     let loaded = requireLoadedSession(session.loadSession());
-    expect(loaded.webSearchConfig).toEqual({ fetchEnabled: true, provider: "brave" });
+    expect(loaded.webSearchConfig).toEqual({
+      fetchEnabled: true,
+      provider: "brave",
+    });
 
     session.completeSession({ webSearchConfig: null });
     loaded = requireLoadedSession(session.loadSession());
@@ -959,7 +989,9 @@ describe("onboard session", () => {
 
   it("does not clear existing metadata when updates omit whitelisted metadata fields", () => {
     session.saveSession(
-      session.createSession({ metadata: { gatewayName: "nemoclaw", fromDockerfile: null } }),
+      session.createSession({
+        metadata: { gatewayName: "nemoclaw", fromDockerfile: null },
+      }),
     );
     const unsafeMetadataUpdate: Parameters<OnboardSessionModule["markStepComplete"]>[1] & {
       metadata: { token: string };
@@ -977,7 +1009,11 @@ describe("onboard session", () => {
 
   it("round-trips secret-free read-only host mount metadata", () => {
     const hostMounts = [
-      { source: "/srv/project", target: "/sandbox/project", readOnly: true as const },
+      {
+        source: "/srv/project",
+        target: "/sandbox/project",
+        readOnly: true as const,
+      },
     ];
     session.saveSession(
       session.createSession({
@@ -1000,8 +1036,16 @@ describe("onboard session", () => {
         metadata: {
           ...malformed.metadata,
           hostMounts: [
-            { source: "/srv/project", target: "/sandbox/project", readOnly: true },
-            { source: "/srv/private", target: "/sandbox/private", readOnly: false },
+            {
+              source: "/srv/project",
+              target: "/sandbox/project",
+              readOnly: true,
+            },
+            {
+              source: "/srv/private",
+              target: "/sandbox/private",
+              readOnly: false,
+            },
           ],
         },
       }),
@@ -1066,7 +1110,9 @@ describe("onboard session", () => {
     const raw = JSON.parse(JSON.stringify(completed)) as Record<string, unknown>;
     raw.checkpoint = { schemaVersion: 3, sessionId: completed.sessionId };
     fs.mkdirSync(path.dirname(session.SESSION_FILE), { recursive: true });
-    fs.writeFileSync(session.SESSION_FILE, JSON.stringify(raw, null, 2), { mode: 0o600 });
+    fs.writeFileSync(session.SESSION_FILE, JSON.stringify(raw, null, 2), {
+      mode: 0o600,
+    });
 
     const loaded = requireLoadedSession(session.loadSession());
     expect(loaded).toMatchObject({
@@ -1393,7 +1439,9 @@ describe("onboard session", () => {
     session.saveSession(session.createSession());
     // Non-boolean requireMention — must not leak through.
     session.markStepComplete("provider_selection", {
-      telegramConfig: { requireMention: "yes" } as unknown as { requireMention: boolean },
+      telegramConfig: { requireMention: "yes" } as unknown as {
+        requireMention: boolean;
+      },
     });
 
     const loaded = session.loadSession()!;
@@ -1435,14 +1483,6 @@ describe("onboard session", () => {
     const created = session.createSession({ messagingPlan: plan });
     expect(created.messagingPlan).toEqual(plan);
     expect(created.provider).toBeNull();
-  });
-
-  it("filters non-string array entries in createSession overrides", () => {
-    const created = session.createSession({
-      policyPresets: ["pypi", 7, null, "npm"] as unknown as string[],
-    });
-
-    expect(created.policyPresets).toEqual(["pypi", "npm"]);
   });
 
   it("summarizes the session for debug output", () => {

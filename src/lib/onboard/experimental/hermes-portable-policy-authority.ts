@@ -6,10 +6,8 @@ import { TextDecoder } from "node:util";
 
 import YAML from "yaml";
 
-import { mergePresetNamesIntoPolicy } from "../../policy";
 import { parseOpenShellPolicy } from "../../policy/merge";
 import type { SandboxEntry } from "../../state/registry/types";
-import { ensureRequiredTierPolicyPresets } from "../policy-tier-suppression";
 import { isOpenShellNativeGpuBaselineEnrichment } from "../sandbox-gpu-route-policy";
 
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
@@ -131,69 +129,19 @@ function parseCreatePolicy(bytes: Buffer): Record<string, unknown> {
   return policy;
 }
 
-function finalizedPresetNames(entry: SandboxEntry): string[] {
-  if (entry.agent !== "hermes") fail("finalized registry has another agent");
-  if (entry.baselineExclusionTransition !== undefined) {
-    fail("finalized registry has an incomplete baseline-policy mutation");
-  }
-  if ((entry.customPolicies ?? []).length > 0) {
-    fail("finalized custom policy authority is not supported");
-  }
-  const rawPresetNames: unknown = entry.policies;
-  if (rawPresetNames !== undefined && !Array.isArray(rawPresetNames)) {
-    fail("finalized registry preset authority is invalid");
-  }
-  const presetNames = (rawPresetNames ?? []) as unknown[];
-  if (
-    presetNames.some((name) => typeof name !== "string" || !NAME.test(name)) ||
-    new Set(presetNames).size !== presetNames.length
-  ) {
-    fail("finalized registry preset authority is invalid");
-  }
-  const names = presetNames as string[];
-  const requiredNames = ensureRequiredTierPolicyPresets(entry.policyTier, names);
-  if (
-    requiredNames.length !== names.length ||
-    requiredNames.some((name, index) => name !== names[index])
-  ) {
-    fail("finalized policy tier disagrees with preset authority");
-  }
-  return names;
-}
-
 /** Reconstruct the exact live policy authorized by a completed onboarding policy step. */
 export function resolveHermesPortableExpectedPolicyBytes(
   createPolicyBytes: Buffer,
   finalizedRegistryEntry?: SandboxEntry | null,
-): { readonly bytes: Buffer; readonly source: "create" | "finalized-registry" } {
+): {
+  readonly bytes: Buffer;
+  readonly source: "create" | "finalized-registry";
+} {
   parseCreatePolicy(createPolicyBytes);
-  if (finalizedRegistryEntry?.policyPresetsFinalized !== true) {
-    return { bytes: Buffer.from(createPolicyBytes), source: "create" };
-  }
-  const presetNames = finalizedPresetNames(finalizedRegistryEntry);
-  const excludedBaselineKeys = (finalizedRegistryEntry.baselineExclusions ?? []).map(
-    (entry) => entry.key,
-  );
-  let composed: ReturnType<typeof mergePresetNamesIntoPolicy>;
-  try {
-    composed = mergePresetNamesIntoPolicy(decode(createPolicyBytes, "create input"), presetNames, {
-      agent: "hermes",
-      sandboxName: finalizedRegistryEntry.name,
-      excludedBaselineKeys,
-    });
-  } catch {
-    fail("cannot compose finalized registry preset authority");
-  }
-  if (
-    composed.missingPresets.length > 0 ||
-    composed.appliedPresets.length !== presetNames.length ||
-    composed.appliedPresets.some((name, index) => name !== presetNames[index])
-  ) {
-    fail("cannot compose finalized registry preset authority");
-  }
-  const bytes = Buffer.from(composed.policy, "utf8");
-  parseCreatePolicy(bytes);
-  return { bytes, source: "finalized-registry" };
+  return {
+    bytes: Buffer.from(createPolicyBytes),
+    source: finalizedRegistryEntry ? "finalized-registry" : "create",
+  };
 }
 
 /** Capture and bind the exact create-policy bytes before sandbox creation. */
@@ -234,7 +182,7 @@ export function proveHermesPortableLivePolicy(input: {
     input.finalizedRegistryEntry,
   );
   const intended = parseCreatePolicy(expected.bytes);
-  const intendedSemanticSha256 = semanticDigest(intended);
+  let intendedSemanticSha256 = semanticDigest(intended);
   const prefix = ["policy", "get", "-g", input.gatewayName] as const;
   const base = capturePolicy(
     input.capture,
@@ -249,11 +197,13 @@ export function proveHermesPortableLivePolicy(input: {
   const baseDigest = semanticDigest(base);
   const fullDigest = semanticDigest(full);
   if (
+    expected.source === "create" &&
     baseDigest !== intendedSemanticSha256 &&
     !isOpenShellNativeGpuBaselineEnrichment(intended, base)
   ) {
     fail("scoped base policy disagrees with create input");
   }
+  if (expected.source === "finalized-registry") intendedSemanticSha256 = baseDigest;
   if (fullDigest !== baseDigest) {
     fail("scoped full policy contains an unproven provider-composed or out-of-band delta");
   }

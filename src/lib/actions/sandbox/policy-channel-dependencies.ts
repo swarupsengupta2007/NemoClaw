@@ -79,9 +79,8 @@ export const policyChannelDependencies = {
   revalidateChannelProviderPolicyAuthority(sandboxName: string, gatewayName: string): void {
     const policy = require("../../policy") as PolicyModule;
     const operation = `change messaging providers for sandbox '${sandboxName}'`;
-    const authority = policy.inspectPolicyMutationAuthority(sandboxName, operation, gatewayName);
-    policy.assertNemoClawManagedPolicy(authority, operation);
-    policy.recheckPolicyMutationAuthority(sandboxName, operation, authority);
+    const boundary = policy.inspectPolicyMutationBoundary(sandboxName, operation, gatewayName);
+    policy.recheckPolicyMutationBoundary(sandboxName, operation, boundary);
   },
   runGatewayOpenshell(
     gatewayName: string,
@@ -131,7 +130,10 @@ export const policyChannelDependencies = {
     const services = require("../../tunnel/services") as GooglechatTunnelServices;
     const webhookProxy =
       require("../../messaging/channels/googlechat/tunnel/proxy") as GooglechatWebhookProxy;
-    lifecycle.stopGooglechatWebhookTunnel(sandboxName, { services, webhookProxy });
+    lifecycle.stopGooglechatWebhookTunnel(sandboxName, {
+      services,
+      webhookProxy,
+    });
   },
   googlechatTunnelRuntime(sandboxName: string): GooglechatTunnelRuntimeDeps {
     return {

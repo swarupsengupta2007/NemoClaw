@@ -43,8 +43,16 @@ export type RebuildFlowOverrides = {
     overrideEnvVar: string | null;
     disposeImageRef?: () => boolean;
   };
-  executeSandboxCommand?: () => { status: number; stdout: string; stderr: string } | null;
-  executeSandboxExecCommand?: () => { status: number; stdout: string; stderr: string } | null;
+  executeSandboxCommand?: () => {
+    status: number;
+    stdout: string;
+    stderr: string;
+  } | null;
+  executeSandboxExecCommand?: () => {
+    status: number;
+    stdout: string;
+    stderr: string;
+  } | null;
   checkAndRecoverSandboxProcesses?: () => {
     checked: boolean;
     wasRunning: boolean | null;
@@ -61,7 +69,11 @@ export type RebuildFlowOverrides = {
   ) => Promise<void> | void;
   beforeBackup?: () => void;
   repairMutableConfigPerms?: () =>
-    | { applied: false; skipReason: "agent" | "locked" | "unreadable"; reason: string }
+    | {
+        applied: false;
+        skipReason: "agent" | "locked" | "unreadable";
+        reason: string;
+      }
     | { applied: true; verified: boolean; errors: string[] };
   restoreSandboxState?: () => {
     success: boolean;
@@ -115,7 +127,7 @@ export type RebuildFlowOverrides = {
     stderr?: string;
     error?: Error;
   };
-  backupPolicyPresets?: string[];
+  livePolicyDocument?: string;
   backupPreservedEnv?: PreservedEnvFile[];
   ensureValidatedBraveSearchCredential?: () => Promise<unknown>;
   ensureValidatedWebSearchCredential?: () => Promise<unknown>;
@@ -159,6 +171,7 @@ export type RebuildFlowHarness = {
   registerHermesInferenceProviderSpy: MockInstance;
   releaseOnboardLockSpy: MockInstance;
   relockSpy: MockInstance;
+  setLivePolicyDocumentSpy: MockInstance;
   restoreSandboxStateSpy: MockInstance;
   captureOpenshellSpy: MockInstance;
   runOpenshellSpy: MockInstance;
@@ -235,7 +248,9 @@ export function createRebuildFlowSession(machineSnapshotVersion: number): Rebuil
   };
 }
 export function installTerminalStepFailureMock(
-  onboardSession: { finalizeIncompleteOnboardStep: (...args: unknown[]) => unknown },
+  onboardSession: {
+    finalizeIncompleteOnboardStep: (...args: unknown[]) => unknown;
+  },
   session: RebuildFlowSession,
 ): MockInstance {
   return vi

@@ -37,11 +37,8 @@ import type {
   SessionResourceProfile,
   SessionUpdates,
 } from "../../../state/onboard-session";
-import {
-  type BaselineExclusionEntry,
-  type SandboxEntry,
-  type SandboxRemovalReceipt,
-} from "../../../state/registry";
+import { type SandboxEntry, type SandboxRemovalReceipt } from "../../../state/registry";
+import type { BaselineExclusionRequest } from "../../../policy/baseline-exclusion";
 import { getSandboxEntryInference } from "../../../state/registry-entry-view";
 import { toolDisclosureOrDefault } from "../../../tool-disclosure";
 import {
@@ -97,11 +94,7 @@ import {
   selectSandboxRecreateTargetIntentFingerprint,
   selectedGatewayForSandboxRecreate,
 } from "../../sandbox-recreate-transaction";
-import {
-  assertBaselineExclusionsMatchCreateIntent,
-  baselineExclusionsForCreate,
-  sandboxCreateInferenceSelection,
-} from "../../sandbox-registration";
+import { sandboxCreateInferenceSelection } from "../../sandbox-registration";
 
 import { withSandboxPhaseTrace } from "../../tracing";
 import type { InferenceRouteReservationAuthority, SandboxCreateIntent } from "../../types";
@@ -196,8 +189,6 @@ export interface SandboxStateOptions<
   apfInterceptorRequested?: boolean;
   /** Internal rebuild mode: null web-search state is an authoritative disable, not a prompt. */
   authoritativeResumeConfig?: boolean;
-  /** Internal rebuild tier that must govern create-time and resumed policy selection. */
-  authoritativePolicyTier?: string | null;
   /** Keep provider and credential effects behind the exact post-create policy gate. */
   deferSandboxEffectsUntilPolicyVerification?: boolean;
   /** Endpoint source to preserve during an authoritative rebuild. */
@@ -291,7 +282,11 @@ export interface SandboxStateOptions<
     ): Promise<WebSearchConfig | null>;
     startRecordedStep(
       stepName: string,
-      updates: { sandboxName?: string | null; provider?: string | null; model?: string | null },
+      updates: {
+        sandboxName?: string | null;
+        provider?: string | null;
+        model?: string | null;
+      },
     ): Promise<void>;
     getRecordedMessagingChannelsForResume(
       resume: boolean,
@@ -354,7 +349,7 @@ export interface SandboxStateOptions<
       extraProviders: readonly string[];
       staleExtraProviders: readonly string[];
       policyTier?: string | null;
-      baselineExclusions?: readonly BaselineExclusionEntry[];
+      baselineExclusions?: readonly BaselineExclusionRequest[];
       reuseRegisteredCredentials?: boolean;
       hostMounts?: readonly import("../../../state/registry/types").SandboxHostMount[];
     }): Promise<ResolvedSandboxCreateIntent>;
@@ -500,32 +495,10 @@ function compatibleEndpointReasoningForCreateIntent(
 
 function rebuildPolicyPresetsForCreateIntent(
   value: readonly string[] | undefined,
-  session: Session | null,
-  sandboxName: string,
+  _session: Session | null,
+  _sandboxName: string,
 ): Pick<SandboxCreateIntent, "rebuildPolicyPresets"> {
-  if (session?.policyAuthority === "externally-managed") return {};
-  // A later `onboard --resume` no longer has the outer rebuild's in-memory
-  // options. The matching recreate journal makes its filtered session value
-  // the durable replacement target instead of the preserved source row.
-  const journaledValue =
-    session?.checkpoint?.sandboxRecreate?.sandboxName === sandboxName &&
-    Array.isArray(session.policyPresets)
-      ? session.policyPresets
-      : undefined;
-  const selectedValue = Array.isArray(value) ? value : journaledValue;
-  return Array.isArray(selectedValue) ? { rebuildPolicyPresets: [...selectedValue] } : {};
-}
-
-function clearExternallyManagedPolicyPresets(
-  session: Session | null,
-  updateSession: (mutator: (current: Session) => Session | void) => Session,
-): void {
-  if (session?.policyAuthority !== "externally-managed" || session.policyPresets === null) return;
-  updateSession((current) => {
-    if (current.policyAuthority === "externally-managed") current.policyPresets = null;
-    return current;
-  });
-  session.policyPresets = null;
+  return Array.isArray(value) ? { rebuildPolicyPresets: [...value] } : {};
 }
 
 /** Replace a resumed create-plan snapshot with the outer rebuild's normalized built-ins. */
@@ -951,10 +924,9 @@ class SandboxStateFlow<
       this.options.agent,
       !this.options.fromDockerfile,
     );
-    const policyFingerprint = this.options.authoritativePolicyTier ?? "default";
     const lightFingerprint = [
       typeof builtFingerprint === "string" ? builtFingerprint : sandboxName,
-      policyFingerprint,
+      "default",
       ...apfCreateFingerprintFields(this.options.apfInterceptorRequested === true),
       this.options.provider,
       this.options.model,
@@ -1556,10 +1528,16 @@ class SandboxStateFlow<
 
   private checkpointMessaging(
     state: SandboxStepState<WebSearchConfig>,
-    messaging: { plan: SandboxMessagingPlan | null; selectedChannels: string[] },
+    messaging: {
+      plan: SandboxMessagingPlan | null;
+      selectedChannels: string[];
+    },
   ): SandboxStepState<WebSearchConfig> {
     if (!this.resumesSandboxPrompts) {
-      return { ...state, selectedMessagingChannels: messaging.selectedChannels };
+      return {
+        ...state,
+        selectedMessagingChannels: messaging.selectedChannels,
+      };
     }
     const session = this.deps.updateSession((current) => {
       current.messagingPlan = messaging.plan;
@@ -1852,7 +1830,6 @@ class SandboxStateFlow<
     hermesToolGateways: readonly string[],
     deferSandboxEffectsUntilPolicyVerification: boolean,
   ): Promise<CompleteSandboxCreateIntent> {
-    clearExternallyManagedPolicyPresets(state.session, this.deps.updateSession);
     const reuseRegisteredCredentials = this.resumesSandboxPrompts && this.options.resume;
     const rebuildPolicyPresetSelection = rebuildPolicyPresetsForCreateIntent(
       this.options.rebuildPolicyPresets,
@@ -1873,11 +1850,7 @@ class SandboxStateFlow<
         extraProviders,
         staleExtraProviders,
         hostMounts: this.options.hostMounts,
-        baselineExclusions: baselineExclusionsForCreate(sandboxName),
         ...(reuseRegisteredCredentials ? { reuseRegisteredCredentials: true } : {}),
-        ...(this.options.authoritativePolicyTier !== undefined
-          ? { policyTier: this.options.authoritativePolicyTier }
-          : {}),
       }),
       rebuildPolicyPresetSelection.rebuildPolicyPresets,
     );
@@ -1897,9 +1870,6 @@ class SandboxStateFlow<
       ...(!this.options.fromDockerfile &&
       isDcodeAgent((this.options.agent as { name?: string } | null)?.name)
         ? { dcodeAutoApprovalMode: this.dcodeAutoApprovalMode }
-        : {}),
-      ...(this.options.authoritativePolicyTier !== undefined
-        ? { policyTier: this.options.authoritativePolicyTier }
         : {}),
       ...deferredSandboxEffectsIntent(deferSandboxEffectsUntilPolicyVerification),
       ...(this.options.rebuildPreservedEnv
@@ -2267,13 +2237,6 @@ class SandboxStateFlow<
         current.messagingPlan = messagingPlan;
         return current;
       });
-      // Re-read at the destructive edge. The lock prevents cooperating
-      // writers from changing this state; the equality check also catches a
-      // direct registry writer that bypassed the lock.
-      assertBaselineExclusionsMatchCreateIntent(
-        requestedSandboxName,
-        createIntent.resolved.policy.options.baselineExclusions,
-      );
       const { transaction, sourceEntry, effectiveCreateIntent, repairMetadata } =
         await this.prepareSandboxRecreate(state, requestedSandboxName, createIntent, decision);
 
@@ -2646,7 +2609,9 @@ class SandboxStateFlow<
       stateResult:
         this.options.apfInterceptorRequested === true
           ? completeOnboardMachine({}, metadata)
-          : branchTo(this.options.agent ? "agent_setup" : "openclaw", { metadata }),
+          : branchTo(this.options.agent ? "agent_setup" : "openclaw", {
+              metadata,
+            }),
     };
   }
 

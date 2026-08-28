@@ -58,15 +58,14 @@ export type RecorderOverrides = {
     agent: Agent | null,
   ) => void;
   reportDeploymentReadiness?: (healthy: boolean) => void;
-  getActiveSandbox?: PoliciesStateOptions<Agent | null, WebSearchConfig>["deps"]["getActiveSandbox"];
+  getActiveSandbox?: PoliciesStateOptions<
+    Agent | null,
+    WebSearchConfig
+  >["deps"]["getActiveSandbox"];
   setupPoliciesWithSelection?: PoliciesStateOptions<
     Agent | null,
     WebSearchConfig
   >["deps"]["setupPoliciesWithSelection"];
-  persistAppliedPolicyPresets?: PoliciesStateOptions<
-    Agent | null,
-    WebSearchConfig
-  >["deps"]["persistAppliedPolicyPresets"];
   revalidatePolicyRequirements?: (
     context: OnboardFlowContext<Agent | null>,
     operation: string,
@@ -89,7 +88,6 @@ export function sessionAt(state: OnboardMachineState): Session {
     sandboxName: "my-sandbox",
     provider: "nim",
     model: "nvidia/test",
-    policyAuthority: "nemoclaw-managed",
     machine: {
       version: MACHINE_SNAPSHOT_VERSION,
       state,
@@ -226,15 +224,15 @@ export function createPhases(
       toSessionUpdates: (updates) => updates as SessionUpdates,
     },
     policiesDeps: {
-      loadSession:
-        recorders.loadSession ?? (() => createSession({ policyAuthority: "nemoclaw-managed" })),
+      loadSession: recorders.loadSession ?? (() => createSession()),
       getActiveSandbox: recorders.getActiveSandbox ?? (() => null),
+      getAppliedPolicyPresets: () => [],
       mergePolicyMessagingChannels:
         recorders.mergePolicyMessagingChannels ?? ((selected) => selected),
       detectUnconfiguredMessagingChannels: () => [],
       verifyCompatibleEndpointSandboxSmoke: vi.fn(),
       preparePolicyPresetResumeSelection: () => ({
-        policyPresets: ["balanced"],
+        policyPresets: [],
         recordedPolicyPresetsNeedReconcile: false,
         disabledMessagingPolicyPresetApplied: false,
         suppressedAgentRequiredPresetsLive: false,
@@ -257,7 +255,6 @@ export function createPhases(
           sessionWithUpdates(updates),
         ),
       toSessionUpdates: (updates) => updates as SessionUpdates,
-      persistAppliedPolicyPresets: recorders.persistAppliedPolicyPresets ?? vi.fn(),
     },
     finalization: {
       stagedLegacyKeys: [],
@@ -277,7 +274,9 @@ export function createPhases(
       removeLegacyCredentialsFile: vi.fn(),
       cleanupStaleHostFiles: vi.fn(),
       checkAndRecoverSandboxProcesses: vi.fn(),
-      settleOrdinaryOpenClawPairing: vi.fn(async () => ({ kind: "settled" as const })),
+      settleOrdinaryOpenClawPairing: vi.fn(async () => ({
+        kind: "settled" as const,
+      })),
       ordinaryOpenClawPairingIncompleteMessage: vi.fn(
         () => "OpenClaw onboarding is incomplete; resume onboarding.",
       ),

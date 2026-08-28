@@ -22,14 +22,8 @@ import { encodeManagedStartupProfile } from "./managed-startup/profile";
 
 const requireDist = createRequire(import.meta.url);
 const onboardSession = requireDist("../state/onboard-session.js");
-const {
-  assertBaselineExclusionsMatchCreateIntent,
-  baselineExclusionsForCreate,
-  buildCreatedSandboxRegistryEntry,
-  creationFidelity,
-  registerCreatedSandbox,
-  selection,
-} = requireDist("./sandbox-registration.ts") as typeof import("./sandbox-registration");
+const { buildCreatedSandboxRegistryEntry, creationFidelity, registerCreatedSandbox, selection } =
+  requireDist("./sandbox-registration.ts") as typeof import("./sandbox-registration");
 
 const runtimeFields = {
   gpuEnabled: true,
@@ -82,7 +76,6 @@ function createdRegistryEntryInput(
     agent: null,
     agentVersionKnown: true,
     imageTag: null,
-    appliedPolicies: [],
     plannedMessagingState: undefined,
     hermesToolGateways: [],
     hermesDashboardState: { enabled: false, config: null },
@@ -94,14 +87,6 @@ function createdRegistryEntryInput(
 }
 
 describe("buildCreatedSandboxRegistryEntry", () => {
-  it("copies policy authority into completed sandbox registration (#9833)", () => {
-    const entry = buildCreatedSandboxRegistryEntry(
-      createdRegistryEntryInput({ policyAuthority: "externally-managed" }),
-    );
-
-    expect(entry.policyAuthority).toBe("externally-managed");
-  });
-
   it("records explicit OpenClaw identity for a managed workload receipt (#9356)", () => {
     const workload = managedWorkloadReceipt("openclaw");
     const entry = buildCreatedSandboxRegistryEntry(
@@ -139,7 +124,10 @@ describe("buildCreatedSandboxRegistryEntry", () => {
 
     expect(() =>
       registerCreatedSandbox({
-        ...createdRegistryEntryInput({ imageTag: workload.reference, workload }),
+        ...createdRegistryEntryInput({
+          imageTag: workload.reference,
+          workload,
+        }),
         registerSandbox,
       }),
     ).toThrow(/agent identity does not match its managed workload receipt/u);
@@ -187,7 +175,6 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       agent: null,
       agentVersionKnown: true,
       imageTag: null,
-      appliedPolicies: [],
       plannedMessagingState: undefined,
       hermesToolGateways: [],
       hermesDashboardState: { enabled: false, config: null },
@@ -198,60 +185,6 @@ describe("buildCreatedSandboxRegistryEntry", () => {
 
     expect(entry.servingProfileProvenance).toEqual(provenance);
     loadSession.mockRestore();
-  });
-
-  it("blocks create intent while a baseline policy transaction needs repair (#7178)", () => {
-    const registry = requireDist("../state/registry.js");
-    const transitionSpy = vi.spyOn(registry, "getBaselineExclusionTransition").mockReturnValue({
-      id: "tx-1",
-      operation: "exclude",
-      exclusion: {
-        version: 1,
-        agent: "openclaw",
-        key: "nous_research",
-        digest: "approved",
-      },
-      targetLiveDigest: null,
-      startedAt: "2026-07-19T00:00:00.000Z",
-    });
-
-    expect(() => baselineExclusionsForCreate("alpha")).toThrow(
-      /policy exclude.*needs repair before sandbox creation/i,
-    );
-
-    transitionSpy.mockRestore();
-  });
-
-  it("rejects a resolved create intent when durable baseline exclusions changed (#7194)", () => {
-    const registry = requireDist("../state/registry.js");
-    const transitionSpy = vi
-      .spyOn(registry, "getBaselineExclusionTransition")
-      .mockReturnValue(null);
-    const exclusionsSpy = vi.spyOn(registry, "getBaselineExclusions").mockReturnValue([
-      {
-        version: 1,
-        agent: "openclaw",
-        key: "nous_research",
-        digest: "b".repeat(64),
-        acknowledgedAt: "2026-07-19T00:00:00.000Z",
-      },
-    ]);
-    try {
-      expect(() =>
-        assertBaselineExclusionsMatchCreateIntent("alpha", [
-          {
-            version: 1,
-            agent: "openclaw",
-            key: "nous_research",
-            digest: "a".repeat(64),
-            acknowledgedAt: "2026-07-19T00:00:00.000Z",
-          },
-        ]),
-      ).toThrow(/changed while sandbox creation was being prepared/i);
-    } finally {
-      exclusionsSpy.mockRestore();
-      transitionSpy.mockRestore();
-    }
   });
 
   it("records the final created sandbox metadata with configured messaging channels", () => {
@@ -284,10 +217,8 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       agentVersionKnown: true,
       imageTag: "nemoclaw-demo:123",
       openclawImagePluginInstalls,
-      appliedPolicies: ["discord", "slack"],
       observabilityEnabled: true,
       dcodeAutoApprovalMode: "thread-opt-in",
-      policyTier: "restricted",
       webSearchEnabled: true,
       fromDockerfile: "/tmp/Dockerfile.custom",
       hermesAuthMethod: "api_key",
@@ -295,7 +226,12 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       hermesToolGateways: ["filesystem"],
       hermesDashboardState: {
         enabled: true,
-        config: { enabled: true, port: 18790, internalPort: 19123, tuiEnabled: true },
+        config: {
+          enabled: true,
+          port: 18790,
+          internalPort: 19123,
+          tuiEnabled: true,
+        },
       },
       dashboardPort: 18789,
       lifecycleGeneration: "22222222-2222-4222-8222-222222222222",
@@ -314,11 +250,9 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       preferredInferenceApi: "openai-completions",
       imageTag: "nemoclaw-demo:123",
       openclawImagePluginInstalls,
-      policies: ["discord", "slack"],
       toolDisclosure: "progressive",
       observabilityEnabled: true,
       dcodeAutoApprovalMode: "thread-opt-in",
-      policyTier: "restricted",
       webSearchEnabled: true,
       fromDockerfile: "/tmp/Dockerfile.custom",
       hermesAuthMethod: "api_key",
@@ -369,7 +303,6 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       agent: null,
       agentVersionKnown: false,
       imageTag: null,
-      appliedPolicies: [],
       plannedMessagingState: {
         schemaVersion: 1 as const,
         plan: { sandboxName: "other" },
@@ -438,7 +371,6 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       agent: null,
       agentVersionKnown: true,
       imageTag: "nemoclaw-demo:replacement",
-      appliedPolicies: [],
       toolDisclosure: "direct",
       plannedMessagingState: undefined,
       preservedMcpState,
@@ -453,52 +385,6 @@ describe("buildCreatedSandboxRegistryEntry", () => {
     expect(entry.mcp?.bridges.github?.providerName).toBe("demo-mcp-github");
     expect(entry.compatibleEndpointReasoning).toBe("true");
     expect(entry.toolDisclosure).toBe("direct");
-  });
-
-  it("carries complete baseline exclusion records through consecutive registrations", () => {
-    const baselineExclusions = [
-      {
-        version: 1 as const,
-        agent: "openclaw",
-        key: "nous_research",
-        digest: "abc",
-        acknowledgedAt: "2026-07-19T00:00:00.000Z",
-        appliedAgentVersion: null,
-      },
-    ];
-    const fidelity = creationFidelity(null, null, null, false, baselineExclusions);
-    const common = {
-      sandboxName: "demo",
-      inferenceSelection: {
-        model: "llama",
-        provider: "compatible-endpoint",
-        endpointUrl: null,
-        credentialEnv: null,
-        preferredInferenceApi: null,
-        compatibleEndpointReasoning: null,
-        compatibleEndpointReasoningEffort: null,
-        nimContainer: null,
-      },
-      runtimeFields,
-      agent: null,
-      agentVersionKnown: true,
-      imageTag: null,
-      appliedPolicies: [],
-      plannedMessagingState: undefined,
-      hermesToolGateways: [],
-      hermesDashboardState: { enabled: false as const, config: null },
-      dashboardPort: 18789,
-      gatewayName: "nemoclaw",
-      gatewayPort: 8080,
-    };
-
-    const first = buildCreatedSandboxRegistryEntry({ ...common, ...fidelity });
-    const secondFidelity = creationFidelity(null, null, null, false, first.baselineExclusions);
-    const second = buildCreatedSandboxRegistryEntry({ ...common, ...secondFidelity });
-
-    expect(second.baselineExclusions).toEqual(baselineExclusions);
-    expect(second.baselineExclusions).not.toBe(first.baselineExclusions);
-    expect(second.baselineExclusions?.[0]).not.toBe(first.baselineExclusions?.[0]);
   });
 
   it("normalizes invalid preferred inference API values", () => {
@@ -518,7 +404,6 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       agent: null,
       agentVersionKnown: true,
       imageTag: null,
-      appliedPolicies: [],
       plannedMessagingState: undefined,
       hermesToolGateways: [],
       hermesDashboardState: { enabled: false, config: null },
@@ -547,7 +432,6 @@ describe("buildCreatedSandboxRegistryEntry", () => {
       agent: null,
       agentVersionKnown: true,
       imageTag: null,
-      appliedPolicies: [],
       toolDisclosure: "direct",
       plannedMessagingState: undefined,
       hermesToolGateways: [],
@@ -730,7 +614,6 @@ describe("registerCreatedSandbox", () => {
       agent: agentDefs.loadAgent("hermes"),
       agentVersionKnown: true,
       imageTag: null,
-      appliedPolicies: [],
       plannedMessagingState: undefined,
       hermesToolGateways: [],
       hermesDashboardState: { enabled: false, config: null },
@@ -775,7 +658,6 @@ describe("registerCreatedSandbox", () => {
       agent: agentDefs.loadAgent("hermes"),
       agentVersionKnown: true,
       imageTag: null,
-      appliedPolicies: [],
       plannedMessagingState: undefined,
       hermesToolGateways: [],
       hermesDashboardState: { enabled: false, config: null },
@@ -824,7 +706,6 @@ describe("registerCreatedSandbox", () => {
         shared: false,
       },
       openclawImagePluginInstalls: [],
-      appliedPolicies: [],
       plannedMessagingState: undefined,
       hermesToolGateways: [],
       hermesDashboardState: { enabled: false, config: null },
@@ -897,7 +778,6 @@ describe("registerCreatedSandbox", () => {
         agent: null,
         agentVersionKnown: true,
         imageTag: null,
-        appliedPolicies: [],
         plannedMessagingState: undefined,
         hermesToolGateways: [],
         hermesDashboardState: { enabled: false, config: null },
@@ -935,7 +815,6 @@ describe("registerCreatedSandbox", () => {
         agent: null,
         agentVersionKnown: true,
         imageTag: null,
-        appliedPolicies: [],
         plannedMessagingState: undefined,
         hermesToolGateways: [],
         hermesDashboardState: { enabled: false, config: null },

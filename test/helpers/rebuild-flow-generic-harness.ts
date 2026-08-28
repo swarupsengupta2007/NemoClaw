@@ -42,6 +42,7 @@ import {
   registry,
   registryPersistence,
   resolve,
+  runner,
   sandboxList,
   sandboxSession,
   sandboxState,
@@ -126,7 +127,11 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
   const ensureRebuildAgentBaseImageSpy = vi
     .spyOn(rebuildFlowHelpers, "ensureRebuildAgentBaseImage")
     .mockReturnValue(
-      overrides.baseImagePreflight ?? { ok: true, imageRef: null, overrideEnvVar: null },
+      overrides.baseImagePreflight ?? {
+        ok: true,
+        imageRef: null,
+        overrideEnvVar: null,
+      },
     );
   vi.spyOn(dockerInspect, "dockerImageInspectFormat").mockReturnValue(
     overrides.sandboxBaseImageLabelsOutput ?? "",
@@ -183,6 +188,18 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
     .spyOn(rebuildFlowHelpers, "warnUnpreservedUserManagedFiles")
     .mockImplementation(() => undefined);
   vi.spyOn(resolve, "resolveOpenshell").mockReturnValue(null);
+  vi.spyOn(policies, "inspectPolicyRecoveryBoundary").mockReturnValue({
+    gatewayName: "nemoclaw",
+  });
+  vi.spyOn(policies, "inspectPolicyMutationBoundary").mockReturnValue({
+    gatewayName: "nemoclaw",
+  });
+  const setLivePolicyDocumentSpy = vi
+    .spyOn(policies, "setLivePolicyDocument")
+    .mockReturnValue(true);
+  vi.spyOn(runner, "runCapture").mockReturnValue(
+    overrides.livePolicyDocument ?? "version: 1\nnetwork_policies: {}\n",
+  );
   vi.spyOn(agentDefs, "loadAgent").mockReturnValue(agentDef);
   vi.spyOn(agentRuntime, "getSessionAgent").mockReturnValue(
     agentDef.name === "openclaw" ? null : ({ name: agentDef.name } as never),
@@ -237,7 +254,9 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
   const releaseOnboardLockSpy = vi
     .spyOn(onboardSession, "releaseOnboardLock")
     .mockImplementation(() => undefined);
-  vi.spyOn(onboardSession, "acquireOnboardLock").mockReturnValue({ acquired: true });
+  vi.spyOn(onboardSession, "acquireOnboardLock").mockReturnValue({
+    acquired: true,
+  });
   const finalizeIncompleteOnboardStepSpy = installTerminalStepFailureMock(onboardSession, session);
   session.sandboxName = overrides.sessionSandboxName ?? session.sandboxName;
   const modelsCustomOpenClawImage =
@@ -345,7 +364,12 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
   vi.spyOn(rebuildRoutePreflight, "revalidateRebuildRouteBeforeDelete").mockImplementation(
     (...args: unknown[]) => {
       const receipt = args[0] as Record<string, unknown>;
-      return overrides.revalidateRebuildRouteBeforeDelete?.(receipt) ?? { ok: true, receipt };
+      return (
+        overrides.revalidateRebuildRouteBeforeDelete?.(receipt) ?? {
+          ok: true,
+          receipt,
+        }
+      );
     },
   );
   const restoreSandboxEntrySpy = vi
@@ -426,7 +450,6 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
           dir: "/sandbox/.openclaw",
           backupPath: "/tmp/nemoclaw-rebuild-backup",
           timestamp: "2026-06-01T00:00:00.000Z",
-          policyPresets: overrides.backupPolicyPresets ?? ["npm", "bad", "throw"],
           ...(overrides.backupPreservedEnv
             ? { preservedEnv: structuredClone(overrides.backupPreservedEnv) }
             : {}),
@@ -444,9 +467,30 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
   vi.spyOn(sandboxState, "validateRebuildRecoveryManifest").mockImplementation(
     (...args: unknown[]) => {
       const manifest = args[2] as Record<string, unknown>;
-      return overrides.recoveryManifestValidation?.(manifest) ?? { ok: true, manifest };
+      return (
+        overrides.recoveryManifestValidation?.(manifest) ?? {
+          ok: true,
+          manifest,
+        }
+      );
     },
   );
+  vi.spyOn(sandboxState, "attachRebuildPolicyHandoff").mockImplementation(
+    (...args: unknown[]) =>
+      ({
+        ...(args[0] as Record<string, unknown>),
+        rebuildPolicyHandoff: {
+          file: "rebuild-policy-handoff.yaml",
+          sha256: "a".repeat(64),
+        },
+      }) as never,
+  );
+  vi.spyOn(sandboxState, "readRebuildPolicyHandoff").mockImplementation((...args: unknown[]) =>
+    (args[0] as { rebuildPolicyHandoff?: unknown }).rebuildPolicyHandoff
+      ? "version: 1\nnetwork_policies: {}\n"
+      : null,
+  );
+  vi.spyOn(sandboxState, "clearRebuildPolicyHandoff").mockReturnValue(true);
   vi.spyOn(sandboxState, "getLatestBackup").mockImplementation(
     () =>
       (overrides.preDeleteLatestManifest === undefined
@@ -698,6 +742,7 @@ export function createRebuildFlowHarness(overrides: RebuildFlowOverrides = {}): 
     }),
     releaseOnboardLockSpy,
     relockSpy,
+    setLivePolicyDocumentSpy,
     restoreSandboxStateSpy,
     captureOpenshellSpy,
     runOpenshellSpy,

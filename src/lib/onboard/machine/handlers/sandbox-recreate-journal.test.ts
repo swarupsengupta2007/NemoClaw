@@ -167,169 +167,57 @@ it.each([
   "authority-unproven",
   "no-owned-image",
   "image-reused",
-] as const)("reports the bounded %s image-retirement skip after journaled recreation", async (reason) => {
-  const session = createSession({ sandboxName: "saved", agent: "openclaw" });
-  const journal = bindJournaledRecreate(session);
-  const sourceEntry: SandboxEntry = {
-    name: "saved",
-    provider: "provider",
-    model: "model",
-    endpointUrl: null,
-    preferredInferenceApi: "openai-completions",
-    webSearchEnabled: false,
-    toolDisclosure: "progressive",
-    fromDockerfile: null,
-    hermesAuthMethod: null,
-    imageTag: "openshell/sandbox-from:old",
-    workload: {
-      schemaVersion: 1,
-      kind: "legacy-dockerfile",
-      reference: "openshell/sandbox-from:old",
-      shared: false,
-    },
-  };
-  const retireReplacedSandboxWorkload = vi.fn(() => ({
-    status: "skipped" as const,
-    reason,
-  }));
-  const { deps, calls } = createDeps(
-    {
-      getSandboxReuseState: () => "not_ready",
-      getSandboxRecreateObservation: journal.observe,
-      getSandboxRegistryEntry: () => sourceEntry,
-      createSandbox: journal.completeCreate,
-      retireReplacedSandboxWorkload,
-    },
-    session,
-  );
-
-  await handleSandboxState({
-    ...baseOptions(deps, session),
-    resume: true,
-    sandboxName: "saved",
-  });
-
-  const diagnostics = calls.note.mock.calls
-    .map(([message]) => message)
-    .filter((message) => message.startsWith("  Obsolete sandbox image retirement skipped:"));
-  expect(diagnostics).toEqual([`  Obsolete sandbox image retirement skipped: ${reason}`]);
-  expect(retireReplacedSandboxWorkload).toHaveBeenCalledOnce();
-});
-
-it("carries filtered presets through post-delete onboard resume", async () => {
-  const session = createSession({ sandboxName: "saved", agent: "openclaw" });
-  session.policyPresets = ["github"];
-  session.steps.sandbox.status = "complete";
-  session.machine.state = "agent_setup";
-  session.checkpoint = {
-    ...deriveCheckpointFromSession(session),
-    sandboxIdentity: decisionSelected({ name: "saved", agent: "openclaw" }),
-    gatewayAuthority: decisionSelected({
-      gatewayName: "nemoclaw",
-      gatewayPort: 8080,
-      mode: "nemoclaw-managed",
-      source: "standalone",
-      endpoint: null,
-      stateDir: null,
-      supervisor: null,
-      requiredCapabilities: [],
-    }),
-  };
-  const sourceEntry: SandboxEntry = {
-    name: "saved",
-    provider: "provider",
-    model: "model",
-    endpointUrl: null,
-    preferredInferenceApi: "openai-completions" as const,
-    webSearchEnabled: false,
-    toolDisclosure: "progressive" as const,
-    fromDockerfile: null,
-    hermesAuthMethod: null,
-    gatewayName: "nemoclaw",
-    gatewayPort: 8080,
-    policies: ["github", "mcp-bridge-fake"],
-    policyPresetsFinalized: true,
-  };
-  const targetIntentFingerprint = fingerprintSandboxRecreateValue({
-    sandboxName: "saved",
-    agent: "openclaw",
-  });
-  const transaction = beginSandboxRecreateTransaction(session, {
-    sandboxName: "saved",
-    gatewayName: "nemoclaw",
-    gatewayPort: 8080,
-    sourceEntry,
-    observation: {
-      state: "ready",
-      liveIdentityFingerprint: fingerprintSandboxRecreateValue("openshell-source-id"),
-    },
-    targetIntentFingerprint,
-  });
-  advanceSandboxRecreateTransaction(session, transaction.id, "deleting");
-  advanceSandboxRecreateTransaction(session, transaction.id, "deleted");
-  // The outer rebuild replaces the retired onboarding session before it starts
-  // the inner onboarding run. The replacement session's sandbox step is
-  // incomplete even though the preserved recreate journal owns the deleted source.
-  session.steps.sandbox.status = "pending";
-  session.machine.state = "sandbox";
-
-  let currentEntry = sourceEntry;
-  let observation: SandboxRecreateObservation = {
-    state: "missing" as const,
-    liveIdentityFingerprint: null,
-  };
-  const createSandbox = vi.fn(async (...args: unknown[]) => {
-    const createIntent = args.at(-1);
-    expect(createIntent).toMatchObject({
-      recreate: true,
-      recreateJournalTargetIntentFingerprint: targetIntentFingerprint,
-      rebuildPolicyPresets: ["github"],
-      resolved: {
-        policy: { options: { additionalPresets: ["github"] } },
+] as const)(
+  "reports the bounded %s image-retirement skip after journaled recreation",
+  async (reason) => {
+    const session = createSession({ sandboxName: "saved", agent: "openclaw" });
+    const journal = bindJournaledRecreate(session);
+    const sourceEntry: SandboxEntry = {
+      name: "saved",
+      provider: "provider",
+      model: "model",
+      endpointUrl: null,
+      preferredInferenceApi: "openai-completions",
+      webSearchEnabled: false,
+      toolDisclosure: "progressive",
+      fromDockerfile: null,
+      hermesAuthMethod: null,
+      imageTag: "openshell/sandbox-from:old",
+      workload: {
+        schemaVersion: 1,
+        kind: "legacy-dockerfile",
+        reference: "openshell/sandbox-from:old",
+        shared: false,
       },
-      recreateTransaction: {
-        id: transaction.id,
-        targetGeneration: transaction.targetGeneration,
-        targetIntentFingerprint,
+    };
+    const retireReplacedSandboxWorkload = vi.fn(() => ({
+      status: "skipped" as const,
+      reason,
+    }));
+    const { deps, calls } = createDeps(
+      {
+        getSandboxReuseState: () => "not_ready",
+        getSandboxRecreateObservation: journal.observe,
+        getSandboxRegistryEntry: () => sourceEntry,
+        createSandbox: journal.completeCreate,
+        retireReplacedSandboxWorkload,
       },
+      session,
+    );
+
+    await handleSandboxState({
+      ...baseOptions(deps, session),
+      resume: true,
+      sandboxName: "saved",
     });
-    advanceSandboxRecreateTransaction(session, transaction.id, "creating");
-    const targetLiveIdentityFingerprint = fingerprintSandboxRecreateValue("openshell-target-id");
-    observation = {
-      state: "ready",
-      liveIdentityFingerprint: targetLiveIdentityFingerprint,
-    };
-    recordSandboxRecreateTargetCreated(session, transaction.id, observation);
-    currentEntry = {
-      ...sourceEntry,
-      lifecycleGeneration: transaction.targetGeneration,
-      lifecycleLiveIdentityFingerprint: targetLiveIdentityFingerprint,
-    };
-    return "saved";
-  });
-  const { deps, calls } = createDeps(
-    {
-      getSandboxReuseState: () => observation.state,
-      getSandboxRecreateObservation: () => observation,
-      getSandboxRegistryEntry: () => currentEntry,
-      createSandbox,
-    },
-    session,
-  );
 
-  await handleSandboxState({
-    ...baseOptions(deps, session),
-    resume: true,
-    sandboxName: "saved",
-    recreateSandbox: () => true,
-    recreateJournalTargetIntentFingerprint: targetIntentFingerprint,
-  });
-
-  expect(createSandbox).toHaveBeenCalledOnce();
-  expect(calls.note).toHaveBeenCalledWith("  [resume] Continuing journaled sandbox recreation.");
-  expect(calls.repairEvent).not.toHaveBeenCalled();
-  expect(session.checkpoint?.sandboxRecreate).toBeNull();
-});
+    const diagnostics = calls.note.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.startsWith("  Obsolete sandbox image retirement skipped:"));
+    expect(diagnostics).toEqual([`  Obsolete sandbox image retirement skipped: ${reason}`]);
+    expect(retireReplacedSandboxWorkload).toHaveBeenCalledOnce();
+  },
+);
 
 it("removes the journaled source image after resuming a registered replacement", async () => {
   const session = createSession({ sandboxName: "saved", agent: "openclaw" });
@@ -376,7 +264,10 @@ it("removes the journaled source image after resuming a registered replacement",
   let replacementEntry = {
     ...sourceEntry,
     imageTag: "openshell/sandbox-from:new",
-    workload: { ...sourceEntry.workload, reference: "openshell/sandbox-from:new" },
+    workload: {
+      ...sourceEntry.workload,
+      reference: "openshell/sandbox-from:new",
+    },
     lifecycleGeneration: "missing",
     lifecycleLiveIdentityFingerprint: targetIdentity,
   };
@@ -419,7 +310,10 @@ it("removes the journaled source image after resuming a registered replacement",
       getSandboxRecreateObservation: () =>
         replacementRegistered
           ? { state: "ready" as const, liveIdentityFingerprint: targetIdentity }
-          : { state: "not_ready" as const, liveIdentityFingerprint: sourceIdentity },
+          : {
+              state: "not_ready" as const,
+              liveIdentityFingerprint: sourceIdentity,
+            },
       getSandboxRegistryEntry: () => (replacementRegistered ? replacementEntry : sourceEntry),
       createSandbox,
       retireReplacedSandboxWorkload,
@@ -746,7 +640,10 @@ it("opens the lifecycle journal for a fresh route reservation before creation (#
     session,
   );
 
-  await handleSandboxState({ ...baseOptions(deps, session), sandboxName: "fresh" });
+  await handleSandboxState({
+    ...baseOptions(deps, session),
+    sandboxName: "fresh",
+  });
 
   expect(createSandbox).toHaveBeenCalledOnce();
   expect(session.checkpoint?.sandboxRecreate ?? null).toBeNull();
@@ -759,7 +656,9 @@ it("preserves registry state until journaled messaging recreation commits (#7736
     {
       getSandboxReuseState: () => "ready",
       getSandboxRecreateObservation: journal.observe,
-      getStoredMessagingChannelConfig: () => ({ TELEGRAM_REQUIRE_MENTION: "1" }),
+      getStoredMessagingChannelConfig: () => ({
+        TELEGRAM_REQUIRE_MENTION: "1",
+      }),
       hydrateMessagingChannelConfig: () => ({ TELEGRAM_REQUIRE_MENTION: "0" }),
       messagingChannelConfigsEqual: () => false,
       createSandbox: journal.completeCreate,
@@ -791,7 +690,11 @@ it("journals not-ready resumed sandboxes before recreation (#7736)", async () =>
     session,
   );
 
-  await handleSandboxState({ ...baseOptions(deps, session), resume: true, sandboxName: "saved" });
+  await handleSandboxState({
+    ...baseOptions(deps, session),
+    resume: true,
+    sandboxName: "saved",
+  });
 
   expect(calls.repairEvent).toHaveBeenCalledWith("state.repair.started", {
     state: "sandbox",
@@ -818,7 +721,11 @@ it("records failed repair events when journaled replacement creation fails (#773
   );
 
   await expect(
-    handleSandboxState({ ...baseOptions(deps, session), resume: true, sandboxName: "saved" }),
+    handleSandboxState({
+      ...baseOptions(deps, session),
+      resume: true,
+      sandboxName: "saved",
+    }),
   ).rejects.toThrow("cleanup failed");
 
   expect(calls.repairEvent).toHaveBeenCalledWith("state.repair.started", {

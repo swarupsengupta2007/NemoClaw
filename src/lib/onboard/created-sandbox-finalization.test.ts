@@ -20,7 +20,7 @@ import {
 } from "./created-sandbox-finalization";
 import { getDcodeSelectionDrift } from "./dcode-selection-drift";
 import type { HermesPortableConfiguredReceipt } from "./experimental/hermes-portable-receipt";
-import { pendingSandboxPolicyVerificationForBoundary } from "./sandbox-create/policy-creation-receipt";
+import { pendingSandboxPolicyVerificationForBoundary } from "./sandbox-create/policy-verification";
 import type { SandboxGpuCreateFlowResult } from "./sandbox-gpu-create-flow";
 import type { SandboxGpuConfig } from "./sandbox-gpu-mode";
 import type { CreatedSandboxRegistrationInput } from "./sandbox-registration";
@@ -48,7 +48,9 @@ describe("created sandbox registration authority", () => {
     await expect(
       register(
         null,
-        { lifecycleGeneration: "generation-1" } as HermesPortableConfiguredReceipt,
+        {
+          lifecycleGeneration: "generation-1",
+        } as HermesPortableConfiguredReceipt,
         "a".repeat(64),
         vi.fn(),
       ),
@@ -379,22 +381,9 @@ describe("created DCode sandbox finalization", () => {
   it("passes the fresh create endpoint through the production completion constructor (#9555)", async () => {
     const endpointUrl = "https://openrouter.ai/api/v1";
     const model = "nvidia/nemotron-3-ultra-550b-a55b";
-    const policyCreationReceipt = {
-      schemaVersion: 1 as const,
-      origin: "sandbox-create" as const,
-      gatewayName: "nemoclaw",
-      gatewayPort: 8080,
-      sandboxName: "dcode",
-      lifecycleGeneration: "generation-1",
-      sandboxIdentityFingerprint: "a".repeat(64),
-      policyHash: "sha256:effective",
-      policyVersion: 1,
-    };
     const verifiedPolicyBoundary = {
       registration: {
-        policyAuthority: "nemoclaw-managed" as const,
-        policyCreationReceipt,
-        observedPolicyAuthority: "owner-unknown" as const,
+        policyIdentity: { hash: "sha256:effective", activeVersion: 1 },
       },
       sandboxName: "dcode",
       gatewayName: "nemoclaw",
@@ -436,7 +425,11 @@ describe("created DCode sandbox finalization", () => {
         endpointUrl,
       },
       {
-        createIntent: { endpointUrl, endpointSource: null, observabilityEnabled: false },
+        createIntent: {
+          endpointUrl,
+          endpointSource: null,
+          observabilityEnabled: false,
+        },
         resolvedCreateIntent: {
           policy: { options: { baselineExclusions: [] } },
           hostMounts: undefined,
@@ -468,8 +461,6 @@ describe("created DCode sandbox finalization", () => {
           policyPath: "/private/initial-policy.yaml",
         },
         compatibilityPolicyPath: null,
-        policyTier: null,
-        policyAuthority: "nemoclaw-managed",
         dashboardRemoteBindPrepared: false,
         getVerifiedPolicyBoundary: () => verifiedPolicyBoundary,
         getVerifiedCreateRegistrationAuthority: () => verifiedCreate,
@@ -1027,22 +1018,9 @@ describe("created sandbox completion actions", () => {
         order.push("registry");
         return input as unknown as SandboxEntry;
       });
-      const policyCreationReceipt = {
-        schemaVersion: 1 as const,
-        origin: "sandbox-create" as const,
-        gatewayName: "nemoclaw",
-        gatewayPort: 8080,
-        sandboxName: "hermes",
-        lifecycleGeneration: "generation-1",
-        sandboxIdentityFingerprint: "a".repeat(64),
-        policyHash: "sha256:effective",
-        policyVersion: 1,
-      };
       const verifiedPolicyBoundary = {
         registration: {
-          policyAuthority: "nemoclaw-managed" as const,
-          policyCreationReceipt,
-          observedPolicyAuthority: "owner-unknown" as const,
+          policyIdentity: { hash: "sha256:effective", activeVersion: 1 },
         },
         sandboxName: "hermes",
         gatewayName: "nemoclaw",
@@ -1111,7 +1089,6 @@ describe("created sandbox completion actions", () => {
             },
             agent: null,
             agentVersionKnown: true,
-            appliedPolicies: ["personal-open-internet"],
             plannedMessagingState: undefined,
             hermesToolGateways: [],
             gatewayName: "nemoclaw",
@@ -1242,14 +1219,9 @@ describe("created sandbox completion actions", () => {
         expect.objectContaining({
           imageTag: "hermes:test",
           hermesPortableLifecycle: schema5,
-          appliedPolicies: ["personal-open-internet"],
           dashboardPort: manageDashboard ? 8644 : 0,
           lifecycleGeneration: "generation-1",
           lifecycleLiveIdentityFingerprint: "a".repeat(64),
-          policyAuthority: "nemoclaw-managed",
-          policyCreationReceipt: expect.objectContaining({
-            policyHash: "sha256:effective",
-          }),
           inferenceSelection: inferenceRouteReservation.authority.selection,
           inferenceRouteReservation,
           verifiedCreate,

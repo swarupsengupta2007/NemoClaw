@@ -75,7 +75,6 @@ export interface SandboxOnboardFlowPhaseOptions<
   hermesPortableLifecycle?: boolean;
   apfInterceptorRequested?: boolean;
   authoritativeResumeConfig?: boolean;
-  authoritativePolicyTier?: string | null;
 
   recreateJournalTargetIntentFingerprint?: string | null;
   resumeAgentChanged: boolean;
@@ -155,7 +154,10 @@ function endpointProvenanceForPhase(
   options: EndpointProvenanceOptions,
 ): EndpointProvenance {
   if (context.fresh) {
-    return { endpointSource: "onboard", onboardEndpointUrl: context.endpointUrl };
+    return {
+      endpointSource: "onboard",
+      onboardEndpointUrl: context.endpointUrl,
+    };
   }
   if (options.endpointSource !== undefined) {
     const endpointSource = normalizeInferenceEndpointSource(options.endpointSource);
@@ -334,7 +336,6 @@ export function createSandboxOnboardFlowPhase<
       hermesPortableLifecycle: options.hermesPortableLifecycle === true,
       apfInterceptorRequested: options.apfInterceptorRequested === true,
       authoritativeResumeConfig: options.authoritativeResumeConfig,
-      authoritativePolicyTier: options.authoritativePolicyTier,
       deferSandboxEffectsUntilPolicyVerification: options.apfInterceptorRequested === true,
 
       recreateJournalTargetIntentFingerprint: options.recreateJournalTargetIntentFingerprint,
@@ -477,5 +478,8 @@ export async function runCoreOnboardFlowSlice<Context extends OnboardFlowContext
       `Core onboarding prerequisite repair selected '${sandboxRepair.finalState}' for durable entry '${state}'`,
     );
   }
-  return { context: sandboxRepair.context, session: await options.runtime.session() };
+  return {
+    context: sandboxRepair.context,
+    session: await options.runtime.session(),
+  };
 }

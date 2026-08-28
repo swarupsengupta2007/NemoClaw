@@ -83,7 +83,6 @@ import type {
   SandboxWorkloadReceipt,
 } from "./registry/types.js";
 import { cloneSandboxWorkloadReceipt } from "./registry/workload.js";
-import type { CustomPolicyEntry } from "./registry.js";
 import * as registry from "./registry.js";
 import { isSshTransportFailure } from "./ssh-transport.js";
 import { restoreStateFile } from "./state-file-restore.js";
@@ -130,16 +129,11 @@ export interface RebuildManifest {
   writableDir?: string;
   backupPath: string;
   blueprintDigest: string | null;
-  policyPresets?: string[];
-  /**
-   * Custom policy presets applied via `--from-file`/`--from-dir`, captured with
-   * full content so they can be re-applied on restore without the source file.
-   * Like `policyPresets`, these live in the gateway policy engine and are
-   * otherwise lost on destroy/recreate. Always present on snapshots created since
-   * this field was added (possibly an empty array, so restore can reconcile a
-   * zero-custom snapshot); absent only on legacy manifests.
-   */
-  customPolicies?: CustomPolicyEntry[];
+  /** Bounded live-policy handoff used only until an interrupted rebuild settles. */
+  rebuildPolicyHandoff?: {
+    file: "rebuild-policy-handoff.yaml";
+    sha256: string;
+  };
   /** Allowlisted non-secret environment assignments captured for image recreation. */
   preservedEnv?: PreservedEnvFile[];
   /**
@@ -317,16 +311,6 @@ function isInstanceBackup(value: unknown): value is InstanceBackup {
   );
 }
 
-function isCustomPolicyEntryArray(value: unknown): value is CustomPolicyEntry[] {
-  if (!Array.isArray(value)) return false;
-  if (value.length === 0) return true;
-  try {
-    return registry.normalizeCustomPolicyEntries(value) !== undefined;
-  } catch {
-    return false;
-  }
-}
-
 function cloneOpenClawImagePluginInstalls(
   installs: readonly OpenClawImagePluginInstall[],
 ): OpenClawImagePluginInstall[] {
@@ -404,8 +388,11 @@ function isRebuildManifest(value: unknown): value is RebuildManifest {
     (value.blueprintDigest === undefined ||
       value.blueprintDigest === null ||
       typeof value.blueprintDigest === "string") &&
-    (value.policyPresets === undefined || isStringArray(value.policyPresets)) &&
-    (value.customPolicies === undefined || isCustomPolicyEntryArray(value.customPolicies)) &&
+    (value.rebuildPolicyHandoff === undefined ||
+      (isObjectRecord(value.rebuildPolicyHandoff) &&
+        value.rebuildPolicyHandoff.file === "rebuild-policy-handoff.yaml" &&
+        typeof value.rebuildPolicyHandoff.sha256 === "string" &&
+        /^[a-f0-9]{64}$/.test(value.rebuildPolicyHandoff.sha256))) &&
     (value.preservedEnv === undefined ||
       (value.agentType === "hermes" &&
         validatePreservedEnvFiles(value.preservedEnv, HERMES_PRESERVED_ENV_INVENTORY))) &&
@@ -769,7 +756,10 @@ export function sanitizeBackupDirectory(
   dirPath: string,
   overrides: Partial<BackupSanitizationOperations> = {},
 ): void {
-  const operations = { ...DEFAULT_BACKUP_SANITIZATION_OPERATIONS, ...overrides };
+  const operations = {
+    ...DEFAULT_BACKUP_SANITIZATION_OPERATIONS,
+    ...overrides,
+  };
 
   try {
     operations.sanitizeDirectory(dirPath);
@@ -822,14 +812,23 @@ export function removeIncompleteSnapshot(
   backupPath: string,
   overrides: Partial<Pick<BackupSanitizationOperations, "removeBackup" | "backupExists">> = {},
 ): IncompleteSnapshotRemoval {
-  const operations = { ...DEFAULT_BACKUP_SANITIZATION_OPERATIONS, ...overrides };
+  const operations = {
+    ...DEFAULT_BACKUP_SANITIZATION_OPERATIONS,
+    ...overrides,
+  };
   try {
     operations.removeBackup(backupPath);
   } catch (error) {
-    return { removed: false, error: error instanceof Error ? error.message : String(error) };
+    return {
+      removed: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
   if (operations.backupExists(backupPath)) {
-    return { removed: false, error: "the snapshot directory still exists after removal" };
+    return {
+      removed: false,
+      error: "the snapshot directory still exists after removal",
+    };
   }
   return { removed: true };
 }
@@ -1040,7 +1039,11 @@ function capturePreservedEnvFile(
   sandboxName: string,
   dir: string,
   inventory: PreservedEnvInventory,
-): { outcome: StateFileBackupOutcome; file?: PreservedEnvFile; unreachable: boolean } {
+): {
+  outcome: StateFileBackupOutcome;
+  file?: PreservedEnvFile;
+  unreachable: boolean;
+} {
   const command = buildStateFileBackupCommand(dir, {
     path: inventory.path,
     strategy: "copy",
@@ -1215,7 +1218,9 @@ function normalizeSnapshotBackupAuthority(options: BackupOptions): {
     options.hostLocalInferenceProvenance,
   );
   if (options.runtimeSnapshot !== undefined && runtimeSnapshot === undefined) {
-    return { error: "snapshot runtime state is invalid or cannot be represented" };
+    return {
+      error: "snapshot runtime state is invalid or cannot be represented",
+    };
   }
   if (options.workload !== undefined && workload === undefined) {
     return { error: "snapshot workload authority is invalid" };
@@ -1427,18 +1432,6 @@ export function backupSandboxState(sandboxName: string, options: BackupOptions =
   // a symlink swapped in between the first check and mkdirSync is caught here.
   rejectSymlinksOnPath(backupPath);
 
-  // Capture applied policy presets from the registry so they can be
-  // re-applied after rebuild. Presets live in the gateway policy engine,
-  // not on the sandbox filesystem, so they are lost on destroy/recreate.
-  const policyPresets: string[] = sb?.policies && sb.policies.length > 0 ? [...sb.policies] : [];
-  _log(`policyPresets from registry: [${policyPresets.join(",")}]`);
-  // Custom presets (--from-file/--from-dir) also live only in the gateway policy
-  // engine, so capture their full content for replay. Always record the field
-  // (even empty) so restore can tell a zero-custom snapshot (reconcile, remove
-  // any stale custom presets on the target) from a legacy snapshot (skip).
-  const customPolicies: CustomPolicyEntry[] = sb?.customPolicies ? [...sb.customPolicies] : [];
-  _log(`customPolicies from registry: [${customPolicies.map((c) => c.name).join(",")}]`);
-
   const manifest: RebuildManifest = {
     version: MANIFEST_VERSION,
     sandboxName,
@@ -1458,8 +1451,6 @@ export function backupSandboxState(sandboxName: string, options: BackupOptions =
     dir,
     backupPath,
     blueprintDigest: computeBlueprintDigest(),
-    policyPresets,
-    customPolicies,
     ...(agentName === "hermes" ? { preservedEnv: [] } : {}),
     ...snapshotAuthority,
     ...(providedName !== null ? { name: providedName } : {}),
@@ -1486,7 +1477,14 @@ export function backupSandboxState(sandboxName: string, options: BackupOptions =
       };
     }
     writeManifest(backupPath, manifest);
-    return { success: true, manifest, backedUpDirs, failedDirs, backedUpFiles, failedFiles };
+    return {
+      success: true,
+      manifest,
+      backedUpDirs,
+      failedDirs,
+      backedUpFiles,
+      failedFiles,
+    };
   }
 
   // SSH+tar single-roundtrip download
@@ -2284,7 +2282,13 @@ function restoreSandboxStateInternal(
       return failRestoreContract(mutationAuthorityError);
     }
     _log("No dirs or files to restore");
-    return { success: true, restoredDirs, failedDirs, restoredFiles, failedFiles };
+    return {
+      success: true,
+      restoredDirs,
+      failedDirs,
+      restoredFiles,
+      failedFiles,
+    };
   }
 
   _log("Getting SSH config for restore");
@@ -2540,7 +2544,10 @@ function writeManifest(
   try {
     // A snapshot becomes recoverable only after its complete, private manifest
     // is atomically renamed into place.
-    ops.write(tempPath, JSON.stringify(manifest, null, 2), { mode: 0o600, flag: "wx" });
+    ops.write(tempPath, JSON.stringify(manifest, null, 2), {
+      mode: 0o600,
+      flag: "wx",
+    });
     ops.rename(tempPath, manifestPath);
     published = true;
   } finally {
@@ -2555,6 +2562,56 @@ function writeManifest(
 }
 
 export const __test = { writeManifest };
+
+export function attachRebuildPolicyHandoff(
+  manifest: RebuildManifest,
+  policyDocument: string,
+): RebuildManifest {
+  if (!policyDocument.trim()) throw new Error("Cannot persist an empty rebuild policy handoff");
+  const file = "rebuild-policy-handoff.yaml" as const;
+  const filePath = path.join(manifest.backupPath, file);
+  const sha256 = createHash("sha256").update(policyDocument).digest("hex");
+  writeFileSync(filePath, policyDocument, {
+    encoding: "utf8",
+    mode: 0o600,
+    flag: "wx",
+  });
+  const next = { ...manifest, rebuildPolicyHandoff: { file, sha256 } };
+  try {
+    writeManifest(manifest.backupPath, next);
+  } catch (error) {
+    rmSync(filePath, { force: true });
+    throw error;
+  }
+  return next;
+}
+
+export function readRebuildPolicyHandoff(manifest: RebuildManifest): string | null {
+  const handoff = manifest.rebuildPolicyHandoff;
+  if (!handoff) return null;
+  const filePath = path.join(manifest.backupPath, handoff.file);
+  try {
+    const content = readFileSync(filePath, "utf8");
+    return createHash("sha256").update(content).digest("hex") === handoff.sha256 ? content : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearRebuildPolicyHandoff(manifest: RebuildManifest): boolean {
+  const handoff = manifest.rebuildPolicyHandoff;
+  if (!handoff) return true;
+  const next = { ...manifest };
+  delete next.rebuildPolicyHandoff;
+  try {
+    rmSync(path.join(manifest.backupPath, handoff.file), { force: true });
+    writeManifest(manifest.backupPath, next);
+    delete manifest.rebuildPolicyHandoff;
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function readManifestPayload(backupPath: string): unknown | null {
   const manifestPath = path.join(backupPath, "rebuild-manifest.json");
@@ -2579,7 +2636,10 @@ function readManifest(backupPath: string): RebuildManifest | null {
   try {
     const parsed = readManifestPayload(backupPath);
     if (!isRebuildManifest(parsed)) return null;
-    const manifest = parsed as RebuildManifest & { dir?: string; writableDir?: string };
+    const manifest = parsed as RebuildManifest & {
+      dir?: string;
+      writableDir?: string;
+    };
     const dir = manifest.dir ?? manifest.writableDir;
     if (!dir) return null;
     const runtimeSnapshot =
@@ -2675,7 +2735,10 @@ export function validateRebuildRecoveryManifest(
 
   const persisted = readManifest(candidateBackupPath);
   if (!persisted || persisted.version !== MANIFEST_VERSION) {
-    return { ok: false, reason: "latest backup manifest is missing, malformed, or unsupported" };
+    return {
+      ok: false,
+      reason: "latest backup manifest is missing, malformed, or unsupported",
+    };
   }
   if (persisted.sandboxName !== sandboxName) {
     return {
@@ -2693,7 +2756,10 @@ export function validateRebuildRecoveryManifest(
     persisted.timestamp !== candidate.timestamp ||
     path.resolve(persisted.backupPath) !== candidateBackupPath
   ) {
-    return { ok: false, reason: "persisted backup identity changed during validation" };
+    return {
+      ok: false,
+      reason: "persisted backup identity changed during validation",
+    };
   }
 
   return { ok: true, manifest: persisted };

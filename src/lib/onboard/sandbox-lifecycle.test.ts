@@ -122,7 +122,7 @@ describe("sandbox recreate reservation ownership", () => {
         name: "alpha",
         pendingRouteReservation: true as const,
         ...(reservationSessionId ? { reservationSessionId } : {}),
-        pendingPolicyVerification: {} as never,
+        pendingCreateVerification: {} as never,
       };
 
       expect(() => removeSandboxUnlessSessionReservation(entry, "alpha")).toThrow(
@@ -234,7 +234,10 @@ describe("sandbox lifecycle MCP destroy boundaries", () => {
     removeSandboxUnlessSessionReservation(inspected.existingEntry, "beta");
 
     expect(inspected.liveExists).toBe(false);
-    expect(rows.get("beta")).toMatchObject({ name: "beta", toolDisclosure: "progressive" });
+    expect(rows.get("beta")).toMatchObject({
+      name: "beta",
+      toolDisclosure: "progressive",
+    });
   });
 
   it("inspects a stale registry entry without pruning it", () => {

@@ -52,9 +52,9 @@ vi.mock("../state/registry", async (importOriginal) => ({
 
 import {
   applyPresetContent,
-  inspectPolicyMutationAuthority,
-  inspectPolicyRecoveryAuthority,
-  recheckPolicyMutationAuthority,
+  inspectPolicyMutationBoundary,
+  inspectPolicyRecoveryBoundary,
+  recheckPolicyMutationBoundary,
 } from "./index";
 
 const SANDBOX = "authority-9833";
@@ -179,9 +179,9 @@ describe("PolicyMutationAuthority", () => {
 
     expect(mocks.runCapture).toHaveBeenCalled();
     expect(mocks.run).toHaveBeenCalledOnce();
-    expect(mocks.addCustomPolicy).toHaveBeenCalledOnce();
+    expect(mocks.addCustomPolicy).not.toHaveBeenCalled();
     expect(YAML.parse(liveBasePolicy).network_policies).toEqual(
-      expect.objectContaining({ weather: WEATHER_POLICY }),
+      expect.objectContaining({ "nemoclaw_custom.weather.0": WEATHER_POLICY }),
     );
   });
 
@@ -193,11 +193,8 @@ describe("PolicyMutationAuthority", () => {
       policyIdentity: { hash: INITIAL_POLICY_HASH, activeVersion: 1 },
     });
 
-    expect(inspectPolicyRecoveryAuthority(SANDBOX, "verify Shields recovery")).toMatchObject({
-      authority: "nemoclaw-managed",
-      authorityRecordedNow: false,
+    expect(inspectPolicyRecoveryBoundary(SANDBOX, "verify Shields recovery")).toEqual({
       gatewayName: "nemoclaw",
-      policyCreationReceipt: null,
     });
     expect(mocks.updateSandbox).not.toHaveBeenCalled();
   });
@@ -209,7 +206,11 @@ describe("PolicyMutationAuthority", () => {
   ])("ignores a %s legacy receipt when it mutates live policy (#10514)", (_label, receipt) => {
     sandbox = { ...sandbox, policyCreationReceipt: receipt };
 
-    expect(applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, { nonFatal: true })).toBe(true);
+    expect(
+      applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, {
+        nonFatal: true,
+      }),
+    ).toBe(true);
     expect(mocks.runCapture).toHaveBeenCalled();
     expect(mocks.run).toHaveBeenCalledOnce();
     expect(reportedErrors()).not.toContain("policy creation receipt");
@@ -218,7 +219,11 @@ describe("PolicyMutationAuthority", () => {
   it("does not use sandbox identity as policy-write authority (#10514)", () => {
     mocks.inspectOpenShellSandboxIdentityFingerprint.mockReturnValue("b".repeat(64));
 
-    expect(applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, { nonFatal: true })).toBe(true);
+    expect(
+      applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, {
+        nonFatal: true,
+      }),
+    ).toBe(true);
     expect(mocks.inspectOpenShellSandboxIdentityFingerprint).not.toHaveBeenCalled();
     expect(mocks.run).toHaveBeenCalledOnce();
   });
@@ -232,7 +237,9 @@ describe("PolicyMutationAuthority", () => {
         port: 443
 `;
 
-    const result = applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, { nonFatal: true });
+    const result = applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, {
+      nonFatal: true,
+    });
     expect(result).toBe(true);
 
     expect(mocks.run).toHaveBeenCalledOnce();
@@ -240,7 +247,12 @@ describe("PolicyMutationAuthority", () => {
     expect(YAML.parse(liveBasePolicy).network_policies).toEqual(
       expect.objectContaining({
         external_approval: expect.objectContaining({
-          endpoints: [expect.objectContaining({ host: "approved.example.com", port: 443 })],
+          endpoints: [
+            expect.objectContaining({
+              host: "approved.example.com",
+              port: 443,
+            }),
+          ],
         }),
         weather: WEATHER_POLICY,
       }),
@@ -248,12 +260,12 @@ describe("PolicyMutationAuthority", () => {
   });
 
   it("rereads current policy after its version changes (#10514)", () => {
-    const recorded = inspectPolicyMutationAuthority(SANDBOX, "apply a policy preset");
+    const recorded = inspectPolicyMutationBoundary(SANDBOX, "apply a policy preset");
     livePolicyHash = "policy-concurrent-change";
 
-    expect(
-      recheckPolicyMutationAuthority(SANDBOX, "apply a policy preset", recorded),
-    ).toMatchObject({ gatewayName: "nemoclaw", policyCreationReceipt: null });
+    expect(recheckPolicyMutationBoundary(SANDBOX, "apply a policy preset", recorded)).toEqual({
+      gatewayName: "nemoclaw",
+    });
     expect(mocks.run).not.toHaveBeenCalled();
   });
 
@@ -266,7 +278,11 @@ describe("PolicyMutationAuthority", () => {
       },
     });
 
-    expect(applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, { nonFatal: true })).toBe(true);
+    expect(
+      applyPresetContent(SANDBOX, "weather", WEATHER_PRESET, {
+        nonFatal: true,
+      }),
+    ).toBe(true);
     expect(mocks.run).toHaveBeenCalledOnce();
     expect(reportedErrors()).not.toContain("receipt");
   });

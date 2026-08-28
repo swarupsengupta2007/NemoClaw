@@ -488,17 +488,17 @@ function installVerifiedSandboxCreateFixture(registry, options) {
       entry: structuredClone(reservationEntry),
     };
   };
-  const recordPendingSandboxPolicyVerification = (reservation, checkpoint) => {
+  const recordPendingSandboxCreateVerification = (reservation, checkpoint) => {
     pendingCheckpoint = structuredClone(checkpoint);
     pendingEntry = {
       ...structuredClone(reservation.entry),
       lifecycleGeneration: checkpoint.lifecycleGeneration,
       lifecycleLiveIdentityFingerprint: checkpoint.sandboxIdentityFingerprint,
-      pendingPolicyVerification: structuredClone(checkpoint),
+      pendingCreateVerification: structuredClone(checkpoint),
     };
     return structuredClone(pendingEntry);
   };
-  const requireCurrentPendingSandboxPolicyVerification = (reservation, checkpoint) => {
+  const requireCurrentPendingSandboxCreateVerification = (reservation, checkpoint) => {
     if (
       reservation.authority.sessionId !== sessionId ||
       pendingCheckpoint === null ||
@@ -513,8 +513,8 @@ function installVerifiedSandboxCreateFixture(registry, options) {
   const registryFixture = {
     ...registry,
     qualifyPendingSandboxCreateReservation,
-    recordPendingSandboxPolicyVerification,
-    requireCurrentPendingSandboxPolicyVerification,
+    recordPendingSandboxCreateVerification,
+    requireCurrentPendingSandboxCreateVerification,
     getSandbox: (name) =>
       name === sandboxName
         ? structuredClone(publishedEntry || pendingEntry || sourceEntry)
@@ -559,56 +559,36 @@ function installVerifiedSandboxCreateFixture(registry, options) {
     require.cache[registryPath].exports = registry;
   }
 
-  const receiptPath = require.resolve(
-    path.resolve(__dirname, "../../src/lib/onboard/sandbox-create/policy-creation-receipt.ts"),
+  const policyVerificationPath = require.resolve(
+    path.resolve(__dirname, "../../src/lib/onboard/sandbox-create/policy-verification.ts"),
   );
-  const receipt = require(receiptPath);
+  const policyVerification = require(policyVerificationPath);
   const apfPolicyRegistration = (input) => {
     if (options.apfInterceptorRequested !== true) {
       throw new Error("integration fixture received unexpected APF policy verification");
     }
     options.onVerifyCreatedPolicy?.(input);
     return {
-      policyAuthority: "externally-managed",
-      observedPolicyAuthority: "owner-unknown",
-      policyCreationReceipt: null,
       policyIdentity: {
         hash: "fixture-policy",
         activeVersion: 1,
       },
     };
   };
-  Object.defineProperties(receipt, {
+  Object.defineProperties(policyVerification, {
     verifyCreatedApfInterceptorPolicyRegistration: {
       configurable: true,
       enumerable: true,
       writable: true,
       value: apfPolicyRegistration,
     },
-    verifyCreatedSandboxPolicyRegistration: {
+    verifyCreatedSandboxInitialPolicy: {
       configurable: true,
       enumerable: true,
       writable: true,
-      value: (input) => {
-        if (input.plannedAuthority !== "nemoclaw-managed") {
-          throw new Error("integration fixture supports only managed sandbox creation");
-        }
-        return {
-          policyAuthority: "nemoclaw-managed",
-          observedPolicyAuthority: "owner-unknown",
-          policyCreationReceipt: {
-            schemaVersion: 1,
-            origin: "sandbox-create",
-            gatewayName: input.gatewayName,
-            gatewayPort: input.gatewayPort,
-            sandboxName: input.sandboxName,
-            lifecycleGeneration: input.lifecycleGeneration,
-            sandboxIdentityFingerprint: input.lifecycleLiveIdentityFingerprint,
-            policyHash: "fixture-policy",
-            policyVersion: 1,
-          },
-        };
-      },
+      value: () => ({
+        policyIdentity: { hash: "fixture-policy", activeVersion: 1 },
+      }),
     },
     revalidateCreatedSandboxPolicyRegistration: {
       configurable: true,
@@ -617,7 +597,7 @@ function installVerifiedSandboxCreateFixture(registry, options) {
       value: (input) => input.registration,
     },
   });
-  require.cache[receiptPath].exports = receipt;
+  require.cache[policyVerificationPath].exports = policyVerification;
   const prepareCreateIntent = () => {
     const onboardSession = require(
       path.resolve(__dirname, "../../src/lib/state/onboard-session.ts"),
@@ -633,7 +613,7 @@ function installVerifiedSandboxCreateFixture(registry, options) {
         : registryFixture.getSandbox(sandboxName);
     const recoverPendingCreate =
       currentEntry?.pendingRouteReservation === true &&
-      currentEntry.pendingPolicyVerification !== undefined;
+      currentEntry.pendingCreateVerification !== undefined;
     let transaction =
       currentTransaction && (currentTransaction.phase !== "created" || recoverPendingCreate)
         ? currentTransaction
@@ -703,7 +683,10 @@ function installVerifiedSandboxCreateFixture(registry, options) {
 function sandboxCreateArgsWithVerifiedReservation(args, fixture) {
   const createArgs = [...args];
   while (createArgs.length < 16) createArgs.push(null);
-  createArgs[14] = { sessionId: fixture.sessionId, selection: fixture.selection };
+  createArgs[14] = {
+    sessionId: fixture.sessionId,
+    selection: fixture.selection,
+  };
   const fixtureIntent = fixture.prepareCreateIntent();
   const requestedIntent = createArgs[15];
   createArgs[15] =
@@ -1064,7 +1047,10 @@ function mockManagedImageBootstrap() {
           bootstrapIdentity,
           input.plan.intendedWorkloadArgv,
         );
-        const createReceipt = await input.launch({ heldWorkloadArgv, bootstrapIdentity });
+        const createReceipt = await input.launch({
+          heldWorkloadArgv,
+          bootstrapIdentity,
+        });
         return {
           schemaVersion: 1,
           sandbox: createReceipt.sandbox,
@@ -1089,7 +1075,11 @@ function mockManagedImageBootstrap() {
         };
       },
       async discoverHeldWorkload(input) {
-        return { sandbox: input.sandbox, runtimeId, bootstrapIdentity: input.bootstrapIdentity };
+        return {
+          sandbox: input.sandbox,
+          runtimeId,
+          bootstrapIdentity: input.bootstrapIdentity,
+        };
       },
       async inspectHeldWorkload({ handle, discovered }) {
         return {

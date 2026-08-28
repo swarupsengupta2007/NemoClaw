@@ -129,7 +129,10 @@ describe("getRebuildSandboxGpuOverrides", () => {
       sessionGpuPassthrough: false,
     });
     expect(
-      getRebuildSandboxGpuOverrides({ sandboxGpuMode: "auto", sandboxGpuEnabled: true }),
+      getRebuildSandboxGpuOverrides({
+        sandboxGpuMode: "auto",
+        sandboxGpuEnabled: true,
+      }),
     ).toEqual({
       sandboxGpu: null,
       sandboxGpuDevice: null,
@@ -138,7 +141,12 @@ describe("getRebuildSandboxGpuOverrides", () => {
   });
 
   it("does not treat legacy effective-enabled fields as forced sandbox GPU", () => {
-    expect(getRebuildSandboxGpuOverrides({ sandboxGpuEnabled: true, gpuEnabled: true })).toEqual({
+    expect(
+      getRebuildSandboxGpuOverrides({
+        sandboxGpuEnabled: true,
+        gpuEnabled: true,
+      }),
+    ).toEqual({
       sandboxGpu: null,
       sandboxGpuDevice: null,
       sessionGpuPassthrough: false,
@@ -205,7 +213,11 @@ describe("buildRebuildRecreateOnboardOpts", () => {
 
   it("carries durable read-only host mounts into authoritative recreation", () => {
     const hostMounts = [
-      { source: process.cwd(), target: "/sandbox/project", readOnly: true as const },
+      {
+        source: process.cwd(),
+        target: "/sandbox/project",
+        readOnly: true as const,
+      },
     ];
     const opts = buildRebuildRecreateOnboardOpts({
       ...baseArgs,
@@ -215,7 +227,10 @@ describe("buildRebuildRecreateOnboardOpts", () => {
     expect(opts.hostMounts).toEqual([
       {
         ...hostMounts[0],
-        sourceIdentity: { device: expect.any(String), inode: expect.any(String) },
+        sourceIdentity: {
+          device: expect.any(String),
+          inode: expect.any(String),
+        },
       },
     ]);
     expect(opts.hostMounts).not.toBe(hostMounts);
@@ -226,7 +241,10 @@ describe("buildRebuildRecreateOnboardOpts", () => {
       ...baseArgs,
       sb: { ...dashboard, endpointSource: "onboard" },
     });
-    const legacy = buildRebuildRecreateOnboardOpts({ ...baseArgs, sb: dashboard });
+    const legacy = buildRebuildRecreateOnboardOpts({
+      ...baseArgs,
+      sb: dashboard,
+    });
     const malformed = buildRebuildRecreateOnboardOpts({
       ...baseArgs,
       sb: { ...dashboard, endpointSource: "forged" } as typeof dashboard & {
@@ -245,47 +263,40 @@ describe("buildRebuildRecreateOnboardOpts", () => {
       rebuildAgent: "langchain-deepagents-code",
       sb: { ...dashboard, observabilityEnabled: true },
     });
-    const legacy = buildRebuildRecreateOnboardOpts({ ...baseArgs, sb: dashboard });
+    const legacy = buildRebuildRecreateOnboardOpts({
+      ...baseArgs,
+      sb: dashboard,
+    });
 
     expect(enabled.observabilityEnabled).toBe(true);
     expect(legacy.observabilityEnabled).toBe(false);
   });
 
-  it("carries the authoritative restricted tier with observability into inner onboard", () => {
+  it("carries durable observability intent without replaying a policy tier", () => {
     const opts = buildRebuildRecreateOnboardOpts({
       ...baseArgs,
       rebuildAgent: "langchain-deepagents-code",
-      sb: {
-        observabilityEnabled: true,
-        policyTier: "restricted",
-      },
+      sb: { observabilityEnabled: true },
     });
 
-    expect(opts.policyTier).toBe("restricted");
+    expect(opts).not.toHaveProperty("policyTier");
     expect(opts.observabilityEnabled).toBe(true);
   });
 
-  it("rejects an invalid recorded policy tier before destructive recreate work", () => {
-    expect(() =>
-      buildRebuildRecreateOnboardOpts({
-        ...baseArgs,
-        sb: { ...dashboard, policyTier: "unknown-tier" },
-      }),
-    ).toThrow("Invalid recorded policy tier 'unknown-tier'.");
-  });
-
-  it.each([
-    "openclaw",
-    "hermes",
-  ])("rejects malformed %s observability state before recreate onboarding", (rebuildAgent) => {
-    expect(() =>
-      buildRebuildRecreateOnboardOpts({
-        ...baseArgs,
-        rebuildAgent,
-        sb: { ...dashboard, observabilityEnabled: true },
-      }),
-    ).toThrow("Recorded observability state is valid only for agent 'langchain-deepagents-code'.");
-  });
+  it.each(["openclaw", "hermes"])(
+    "rejects malformed %s observability state before recreate onboarding",
+    (rebuildAgent) => {
+      expect(() =>
+        buildRebuildRecreateOnboardOpts({
+          ...baseArgs,
+          rebuildAgent,
+          sb: { ...dashboard, observabilityEnabled: true },
+        }),
+      ).toThrow(
+        "Recorded observability state is valid only for agent 'langchain-deepagents-code'.",
+      );
+    },
+  );
 
   it("forwards noGpu:true for legacy entries with gpuEnabled:false and no sandboxGpuMode", () => {
     const opts = buildRebuildRecreateOnboardOpts({

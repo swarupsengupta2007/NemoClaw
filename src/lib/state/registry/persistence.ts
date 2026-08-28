@@ -13,7 +13,7 @@ import {
   serializeSandboxMessagingStateForDisk,
 } from "../registry-messaging";
 import {
-  normalizeSandboxPolicyAttribution,
+  normalizeSandboxEntry,
   parseSandboxRegistryEntries,
   retainedDefaultSandbox,
 } from "../registry-normalization";
@@ -89,7 +89,10 @@ export const REGISTRY_FILE = path.join(
 );
 export function load(): SandboxRegistry {
   return normalizeRegistry(
-    readConfigFile<unknown>(REGISTRY_FILE, { sandboxes: {}, defaultSandbox: null }),
+    readConfigFile<unknown>(REGISTRY_FILE, {
+      sandboxes: {},
+      defaultSandbox: null,
+    }),
   );
 }
 
@@ -160,7 +163,7 @@ function normalizeSandboxEntryForRuntime(entry: SandboxEntry): SandboxEntry {
     "load",
   );
   const mcp = normalizeSandboxMcpState(entry.mcp);
-  const policyEntry = normalizeSandboxPolicyAttribution(entry);
+  const policyEntry = normalizeSandboxEntry(entry);
   const {
     cuaRuntimeReadiness: _legacyCuaRuntimeReadiness,
     messaging: _messaging,
@@ -218,7 +221,7 @@ function serializeSandboxEntryForDisk(entry: SandboxEntry): SandboxEntry {
     "save",
   );
   const mcp = serializeSandboxMcpStateForDisk(durable.mcp);
-  const policyEntry = normalizeSandboxPolicyAttribution(durable);
+  const policyEntry = normalizeSandboxEntry(durable);
   const {
     cuaRuntimeReadiness: _legacyCuaRuntimeReadiness,
     messaging: _messaging,

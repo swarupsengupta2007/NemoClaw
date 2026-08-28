@@ -47,7 +47,6 @@ export const hermesProviderConsumerSandbox: SandboxEntry = {
   name: "current-hermes",
   agent: "hermes",
   openshellDriver: "docker",
-  policyAuthority: "nemoclaw-managed",
   lifecycleGeneration: "generation-1",
   workload: {
     schemaVersion: 1,
@@ -186,7 +185,10 @@ export function createRetainedUnlockSimulation(
   readonly transition: (input: {
     readonly target: "locked" | "mutable";
     readonly rollback: string;
-  }) => { readonly fence: Record<string, never>; readonly proof: Record<string, never> };
+  }) => {
+    readonly fence: Record<string, never>;
+    readonly proof: Record<string, never>;
+  };
 } {
   let activeClaim = true;
   let livePosture: "locked" | "mutable" = "mutable";
@@ -288,15 +290,15 @@ export function createHermesShieldsProviderConsumerHarness(
         String(name),
       ]),
     vi
-      .spyOn(policy, "inspectPolicyMutationAuthority")
+      .spyOn(policy, "inspectPolicyMutationBoundary")
       .mockReturnValue(managedPolicyMutationAuthority),
     vi
-      .spyOn(policy, "inspectPolicyRecoveryAuthority")
+      .spyOn(policy, "inspectPolicyRecoveryBoundary")
       .mockReturnValue(managedPolicyMutationAuthority),
     vi
-      .spyOn(policy, "recheckPolicyMutationAuthority")
+      .spyOn(policy, "recheckPolicyMutationBoundary")
       .mockReturnValue(managedPolicyMutationAuthority),
-    vi.spyOn(policy, "finalizePolicyMutationReceipt").mockImplementation(() => undefined),
+    vi.spyOn(policy, "verifyLivePolicyDocument").mockImplementation(() => undefined),
     registrySpy,
     vi
       .spyOn(privilegedExec, "privilegedSandboxExecArgv")

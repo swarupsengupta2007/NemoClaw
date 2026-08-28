@@ -479,7 +479,6 @@ const {
 const {
   skippedStepMessage,
 }: typeof import("./onboard/skipped-step-message") = require("./onboard/skipped-step-message");
-const policyPresetCarry: typeof import("./onboard/policy-preset-persistence") = require("./onboard/policy-preset-persistence");
 const {
   findAvailableDashboardPort,
   preflightDashboardPortRangeAvailability,
@@ -791,7 +790,11 @@ const {
 
 const { summarizeCurlFailure, summarizeProbeFailure } = httpProbe;
 
-const selectOnboardAgent = createOnboardAgentSelector({ isNonInteractive, note, prompt });
+const selectOnboardAgent = createOnboardAgentSelector({
+  isNonInteractive,
+  note,
+  prompt,
+});
 
 const { getTransportRecoveryMessage } = validationRecovery;
 
@@ -904,7 +907,11 @@ type MessagingTokenDef = import("./onboard/messaging-prep").MessagingTokenDef;
 
 type EndpointValidationResult =
   | { ok: true; api: string | null; retry?: undefined }
-  | { ok: false; retry: "credential" | "selection" | "retry" | "model"; api?: undefined };
+  | {
+      ok: false;
+      retry: "credential" | "selection" | "retry" | "model";
+      api?: undefined;
+    };
 
 const verifyDirectSandboxGpu = sandboxGpuPreflight.createDirectSandboxGpuVerifier({
   runOpenshell,
@@ -954,7 +961,13 @@ const {
   configureWebSearch,
   verifyWebSearchInsideSandbox,
   webSearchProviderForConfig,
-} = createWebSearchFlowHelpers({ prompt, note, isNonInteractive, cliName, runCaptureOpenshell });
+} = createWebSearchFlowHelpers({
+  prompt,
+  note,
+  isNonInteractive,
+  cliName,
+  runCaptureOpenshell,
+});
 
 const {
   hasResponsesToolCall,
@@ -1618,7 +1631,6 @@ const sandboxCreateOrchestrationRuntime = {
   openshellArgv,
   path,
   planRegisteredExtraProviders,
-  policyPresetCarry,
   preparedDcodeRebuild,
   promptValidatedSandboxName,
   promptYesNoOrDefault,
@@ -1676,7 +1688,9 @@ const createSandboxWithBaseImageResolution =
 const { createSandbox, createSandboxWithTemporaryManagedRuntime } =
   agentOnboard.createHermesApiPortScopedSandboxEntryPoints({
     createBaseImageResolutionContext: () =>
-      baseImageResolutionFlow.createBaseImageResolutionContext({ fresh: false }),
+      baseImageResolutionFlow.createBaseImageResolutionContext({
+        fresh: false,
+      }),
     createSandboxWithBaseImageResolution,
     resolvePortableRuntimeContext: () => {
       const authority = sandboxGpuCreateFlow.resolveExportedPortableRuntimeAuthority(
@@ -1941,7 +1955,11 @@ async function handleNimLocalSelection(
   });
 
   console.log("  Waiting for NIM to become healthy...");
-  if (!nim.waitForNimHealth(undefined, undefined, { container: nimContainerNameLocal })) {
+  if (
+    !nim.waitForNimHealth(undefined, undefined, {
+      container: nimContainerNameLocal,
+    })
+  ) {
     nim.stopNimContainerByNameOrThrow(nimContainerNameLocal);
     console.error("  NIM failed to start. Falling back to cloud API.");
     applyCloudFallbackSelection(state, REMOTE_PROVIDER_CONFIG.build);
@@ -2636,6 +2654,7 @@ const onboardRuntimeBoundary = new OnboardRuntimeBoundary({
 });
 const sandboxCancelRollback = installSandboxCancelRollback({ recordRecovery }); // #4614
 const {
+  getAppliedPolicyPresets,
   arePolicyPresetsApplied,
   computeSetupPresetSuggestions,
   filterSetupPolicyPresets,
@@ -2661,9 +2680,8 @@ const {
   withSandboxMutationLock: sandboxMutationLock.withSandboxMutationLock,
   waitForSandboxReady,
   waitForSandboxControlPlaneReady: finalizationHandlerDeps.waitForSandboxControlPlaneReady,
-  setPolicyTier: (sandboxName, tierName) =>
-    registry.updateSandbox(sandboxName, { policyTier: tierName }),
-  getRecordedPolicyTier: (sandboxName) => registry.getSandbox(sandboxName)?.policyTier ?? null,
+  setPolicyTier: () => true,
+  getRecordedPolicyTier: () => null,
   parsePolicyPresetEnv,
   env: process.env,
 });
@@ -2989,10 +3007,9 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
         requestedGpuPassthrough: opts.gpu === true,
       };
       type InitialOnboardFlowContext = typeof initialFlowContext;
-      const policyAuthorityBindings =
-        sandboxCreateOrchestration.createOnboardPolicyAuthorityBindings(
+      const policyRequirementBindings =
+        sandboxCreateOrchestration.createOnboardPolicyRequirementBindings(
           sandboxCreateOrchestrationRuntime,
-          opts.policyTier,
         );
       const [preflightPhase, gatewayPhase]: readonly [
         import("./onboard/machine/sequence-runner").OnboardSequencePhase<InitialOnboardFlowContext>,
@@ -3035,7 +3052,7 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
         assertGatewayReadiness: () =>
           onboardPreflightGatewayAuthority.collectGatewayReadiness().then(() => undefined),
         gatewayName: GATEWAY_NAME,
-        bindPolicyAuthority: policyAuthorityBindings.bindPolicyAuthority,
+        bindPolicyAuthority: policyRequirementBindings.bindPolicyAuthority,
         recreateSandbox: isRecreateSandbox,
         requiresBindMounts: effectiveHostMounts.length > 0,
         gatewayDeps: {
@@ -3127,7 +3144,7 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
           deps: {
             checkGatewayRouteCompatibility,
             preflightGatewayRouteDiscovery,
-            preflightPolicyRequirements: policyAuthorityBindings.preflightPolicyRequirements,
+            preflightPolicyRequirements: policyRequirementBindings.preflightPolicyRequirements,
             getSandboxRecoveryAuthority: providerRecovery.getSandboxRecoveryAuthority,
             withGatewayRouteMutationLock: gatewayRouteMutationLock.withGatewayRouteMutationLock,
             normalizeHermesAuthMethod,
@@ -3263,11 +3280,16 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
             getRegistrySandboxMessagingAuthority:
               messagingChannelSetup.getRegistrySandboxMessagingAuthority,
             providerMatchesGatewayCredential,
-            preflightPolicyRequirements: policyAuthorityBindings.preflightPolicyRequirements,
+            preflightPolicyRequirements: policyRequirementBindings.preflightPolicyRequirements,
             stageSandboxCredentialProviders,
             promptValidatedSandboxName,
             selectResourceProfileForSandbox: () =>
-              selectResourceProfileForSandbox({ isNonInteractive, note, prompt, promptOrDefault }),
+              selectResourceProfileForSandbox({
+                isNonInteractive,
+                note,
+                prompt,
+                promptOrDefault,
+              }),
             listRegistrySandboxes: registry.listSandboxes,
             planRegisteredExtraProviders: (gatewayName) =>
               planRegisteredExtraProviders(gatewayName, { runOpenshell }),
@@ -3325,13 +3347,16 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
         import("./verify-deployment").VerifyDeploymentResult
       >({
         branchState: agent ? "agent_setup" : "openclaw",
-        authoritativePolicyTier:
-          opts.authoritativeResumeConfig === true ? (opts.policyTier ?? null) : undefined,
-        revalidatePolicyRequirements: policyAuthorityBindings.revalidatePolicyRequirements,
+        revalidatePolicyRequirements: policyRequirementBindings.revalidatePolicyRequirements,
         agentSetupDeps: {
           handleAgentSetup: agentOnboard.handleAgentSetup,
           agentSetupContext: (revalidatePolicyRequirements) => ({
-            ...{ step, runCaptureOpenshell, captureOpenshell, revalidatePolicyRequirements },
+            ...{
+              step,
+              runCaptureOpenshell,
+              captureOpenshell,
+              revalidatePolicyRequirements,
+            },
             openshellShellCommand,
             openshellBinary: getOpenshellBinary(),
             buildSandboxConfigSyncScript,
@@ -3365,6 +3390,7 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
         policiesDeps: {
           loadSession: onboardSession.loadSession,
           getActiveSandbox: (name) => registry.getSandbox(name),
+          getAppliedPolicyPresets,
           mergePolicyMessagingChannels,
           detectUnconfiguredMessagingChannels:
             messagingChannelSetup.detectUnconfiguredMessagingChannels,
@@ -3384,7 +3410,6 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
           recordStepComplete,
           toSessionUpdates: (updates) =>
             toSessionUpdates(updates as Parameters<typeof toSessionUpdates>[0]),
-          persistAppliedPolicyPresets: policyPresetCarry.persistFinalizedPolicyPresets,
         },
         finalization: {
           stagedLegacyKeys,
@@ -3427,7 +3452,9 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
                   return parseInt(result.trim(), 10) || 0;
                 },
                 captureForwardList: () =>
-                  runCaptureOpenshell(["forward", "list"], { ignoreError: true }) || null,
+                  runCaptureOpenshell(["forward", "list"], {
+                    ignoreError: true,
+                  }) || null,
                 getMessagingChannels: () => liveFinalFlowContext.selectedMessagingChannels || [],
                 providerExistsInGateway: (providerName: string) =>
                   providerExistsInGateway(providerName),

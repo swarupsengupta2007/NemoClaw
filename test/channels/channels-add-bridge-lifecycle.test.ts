@@ -102,7 +102,10 @@ function openshellCalls(): string[][] {
 
 beforeEach(() => {
   stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+  Object.defineProperty(process.stdin, "isTTY", {
+    configurable: true,
+    value: true,
+  });
   testHome = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-add-bridge-"));
   process.env.HOME = testHome;
   process.env.NEMOCLAW_NON_INTERACTIVE = "1";
@@ -120,7 +123,6 @@ beforeEach(() => {
     gatewayName: "nemoclaw",
     lifecycleGeneration: "generation-1",
     lifecycleLiveIdentityFingerprint: LIVE_IDENTITY_FINGERPRINT,
-    policies: [],
   } as SandboxEntry;
   vi.spyOn(registry, "getSandbox").mockImplementation(() => registryEntry);
   vi.spyOn(registry, "listSandboxes").mockImplementation(() => ({
@@ -155,7 +157,6 @@ beforeEach(() => {
 
   session = {
     sandboxName: "test-sb",
-    policyPresets: [],
   } as unknown as onboardSession.Session;
   vi.spyOn(onboardSession, "loadSession").mockReturnValue(session);
   vi.spyOn(onboardSession, "updateSession").mockImplementation((update) => {
@@ -171,10 +172,9 @@ beforeEach(() => {
     policyChannelDependencies,
     "revalidateChannelProviderPolicyAuthority",
   ).mockImplementation(() => undefined);
-  vi.spyOn(
-    policyChannelDependencies,
-    "inspectMessagingProviderAttachmentTarget",
-  ).mockReturnValue(LIVE_IDENTITY_FINGERPRINT);
+  vi.spyOn(policyChannelDependencies, "inspectMessagingProviderAttachmentTarget").mockReturnValue(
+    LIVE_IDENTITY_FINGERPRINT,
+  );
   vi.spyOn(policyChannelDependencies, "rebuildSandbox").mockImplementation(async () => undefined);
   stopGooglechatWebhookTunnelSpy = vi
     .spyOn(policyChannelDependencies, "stopGooglechatWebhookTunnel")
@@ -271,7 +271,10 @@ describe("channels add owns the bridge-provider lifecycle (#6120)", () => {
 
   it("queues the rebuild instead of prompting when the session has no terminal (#8877)", async () => {
     delete process.env.NEMOCLAW_NON_INTERACTIVE;
-    Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: undefined });
+    Object.defineProperty(process.stdin, "isTTY", {
+      configurable: true,
+      value: undefined,
+    });
     const promptSpy = vi.spyOn(store, "prompt");
 
     await addSandboxChannel("test-sb", { channel: "googlechat" });
@@ -329,7 +332,6 @@ describe("channels add owns the bridge-provider lifecycle (#6120)", () => {
       "googlechat",
     );
     expect(appliedPresets).not.toContain("googlechat");
-    expect(session.policyPresets).not.toContain("googlechat");
     expect(stopGooglechatWebhookTunnelSpy).toHaveBeenCalledWith("test-sb");
   });
 
@@ -357,7 +359,6 @@ describe("channels add owns the bridge-provider lifecycle (#6120)", () => {
     expect(process.env.GOOGLECHAT_SERVICE_ACCOUNT).toBe(SA_JSON);
     expect(registry.getConfiguredMessagingChannelsFromEntry(registryEntry)).toContain("googlechat");
     expect(appliedPresets).toContain("googlechat");
-    expect(session.policyPresets).toContain("googlechat");
     expect(providerSpy).not.toHaveBeenCalled();
     expect(openshellCalls()).toEqual([]);
     expect(policies.removePreset).not.toHaveBeenCalled();
@@ -379,7 +380,11 @@ describe("channels add owns the bridge-provider lifecycle (#6120)", () => {
     expect(stoppedPlan?.disabledChannels).toEqual(["googlechat"]);
     expect(stoppedPlan?.channels).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ channelId: "googlechat", active: false, disabled: true }),
+        expect.objectContaining({
+          channelId: "googlechat",
+          active: false,
+          disabled: true,
+        }),
       ]),
     );
     expect(providerSpy).not.toHaveBeenCalled();
@@ -393,13 +398,16 @@ describe("channels add owns the bridge-provider lifecycle (#6120)", () => {
     expect(startedPlan?.disabledChannels).toEqual([]);
     expect(startedPlan?.channels).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ channelId: "googlechat", active: true, disabled: false }),
+        expect.objectContaining({
+          channelId: "googlechat",
+          active: true,
+          disabled: false,
+        }),
       ]),
     );
     expect(startedPlan?.networkPolicy.presets).toContain("googlechat");
     expect(policies.applyPreset).not.toHaveBeenCalled();
     expect(appliedPresets).toContain("googlechat");
-    expect(session.policyPresets).toContain("googlechat");
     expect(providerSpy).not.toHaveBeenCalled();
     expect(openshellCalls()).toEqual([]);
     expect(stopGooglechatWebhookTunnelSpy).not.toHaveBeenCalled();

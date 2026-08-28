@@ -48,15 +48,15 @@ export function bindManagedPolicyMutationAuthority(
 ): MockInstance[] {
   return [
     vi
-      .spyOn(policy, "inspectPolicyMutationAuthority")
+      .spyOn(policy, "inspectPolicyMutationBoundary")
       .mockReturnValue(managedPolicyMutationAuthority),
     vi
-      .spyOn(policy, "inspectPolicyRecoveryAuthority")
+      .spyOn(policy, "inspectPolicyRecoveryBoundary")
       .mockReturnValue(managedPolicyMutationAuthority),
     vi
-      .spyOn(policy, "recheckPolicyMutationAuthority")
+      .spyOn(policy, "recheckPolicyMutationBoundary")
       .mockReturnValue(managedPolicyMutationAuthority),
-    vi.spyOn(policy, "finalizePolicyMutationReceipt").mockImplementation(() => undefined),
+    vi.spyOn(policy, "verifyLivePolicyDocument").mockImplementation(() => undefined),
   ];
 }
 
@@ -144,11 +144,6 @@ export function managedMcpSandbox(
   return {
     name: "openclaw",
     openshellDriver: "docker",
-    customPolicies: policies.map(({ content, server }) => ({
-      name: `mcp-bridge-${server}`,
-      content,
-      sourcePath: "generated:nemoclaw-mcp-bridge",
-    })),
     mcp: {
       bridges: Object.fromEntries(
         policies.map(({ providerName, server }) => [
@@ -407,17 +402,22 @@ export function createShieldsFlowHarness(
         : null,
   };
   const policyAuthoritySpy = vi
-    .spyOn(policy, "inspectPolicyMutationAuthority")
+    .spyOn(policy, "inspectPolicyMutationBoundary")
     .mockReturnValue(policyMutationAuthority);
   const policyRecoveryAuthoritySpy = vi
-    .spyOn(policy, "inspectPolicyRecoveryAuthority")
+    .spyOn(policy, "inspectPolicyRecoveryBoundary")
     .mockReturnValue(policyMutationAuthority);
-  vi.spyOn(policy, "recheckPolicyMutationAuthority").mockReturnValue(policyMutationAuthority);
+  vi.spyOn(policy, "recheckPolicyMutationBoundary").mockReturnValue(policyMutationAuthority);
   const policyReceiptFinalizeSpy = vi
-    .spyOn(policy, "finalizePolicyMutationReceipt")
+    .spyOn(policy, "verifyLivePolicyDocument")
     .mockImplementation(() => undefined);
   vi.spyOn(registry, "listSandboxes").mockReturnValue({
-    sandboxes: [{ name: options.sandboxName ?? "openclaw", agent: resolvedAgentConfig.agentName }],
+    sandboxes: [
+      {
+        name: options.sandboxName ?? "openclaw",
+        agent: resolvedAgentConfig.agentName,
+      },
+    ],
   });
   const permissiveRuntime = requireDist(
     "./permissive-runtime.js",
@@ -440,7 +440,10 @@ export function createShieldsFlowHarness(
             ...(Array.isArray(cmd) ? cmd.map(String) : []),
           ],
   );
-  const dockerSpawnCalls: Array<{ args: string[]; timeout: number | undefined }> = [];
+  const dockerSpawnCalls: Array<{
+    args: string[];
+    timeout: number | undefined;
+  }> = [];
   vi.spyOn(dockerExec, "dockerSpawnSync").mockImplementation(
     (argv: unknown, rawOptions: unknown) => {
       const args = Array.isArray(argv) ? argv.map(String) : [];

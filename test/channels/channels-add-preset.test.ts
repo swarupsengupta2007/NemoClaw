@@ -54,7 +54,10 @@ const TEST_ENV_KEYS = new Set([
 const originalProcessEnv = { ...process.env };
 
 function makeTelegramConfigPlan(requireMention: "0" | "1"): SandboxMessagingPlan {
-  const plan = makeMessagingPlan({ sandboxName: "test-sb", channels: ["telegram"] });
+  const plan = makeMessagingPlan({
+    sandboxName: "test-sb",
+    channels: ["telegram"],
+  });
   return {
     ...plan,
     channels: plan.channels.map((channel) => ({
@@ -144,8 +147,7 @@ let appliedPresets: string[];
 let presetContent: string | null;
 let applyPresetResult: boolean;
 let sessionState: onboardSession.Session | null;
-let sessionUpdateThrows: boolean;
-let sessionUpdates: Array<{ policyPresets: string[] | null }>;
+let sessionUpdates: unknown[];
 let callOrder: string[];
 let slackBotProbe: ProbeResult;
 let slackAppProbe: ProbeResult;
@@ -166,11 +168,8 @@ async function expectExit(action: () => Promise<void>): Promise<void> {
   expect(exitSpy).toHaveBeenCalledWith(1);
 }
 
-function setSession(
-  sandboxName: string | null = "test-sb",
-  policyPresets: string[] | null = ["npm", "pypi", "huggingface", "brew"],
-): void {
-  sessionState = { sandboxName, policyPresets } as onboardSession.Session;
+function setSession(sandboxName: string | null = "test-sb"): void {
+  sessionState = onboardSession.createSession({ sandboxName });
 }
 
 let stdinIsTty: PropertyDescriptor | undefined;
@@ -178,7 +177,10 @@ let stdinIsTty: PropertyDescriptor | undefined;
 beforeEach(() => {
   for (const key of TEST_ENV_KEYS) delete process.env[key];
   stdinIsTty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
-  Object.defineProperty(process.stdin, "isTTY", { configurable: true, value: true });
+  Object.defineProperty(process.stdin, "isTTY", {
+    configurable: true,
+    value: true,
+  });
   testHome = fs.mkdtempSync(path.join(os.tmpdir(), "nemoclaw-channels-add-preset-"));
   process.env.HOME = testHome;
   process.env.NEMOCLAW_NON_INTERACTIVE = "1";
@@ -194,7 +196,6 @@ beforeEach(() => {
   presetContent = "network_policies:\n  stub:\n    egress:\n      - host: example.com\n";
   applyPresetResult = true;
   setSession();
-  sessionUpdateThrows = false;
   sessionUpdates = [];
   callOrder = [];
   slackBotProbe = successfulProbe();
@@ -266,19 +267,10 @@ beforeEach(() => {
 
   vi.spyOn(onboardSession, "loadSession").mockImplementation(() => sessionState);
   vi.spyOn(onboardSession, "updateSession").mockImplementation((mutator) => {
-    sessionUpdateThrows
-      ? (() => {
-          throw new Error("simulated save failure");
-        })()
-      : undefined;
-    sessionState ??= { sandboxName: null, policyPresets: null } as onboardSession.Session;
+    sessionState ??= onboardSession.createSession();
     const next = mutator(sessionState as onboardSession.Session) || sessionState;
     sessionState = next as onboardSession.Session;
-    sessionUpdates.push({
-      policyPresets: Array.isArray(sessionState.policyPresets)
-        ? [...sessionState.policyPresets]
-        : sessionState.policyPresets,
-    });
+    sessionUpdates.push({});
     return sessionState;
   });
 
@@ -409,7 +401,10 @@ describe("channels add applies a matching policy preset (#3437)", () => {
       .plan;
     const telegram = plan.channels.find((channel) => channel.channelId === "telegram");
     expect(telegram?.inputs).toContainEqual(
-      expect.objectContaining({ sourceEnv: "TELEGRAM_REQUIRE_MENTION", value: "0" }),
+      expect.objectContaining({
+        sourceEnv: "TELEGRAM_REQUIRE_MENTION",
+        value: "0",
+      }),
     );
   });
 
@@ -586,7 +581,11 @@ describe("channels add applies a matching policy preset (#3437)", () => {
     applyPresetResult = false;
     runOpenshellSpy.mockImplementation((args: string[]) =>
       args.slice(0, 3).join(" ") === "sandbox provider detach"
-        ? { ...successfulOpenshellResult(), status: 1, stderr: "permission denied" }
+        ? {
+            ...successfulOpenshellResult(),
+            status: 1,
+            stderr: "permission denied",
+          }
         : successfulOpenshellResult(),
     );
 
@@ -718,105 +717,13 @@ describe("channels add applies a matching policy preset (#3437)", () => {
   });
 });
 
-describe("channels add/remove keeps session.policyPresets in sync with registry", () => {
-  it("appends the channel preset to session.policyPresets after a successful add", async () => {
-    await addSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(sessionUpdates).toEqual([
-      { policyPresets: ["npm", "pypi", "huggingface", "brew", "slack"] },
-    ]);
-    expect(sessionState?.policyPresets).toEqual(["npm", "pypi", "huggingface", "brew", "slack"]);
-  });
-
-  it("does not touch the session when it tracks a different sandbox", async () => {
-    setSession("other-sb", ["npm", "github"]);
-
-    await addSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(applyPresetSpy).toHaveBeenCalledWith("test-sb", "slack", {
-      disclosedPresetState: "absent",
-      includeMessagingCredentialBindings: true,
-    });
-    expect(sessionUpdates).toEqual([]);
-    expect(sessionState?.policyPresets).toEqual(["npm", "github"]);
-  });
-
-  it("succeeds even when no onboard session file exists", async () => {
-    sessionState = null;
-
-    await addSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(applyPresetSpy).toHaveBeenCalledWith("test-sb", "slack", {
-      disclosedPresetState: "absent",
-      includeMessagingCredentialBindings: true,
-    });
-    expect(sessionUpdates).toEqual([]);
-    expect(callOrder).toContain("promptAndRebuild");
-  });
-
-  it("does not abort channels-add when session save fails", async () => {
-    sessionUpdateThrows = true;
-
-    await addSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(applyPresetSpy).toHaveBeenCalledWith("test-sb", "slack", {
-      disclosedPresetState: "absent",
-      includeMessagingCredentialBindings: true,
-    });
-    expect(callOrder).toContain("promptAndRebuild");
-  });
-
-  it("removes the channel preset from session.policyPresets after a successful remove", async () => {
-    appliedPresets = ["slack"];
-    setSession("test-sb", ["npm", "slack", "github"]);
-
-    await removeSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(removePresetSpy).toHaveBeenCalledWith("test-sb", "slack");
-    expect(sessionUpdates).toEqual([{ policyPresets: ["npm", "github"] }]);
-    expect(sessionState?.policyPresets).toEqual(["npm", "github"]);
-    expect(callOrder).toContain("promptAndRebuild");
-  });
-
-  it("does not touch a foreign session during channels-remove", async () => {
-    appliedPresets = ["slack"];
-    setSession("other-sb", ["slack", "npm"]);
-
-    await removeSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(removePresetSpy).toHaveBeenCalledWith("test-sb", "slack");
-    expect(sessionUpdates).toEqual([]);
-    expect(sessionState?.policyPresets).toEqual(["slack", "npm"]);
-  });
-
-  it("succeeds during channels-remove when no onboard session file exists", async () => {
-    appliedPresets = ["slack"];
-    sessionState = null;
-
-    await removeSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(removePresetSpy).toHaveBeenCalledWith("test-sb", "slack");
-    expect(sessionUpdates).toEqual([]);
-    expect(callOrder).toContain("promptAndRebuild");
-  });
-
-  it("does not abort channels-remove when session save fails", async () => {
-    appliedPresets = ["slack"];
-    setSession("test-sb", ["npm", "slack"]);
-    sessionUpdateThrows = true;
-
-    await removeSandboxChannel("test-sb", { channel: "slack" });
-
-    expect(removePresetSpy).toHaveBeenCalledWith("test-sb", "slack");
-    expect(callOrder).toContain("promptAndRebuild");
-  });
-});
-
 describe("channels add verifies bridge startup after rebuild (#4314, #4390)", () => {
   beforeEach(() => {
     delete process.env.NEMOCLAW_NON_INTERACTIVE;
     promptSpy.mockResolvedValue("y");
-    testConfig = { channels: { telegram: { enabled: true, accounts: { default: {} } } } };
+    testConfig = {
+      channels: { telegram: { enabled: true, accounts: { default: {} } } },
+    };
   });
 
   it("confirms the startup breadcrumb when the bridge logs the starting-provider line", async () => {

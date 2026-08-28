@@ -123,7 +123,7 @@ function materializeDiscordCreatePlan(
   return materializeSandboxCreatePlan({
     ...resolved,
     fromRef: "/tmp/Dockerfile",
-    policyAuthority: "nemoclaw-managed",
+    initialPolicyDelivery: "supplied",
     runProviderPreDeleteCleanup: vi.fn(),
     upsertMessagingProviders: vi.fn(() => [discordProviderName]),
     getHermesToolGatewayProviderName: vi.fn(),
@@ -171,7 +171,7 @@ function expectCredentialBindingFailure({
     materializeSandboxCreatePlan({
       intent,
       fromRef: "/tmp/nemoclaw-build-1/Dockerfile",
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       messagingTokenDefs: materializedTokenDefs,
       prepareInitialSandboxCreatePolicy: preparePolicy,
       runProviderPreDeleteCleanup: cleanupProviders,
@@ -339,16 +339,6 @@ describe("resolveSandboxCreateIntent", () => {
         additionalPresets: ["github"],
         agentName: "hermes",
         policyTier: "balanced",
-        baselineExclusions: [
-          {
-            version: 1,
-            agent: "hermes",
-            key: "nous_research",
-            digest: "abc",
-            acknowledgedAt: "2026-07-19T00:00:00.000Z",
-            appliedAgentVersion: null,
-          },
-        ],
       },
     });
     expect(JSON.parse(JSON.stringify(first))).toEqual(first);
@@ -475,7 +465,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeSandboxCreatePlan({
       intent,
       fromRef: "/tmp/Dockerfile",
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       messagingTokenDefs: [],
       runProviderPreDeleteCleanup: vi.fn(),
       upsertMessagingProviders,
@@ -524,7 +514,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeSandboxCreatePlan({
       intent,
       fromRef: "/tmp/nemoclaw-build-1/Dockerfile",
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       messagingTokenDefs: [],
       prepareInitialSandboxCreatePolicy: preparePolicy,
       runProviderPreDeleteCleanup: vi.fn(),
@@ -537,7 +527,10 @@ describe("resolveSandboxCreateIntent", () => {
     expect(preparePolicy).toHaveBeenCalledWith(
       "/repo/policy.yaml",
       [],
-      expect.objectContaining({ additionalPresets: [], sandboxName: "sandbox" }),
+      expect.objectContaining({
+        additionalPresets: [],
+        sandboxName: "sandbox",
+      }),
     );
     expect(plan.createArgs).toContain("vllm-local");
     expect(plan.createArgs).not.toContain("local-inference");
@@ -580,7 +573,7 @@ describe("resolveSandboxCreateIntent", () => {
     const result = materializeSandboxCreatePlan({
       intent,
       fromRef: "/tmp/nemoclaw-build-1/Dockerfile",
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       messagingTokenDefs: tokenDefs,
       prepareInitialSandboxCreatePolicy: vi.fn(() => {
         events.push("policy");
@@ -682,7 +675,7 @@ describe("resolveSandboxCreateIntent", () => {
       materializeSandboxCreatePlan({
         intent,
         fromRef: "example.invalid/image@sha256:abc",
-        policyAuthority: "externally-managed",
+        initialPolicyDelivery: "apf-interceptor",
         deferSandboxEffectsUntilPolicyVerification: true,
         messagingTokenDefs: tokenDefs,
         prepareInitialSandboxCreatePolicy: () => ({
@@ -727,7 +720,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeSandboxCreatePlan({
       intent,
       fromRef: "example.invalid/image@sha256:abc",
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       deferSandboxEffectsUntilPolicyVerification: true,
       messagingTokenDefs: [],
       prepareInitialSandboxCreatePolicy: () => ({
@@ -765,7 +758,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeSandboxCreatePlan({
       intent,
       fromRef: "example.invalid/image@sha256:abc",
-      policyAuthority: "externally-managed",
+      initialPolicyDelivery: "apf-interceptor",
       messagingTokenDefs: [],
       prepareInitialSandboxCreatePolicy: () => ({
         policyPath: "/tmp/policy.yaml",
@@ -776,7 +769,7 @@ describe("resolveSandboxCreateIntent", () => {
       getHermesToolGatewayProviderName: vi.fn(),
     });
 
-    expect(plan.policyAuthority).toBe("externally-managed");
+    expect(plan.initialPolicyDelivery).toBe("apf-interceptor");
     expect(plan.createArgs).not.toContain("--policy");
     expect(plan.createArgs).not.toContain("/tmp/policy.yaml");
   });
@@ -808,7 +801,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeHermesPortableCreatePlan({
       intent,
       fromRef: "ghcr.io/nvidia/nemoclaw/hermes:test",
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
     });
     const configIndex = plan.createArgs.indexOf("--driver-config-json");
 
@@ -847,7 +840,7 @@ describe("resolveSandboxCreateIntent", () => {
       materializeSandboxCreatePlan({
         intent,
         fromRef: "/tmp/nemoclaw-build-1/Dockerfile",
-        policyAuthority: "nemoclaw-managed",
+        initialPolicyDelivery: "supplied",
         messagingTokenDefs: [],
         prepareInitialSandboxCreatePolicy: vi.fn(),
         runProviderPreDeleteCleanup: vi.fn(),
@@ -880,7 +873,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeSandboxCreatePlan({
       intent,
       fromRef: "/tmp/nemoclaw-build-1/Dockerfile",
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       messagingTokenDefs: [],
       prepareInitialSandboxCreatePolicy: vi.fn(() => ({
         policyPath: "/tmp/policy.yaml",
@@ -934,7 +927,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeSandboxCreatePlan({
       intent,
       fromRef: `ghcr.io/nvidia/nemoclaw/hermes@sha256:${"a".repeat(64)}`,
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       managedStateMount: {
         type: "volume",
         source: "nemoclaw-hermes-state-v1-hermes-box",
@@ -991,7 +984,7 @@ describe("resolveSandboxCreateIntent", () => {
       materializeSandboxCreatePlan({
         intent,
         fromRef: `ghcr.io/nvidia/nemoclaw/hermes@sha256:${"a".repeat(64)}`,
-        policyAuthority: "nemoclaw-managed",
+        initialPolicyDelivery: "supplied",
         managedStateMount: {
           type: "volume",
           source: "nemoclaw-hermes-state-v1-hermes-box",
@@ -1036,7 +1029,7 @@ describe("resolveSandboxCreateIntent", () => {
       materializeSandboxCreatePlan({
         intent,
         fromRef: "/tmp/nemoclaw-build-1/Dockerfile",
-        policyAuthority: "nemoclaw-managed",
+        initialPolicyDelivery: "supplied",
         messagingTokenDefs: [],
         prepareInitialSandboxCreatePolicy: vi.fn(() => ({
           policyPath: "/tmp/policy.yaml",
@@ -1132,7 +1125,7 @@ describe("resolveSandboxCreateIntent", () => {
     const plan = materializeSandboxCreatePlan({
       intent,
       fromRef: reference,
-      policyAuthority: "nemoclaw-managed",
+      initialPolicyDelivery: "supplied",
       messagingTokenDefs: [],
       prepareInitialSandboxCreatePolicy: vi.fn(() => ({
         policyPath: "/tmp/policy.yaml",

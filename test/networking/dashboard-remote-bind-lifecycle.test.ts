@@ -222,7 +222,6 @@ describe("remote dashboard bind production lifecycle", () => {
         agent: { name: "openclaw" } as never,
         agentVersionKnown: true,
         imageTag: null,
-        appliedPolicies: [],
         plannedMessagingState: undefined,
         hermesToolGateways: [],
         hermesDashboardState: { enabled: false, config: null },
@@ -687,7 +686,10 @@ describe("remote dashboard bind production lifecycle", () => {
       })
       .mockReturnValue({ name: "beta", dashboardPort: 18789 });
     vi.spyOn(forwardHealth, "isLocalForwardReachable").mockReturnValue(false);
-    vi.spyOn(openshellRuntime, "captureOpenshell").mockReturnValue({ status: 0, output: "" });
+    vi.spyOn(openshellRuntime, "captureOpenshell").mockReturnValue({
+      status: 0,
+      output: "",
+    });
     const runOpenshell = vi
       .spyOn(openshellRuntime, "runOpenshell")
       .mockReturnValue({ status: 0 } as never);

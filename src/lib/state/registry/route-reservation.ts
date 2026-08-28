@@ -5,8 +5,8 @@ import { isDeepStrictEqual } from "node:util";
 
 import { normalizeInferenceSelection, type InferenceSelection } from "../../inference/selection";
 import { isWebSearchProvider } from "../../inference/web-search/provider";
-import { normalizePendingSandboxPolicyVerification } from "./pending-policy-verification";
-import type { PendingSandboxPolicyVerification, SandboxEntry } from "./types";
+import { normalizePendingSandboxCreateVerification } from "./pending-create-verification";
+import type { PendingSandboxCreateVerification, SandboxEntry } from "./types";
 
 const ROUTE_RESERVATION_KEYS = new Set<keyof SandboxEntry>([
   "credentialEnv",
@@ -23,11 +23,8 @@ const ROUTE_RESERVATION_KEYS = new Set<keyof SandboxEntry>([
   "name",
   "openshellDriver",
   "pendingRouteReservation",
-  "pendingPolicyVerification",
+  "pendingCreateVerification",
   "preferredInferenceApi",
-  "policies",
-  "policyPresetsFinalized",
-  "policyTier",
   "provider",
   "reservationSessionId",
   "webSearchEnabled",
@@ -41,7 +38,7 @@ function verifiedCreateCheckpointClass(
 ): "absent" | "valid" | "malformed" | "sandbox-authority" {
   let checkpoint;
   try {
-    checkpoint = normalizePendingSandboxPolicyVerification(entry.pendingPolicyVerification);
+    checkpoint = normalizePendingSandboxCreateVerification(entry.pendingCreateVerification);
   } catch {
     return "malformed";
   }
@@ -59,14 +56,14 @@ function verifiedCreateCheckpointClass(
 
 function withVerifiedCreateCheckpoint(
   entry: SandboxEntry,
-  checkpoint: PendingSandboxPolicyVerification,
+  checkpoint: PendingSandboxCreateVerification,
 ): SandboxEntry {
   return {
     ...entry,
     gatewayPort: checkpoint.gatewayPort,
     lifecycleGeneration: checkpoint.lifecycleGeneration,
     lifecycleLiveIdentityFingerprint: checkpoint.sandboxIdentityFingerprint,
-    pendingPolicyVerification: checkpoint,
+    pendingCreateVerification: checkpoint,
   };
 }
 
@@ -77,31 +74,6 @@ function validCarriedRouteMetadata(entry: SandboxEntry): boolean {
     (!Number.isSafeInteger(entry.dashboardPort) ||
       entry.dashboardPort < 1 ||
       entry.dashboardPort > 65_535)
-  ) {
-    return false;
-  }
-  if (
-    entry.policies !== undefined &&
-    (!Array.isArray(entry.policies) ||
-      entry.policies.some(
-        (value) => typeof value !== "string" || value.length === 0 || CONTROL_CHARACTER.test(value),
-      ) ||
-      new Set(entry.policies).size !== entry.policies.length)
-  ) {
-    return false;
-  }
-  if (
-    entry.policyPresetsFinalized !== undefined &&
-    typeof entry.policyPresetsFinalized !== "boolean"
-  ) {
-    return false;
-  }
-  if (
-    entry.policyTier !== undefined &&
-    entry.policyTier !== null &&
-    (typeof entry.policyTier !== "string" ||
-      entry.policyTier.length === 0 ||
-      CONTROL_CHARACTER.test(entry.policyTier))
   ) {
     return false;
   }
@@ -135,7 +107,10 @@ export interface QualifiedPendingSandboxCreateReservation {
 
 export type SandboxInferenceRouteReservationDisposition =
   | { readonly kind: "missing" }
-  | { readonly kind: "owned"; readonly reservation: QualifiedSandboxInferenceRouteReservation }
+  | {
+      readonly kind: "owned";
+      readonly reservation: QualifiedSandboxInferenceRouteReservation;
+    }
   | { readonly kind: "not-reservation" }
   | { readonly kind: "conflict"; readonly detail: string };
 
@@ -170,7 +145,10 @@ export function qualifyPendingSandboxCreateReservation(
   ) {
     throw new Error("The sandbox create route reservation is not owned by this onboarding session");
   }
-  return { authority: structuredClone(authority), entry: structuredClone(entry) };
+  return {
+    authority: structuredClone(authority),
+    entry: structuredClone(entry),
+  };
 }
 
 /** Compare the complete admitted create reservation before its first checkpoint write. */
@@ -229,7 +207,10 @@ export function classifySandboxInferenceRouteReservation(
   if (!entry) return { kind: "missing" };
   if (entry.pendingRouteReservation !== true) return { kind: "not-reservation" };
   if (!isRouteOnlySandboxReservation(entry)) {
-    return { kind: "conflict", detail: "the inference route reservation is already completed" };
+    return {
+      kind: "conflict",
+      detail: "the inference route reservation is already completed",
+    };
   }
   if (!isPendingReservationForSession(entry, authority.sessionId)) {
     return {
@@ -238,11 +219,17 @@ export function classifySandboxInferenceRouteReservation(
     };
   }
   if (Object.keys(entry).some((key) => !ROUTE_RESERVATION_KEYS.has(key as keyof SandboxEntry))) {
-    return { kind: "conflict", detail: "the inference route reservation has sandbox authority" };
+    return {
+      kind: "conflict",
+      detail: "the inference route reservation has sandbox authority",
+    };
   }
   const checkpointClass = verifiedCreateCheckpointClass(entry);
   if (checkpointClass === "sandbox-authority") {
-    return { kind: "conflict", detail: "the inference route reservation has sandbox authority" };
+    return {
+      kind: "conflict",
+      detail: "the inference route reservation has sandbox authority",
+    };
   }
   if (checkpointClass === "malformed") {
     return {
@@ -274,7 +261,10 @@ export function classifySandboxInferenceRouteReservation(
       expectedSelection,
     )
   ) {
-    return { kind: "conflict", detail: "the inference route reservation has another route" };
+    return {
+      kind: "conflict",
+      detail: "the inference route reservation has another route",
+    };
   }
   if (
     (entry.gatewayPort !== undefined &&
@@ -294,7 +284,10 @@ export function classifySandboxInferenceRouteReservation(
         Array.isArray(entry.hostLocalInferenceProvenance) ||
         typeof entry.hostLocalInferenceReceipt !== "string"))
   ) {
-    return { kind: "conflict", detail: "the inference route reservation is malformed" };
+    return {
+      kind: "conflict",
+      detail: "the inference route reservation is malformed",
+    };
   }
   return {
     kind: "owned",
@@ -318,11 +311,11 @@ export function isCurrentSandboxInferenceRouteReservation(
   let checkpoint;
   let admittedCheckpoint;
   try {
-    checkpoint = normalizePendingSandboxPolicyVerification(
-      current.reservation.entry.pendingPolicyVerification,
+    checkpoint = normalizePendingSandboxCreateVerification(
+      current.reservation.entry.pendingCreateVerification,
     );
-    admittedCheckpoint = normalizePendingSandboxPolicyVerification(
-      reservation.entry.pendingPolicyVerification,
+    admittedCheckpoint = normalizePendingSandboxCreateVerification(
+      reservation.entry.pendingCreateVerification,
     );
   } catch {
     return false;

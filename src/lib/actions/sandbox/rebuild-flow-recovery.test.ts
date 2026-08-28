@@ -50,7 +50,10 @@ describe("rebuildSandbox flow: recovery", () => {
     expect(harness.restoreSandboxStateSpy).toHaveBeenCalledWith(
       "alpha",
       recoveryManifest.backupPath,
-      { targetAgentType: "openclaw", allowCustomImageWholeStateFileRestore: true },
+      {
+        targetAgentType: "openclaw",
+        allowCustomImageWholeStateFileRestore: true,
+      },
     );
   });
 
@@ -98,7 +101,9 @@ describe("rebuildSandbox flow: recovery", () => {
     });
 
     await expect(
-      harness.rebuildSandbox("alpha", ["--yes", "--verbose"], { throwOnError: true }),
+      harness.rebuildSandbox("alpha", ["--yes", "--verbose"], {
+        throwOnError: true,
+      }),
     ).rejects.toThrow("Recreate failed");
 
     expect(harness.removeSandboxRegistryEntryWithReceiptSpy).not.toHaveBeenCalled();
@@ -150,7 +155,12 @@ describe("rebuildSandbox flow: recovery", () => {
       captureOpenshell: (argv) =>
         argv[0] === "sandbox" && argv[1] === "get"
           ? { status: 0, output: probe, stdout: probe, stderr: "" }
-          : { status: 1, output: "", stdout: "", stderr: "Error: sandbox alpha not found" },
+          : {
+              status: 1,
+              output: "",
+              stdout: "",
+              stderr: "Error: sandbox alpha not found",
+            },
     });
     restarted.session.checkpoint = checkpoint;
     // Both harnesses share one spy per mocked module function, so the
@@ -316,7 +326,10 @@ describe("rebuildSandbox flow: recovery", () => {
   });
 
   it("performs exactly one prepared-recovery rollback when MCP state is present", async () => {
-    const mcpEntry = { server: "github", providerName: "nemoclaw-mcp-alpha-github" };
+    const mcpEntry = {
+      server: "github",
+      providerName: "nemoclaw-mcp-alpha-github",
+    };
     const harness = createRebuildFlowHarness({
       defaultSandbox: "alpha",
       sandboxEntry: { toolDisclosure: "progressive" },
@@ -342,7 +355,13 @@ describe("rebuildSandbox flow: recovery", () => {
     ).rejects.toThrow("Recreate failed");
 
     expect(harness.restoreSandboxEntrySpy.mock.calls).toEqual([
-      [expect.objectContaining({ name: "alpha", toolDisclosure: "progressive" }), {}],
+      [
+        expect.objectContaining({
+          name: "alpha",
+          toolDisclosure: "progressive",
+        }),
+        {},
+      ],
     ]);
     expect(harness.errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("rebuild --yes --tool-disclosure direct"),
@@ -379,7 +398,10 @@ describe("rebuildSandbox flow: recovery", () => {
   });
 
   it("blocks installer recovery when MCP post-restore verification is incomplete", async () => {
-    const mcpEntry = { server: "github", providerName: "nemoclaw-mcp-alpha-github" };
+    const mcpEntry = {
+      server: "github",
+      providerName: "nemoclaw-mcp-alpha-github",
+    };
     const harness = createRebuildFlowHarness({
       mcpPreparation: {
         entries: [mcpEntry],
@@ -402,7 +424,7 @@ describe("rebuildSandbox flow: recovery", () => {
     expect(harness.relockSpy).toHaveBeenCalled();
   });
 
-  it("prunes the disabled Teams preset from the final registry policies after rebuild", async () => {
+  it("does not rebuild policy from messaging-plan or registry mirrors", async () => {
     const disabledTeamsPlan = {
       schemaVersion: 1,
       sandboxName: "alpha",
@@ -417,9 +439,10 @@ describe("rebuildSandbox flow: recovery", () => {
       stateUpdates: [],
       healthChecks: [],
     };
+    const livePolicyDocument = "version: 1\nnetwork_policies:\n  teams-host-owned: {}";
     const harness = createRebuildFlowHarness({
       applyPreset: () => true,
-      backupPolicyPresets: ["teams", "npm"],
+      livePolicyDocument,
       buildMessagingRebuildPlan: () => disabledTeamsPlan,
     });
 
@@ -427,13 +450,16 @@ describe("rebuildSandbox flow: recovery", () => {
       harness.rebuildSandbox("alpha", ["--yes"], { throwOnError: true }),
     ).resolves.toBeUndefined();
 
-    expect(harness.applyPresetSpy).toHaveBeenCalledWith("alpha", "npm");
-    expect(harness.applyPresetSpy).not.toHaveBeenCalledWith("alpha", "teams");
+    expect(harness.applyPresetSpy).not.toHaveBeenCalled();
+    expect(harness.setLivePolicyDocumentSpy).toHaveBeenCalledWith(
+      "alpha",
+      livePolicyDocument,
+      expect.objectContaining({
+        operation: "restore the captured rebuild policy",
+      }),
+    );
     expect(harness.registryUpdateSpy).toHaveBeenCalledWith("alpha", {
       agentVersion: "0.2.0",
-      policies: ["npm"],
-      policyTier: null,
-      policyPresetsFinalized: undefined,
     });
   });
 
@@ -471,7 +497,11 @@ describe("rebuildSandbox flow: recovery", () => {
         detachedProviderEntries: [attached],
       },
       runOpenshell: (args) => {
-        const deleteFailure = { status: 7, output: "delete failed", stderr: "delete failed" };
+        const deleteFailure = {
+          status: 7,
+          output: "delete failed",
+          stderr: "delete failed",
+        };
         const readySource = {
           status: 0,
           output: "Phase: Ready",
@@ -506,10 +536,7 @@ describe("rebuildSandbox flow: recovery", () => {
     };
     const harness = createRebuildFlowHarness({
       defaultSandbox: "alpha",
-      sandboxEntry: {
-        policies: ["npm", "mcp-bridge-github"],
-        policyPresetsFinalized: true,
-      },
+      sandboxEntry: {},
       mcpPreparation: {
         entries: [mcpEntry],
         detachedProviderEntries: [mcpEntry],
@@ -525,7 +552,7 @@ describe("rebuildSandbox flow: recovery", () => {
 
     expect(harness.removeSandboxRegistryEntryWithReceiptSpy).not.toHaveBeenCalled();
     expect(harness.restoreSandboxEntrySpy.mock.calls).toEqual([
-      [expect.objectContaining({ name: "alpha", policies: ["npm", "mcp-bridge-github"] })],
+      [expect.objectContaining({ name: "alpha" })],
     ]);
   });
 
@@ -548,8 +575,11 @@ describe("rebuildSandbox flow: recovery", () => {
 
   it("fails the rebuild while surfacing incomplete OpenClaw post-restore work", async () => {
     const harness = createRebuildFlowHarness({
-      sandboxEntry: { policyPresetsFinalized: true, policyTier: "balanced" },
-      executeSandboxCommand: () => ({ status: 1, stdout: "", stderr: "hash refresh failed" }),
+      executeSandboxCommand: () => ({
+        status: 1,
+        stdout: "",
+        stderr: "hash refresh failed",
+      }),
       repairMutableConfigPerms: () => ({
         applied: false,
         skipReason: "unreadable",
@@ -573,42 +603,35 @@ describe("rebuildSandbox flow: recovery", () => {
     expect(output).toContain("State restore was incomplete");
     expect(output).toContain("Mutable config permissions were not verified");
     expect(output).toContain("Mutable OpenClaw config hash was not refreshed");
-    expect(harness.applyPresetSpy).toHaveBeenCalledWith("alpha", "bad");
-    expect(harness.applyPresetSpy).toHaveBeenCalledWith("alpha", "throw");
-    expect(harness.errorSpy).toHaveBeenCalledWith(expect.stringContaining("bad, throw"));
+    expect(harness.applyPresetSpy).not.toHaveBeenCalled();
     expect(harness.relockSpy).toHaveBeenCalledWith("alpha", expect.any(Object), true, "nemoclaw");
     expect(harness.registryUpdateSpy).toHaveBeenCalledWith("alpha", {
       agentVersion: "0.2.0",
-      policies: ["npm"],
-      policyTier: "balanced",
-      policyPresetsFinalized: undefined,
     });
-    expect(output).toContain("Policy presets failed to reapply: bad, throw");
   });
 
-  it("reports both MCP and policy recovery when both restores are incomplete", async () => {
+  it("reports both MCP and exact live-policy recovery when both restores are incomplete", async () => {
     const mcpEntry = {
       server: "github",
       providerName: "nemoclaw-mcp-alpha-github",
     };
     const harness = createRebuildFlowHarness({
-      applyPreset: () => false,
-      backupPolicyPresets: ["npm"],
       mcpPreparation: {
         entries: [mcpEntry],
         detachedProviderEntries: [mcpEntry],
       },
       restoreMcpBridgesAfterRebuild: () => Promise.reject(new Error("MCP restore boom")),
     });
+    harness.setLivePolicyDocumentSpy.mockReturnValue(false);
 
     await expect(
       harness.rebuildSandbox("alpha", ["--yes"], { throwOnError: true }),
-    ).resolves.toBeUndefined();
+    ).rejects.toThrow("unverified live policy reconciliation");
 
     const output = harness.logSpy.mock.calls.map((call) => String(call[0])).join("\n");
     expect(output).toContain("rebuilt but some post-restore steps were incomplete");
     expect(output).toContain("MCP bridge definitions were preserved but not fully refreshed");
-    expect(output).toContain("Policy presets failed to reapply: npm");
+    expect(output).toContain("Exact live policy reconciliation was incomplete");
     expect(output).not.toContain("rebuilt successfully");
     expect(harness.errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("MCP bridge restore incomplete: MCP restore boom"),

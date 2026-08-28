@@ -130,7 +130,9 @@ function throwErrno(message: string, code: string): never {
   throw error;
 }
 function throwRegistryPermissionDenied(): never {
-  throw Object.assign(new Error("registry permission denied"), { code: "EACCES" });
+  throw Object.assign(new Error("registry permission denied"), {
+    code: "EACCES",
+  });
 }
 
 function readFileWithUnreadableRegistry(
@@ -407,10 +409,7 @@ describe("shields — unit logic", () => {
         expect(deriveShieldsMode({}, false)).toBe("mutable_default");
         expect(deriveShieldsMode({ shieldsDown: true }, true)).toBe("temporarily_unlocked");
         expect(
-          deriveShieldsMode(
-            { shieldsDown: true, policyRecoveryConfigLocked: true },
-            true,
-          ),
+          deriveShieldsMode({ shieldsDown: true, policyRecoveryConfigLocked: true }, true),
         ).toBe("locked_recovery");
         expect(deriveShieldsMode({ shieldsDown: false }, true)).toBe("locked");
         expect(deriveShieldsMode({}, true)).toBe("mutable_default");
@@ -433,7 +432,10 @@ describe("shields — unit logic", () => {
 
       fs.writeFileSync(
         path.join(stateDir, "shields-openclaw.json"),
-        JSON.stringify({ shieldsDown: false, updatedAt: "2026-05-20T00:00:00Z" }),
+        JSON.stringify({
+          shieldsDown: false,
+          updatedAt: "2026-05-20T00:00:00Z",
+        }),
         { mode: 0o600 },
       );
       expect(getShieldsPosture("openclaw", false)).toEqual(
@@ -554,7 +556,9 @@ describe("shields — unit logic", () => {
 
       const { shieldsStatus } = await loadShieldsModule();
 
-      shieldsStatus(sandboxName, true, { inspectPolicyRecovery: readyPolicyRecovery });
+      shieldsStatus(sandboxName, true, {
+        inspectPolicyRecovery: readyPolicyRecovery,
+      });
 
       expect(processKillSpy).not.toHaveBeenCalled();
       expect(errorSpy).toHaveBeenCalledWith(
@@ -573,7 +577,7 @@ describe("shields — unit logic", () => {
       expect(composition.yaml).not.toContain("mcp_bridge_beta");
     });
 
-    it("deadline restore refuses policy mutation when authority cannot be read (#9833)", async () => {
+    it("deadline restore refuses policy mutation without a bounded forward policy", async () => {
       const sandboxName = "openclaw";
       const processToken = "b".repeat(32);
       const snapshotPath = path.join(stateDir(), "policy-snapshot-unreadable-registry.yaml");
@@ -616,13 +620,13 @@ describe("shields — unit logic", () => {
           deadlineAuthoritative: true,
           expiredTimerRecovery: true,
         }),
-      ).toThrow(/policy authority/i);
+      ).toThrow(/bounded forward policy/i);
 
       expect(run).not.toHaveBeenCalled();
       expect(appliedPolicy).toBe("");
     });
 
-    it("auto-restore refuses before policy staging when authority is unavailable (#9833)", async () => {
+    it("auto-restore refuses before policy staging without a bounded forward policy", async () => {
       const sandboxName = "openclaw";
       const processToken = "d".repeat(32);
       const snapshotPath = path.join(stateDir(), "policy-snapshot-no-managed-mcp.yaml");
@@ -655,7 +659,7 @@ describe("shields — unit logic", () => {
           deadlineAuthoritative: true,
           expiredTimerRecovery: true,
         }),
-      ).toThrow(/policy authority is unavailable/i);
+      ).toThrow(/bounded forward policy/i);
 
       expect(createTempDirectory).not.toHaveBeenCalled();
       expect(run).not.toHaveBeenCalled();
@@ -733,7 +737,9 @@ describe("shields — unit logic", () => {
 
       const { shieldsStatus } = await loadShieldsModule();
 
-      shieldsStatus(sandboxName, true, { inspectPolicyRecovery: readyPolicyRecovery });
+      shieldsStatus(sandboxName, true, {
+        inspectPolicyRecovery: readyPolicyRecovery,
+      });
 
       expect(logSpy).toHaveBeenCalledWith("  Shields: DOWN (temporarily unlocked)");
       expect(errorSpy).toHaveBeenCalledWith(
@@ -848,7 +854,9 @@ describe("shields — unit logic", () => {
       );
 
       const { shieldsStatus } = await loadShieldsModule();
-      shieldsStatus(sandboxName, true, { inspectPolicyRecovery: readyPolicyRecovery });
+      shieldsStatus(sandboxName, true, {
+        inspectPolicyRecovery: readyPolicyRecovery,
+      });
 
       expect(errorSpy).toHaveBeenCalledWith(
         "  Warning: auto-restore timer authority is expired, invalid, or no longer live; attempting inline restore.",

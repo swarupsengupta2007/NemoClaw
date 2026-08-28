@@ -72,8 +72,6 @@ export interface SandboxCreateIntent {
   readonly compatibleEndpointReasoning?: "true" | "false";
   /** Provenance for the endpoint recorded with the created sandbox. */
   readonly endpointSource?: import("../inference/selection").InferenceEndpointSource | null;
-  /** Internal authoritative rebuild tier used before replacement registration completes. */
-  readonly policyTier?: string | null;
   /** Gateway-level extra providers reconciled immediately before sandbox creation. */
   readonly extraProviders?: readonly string[];
   /** Internal OpenClaw resume authority for exact registered provider reuse. */
@@ -92,20 +90,10 @@ export interface SandboxCreateIntent {
   readonly rebuildPolicyPresets?: readonly string[];
 }
 
-/** Policy authority proved inside one exact post-create sandbox identity gate. */
-export type VerifiedSandboxPolicyRegistration =
-  | {
-      readonly policyAuthority: "nemoclaw-managed";
-      readonly policyCreationReceipt: import("../policy/merge").NemoClawPolicyCreationReceipt;
-      readonly observedPolicyAuthority: "owner-unknown";
-    }
-  | {
-      readonly policyAuthority: "externally-managed";
-      readonly policyCreationReceipt: null;
-      /** Generic evidence seam; the default #10115 verifier produces only global authority. */
-      readonly observedPolicyAuthority: "externally-managed" | "owner-unknown";
-      readonly policyIdentity: import("../policy/merge").OpenShellPolicyIdentity;
-    };
+/** Ephemeral live-policy observation proved inside one exact post-create identity gate. */
+export interface VerifiedSandboxPolicyRegistration {
+  readonly policyIdentity: import("../policy/merge").OpenShellPolicyIdentity;
+}
 
 /** Exact sandbox and policy result retained from the immediate create gate. */
 export interface VerifiedSandboxPolicyBoundary {
@@ -204,8 +192,6 @@ export type OnboardOptions = {
   /** Internal provenance for an authoritative observability value. */
   observabilityRequestedExplicitly?: boolean;
   dcodeAutoApprovalMode?: import("./dcode-auto-approval").DcodeAutoApprovalMode | null;
-  /** Internal authoritative rebuild tier; never exposed as an onboard CLI option. */
-  policyTier?: string | null;
   controlUiPort?: number | null;
   gpu?: boolean;
   noGpu?: boolean;

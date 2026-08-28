@@ -73,7 +73,7 @@ describe("rebuildSandbox flow: target credentials", () => {
     expectNoSandboxDelete(harness.runOpenshellSpy);
   });
 
-  it("preserves legacy Brave web search during a nonmatching-session rebuild", async () => {
+  it("does not infer legacy Brave web search from a registry policy mirror", async () => {
     const harness = createRebuildFlowHarness({
       applyPreset: () => true,
       sandboxEntry: { policies: ["brave"], webSearchEnabled: undefined },
@@ -84,17 +84,13 @@ describe("rebuildSandbox flow: target credentials", () => {
       harness.rebuildSandbox("alpha", ["--yes"], { throwOnError: true }),
     ).resolves.toBeUndefined();
 
-    expect(harness.ensureValidatedBraveSearchCredentialSpy).toHaveBeenCalledWith(
-      { fetchEnabled: true, provider: "brave" },
-      true,
-    );
-    expect(harness.session.webSearchConfig).toEqual({ fetchEnabled: true, provider: "brave" });
+    expect(harness.ensureValidatedBraveSearchCredentialSpy).not.toHaveBeenCalled();
+    expect(harness.session.webSearchConfig).toBeNull();
   });
 
-  it("reconciles stale Brave policy state to the durable Tavily provider", async () => {
+  it("preserves the captured live policy while retaining durable Tavily configuration", async () => {
     const harness = createRebuildFlowHarness({
       applyPreset: (name) => name === "tavily",
-      backupPolicyPresets: ["brave"],
       sandboxEntry: {
         policies: ["brave"],
         webSearchEnabled: true,
@@ -107,7 +103,7 @@ describe("rebuildSandbox flow: target credentials", () => {
       harness.rebuildSandbox("alpha", ["--yes"], { throwOnError: true }),
     ).resolves.toBeUndefined();
 
-    expect(harness.applyPresetSpy).toHaveBeenCalledWith("alpha", "tavily");
+    expect(harness.applyPresetSpy).not.toHaveBeenCalledWith("alpha", "tavily");
     expect(harness.applyPresetSpy).not.toHaveBeenCalledWith("alpha", "brave");
     expect(harness.session.webSearchConfig).toEqual({
       fetchEnabled: true,
@@ -172,7 +168,9 @@ describe("rebuildSandbox flow: target credentials", () => {
       });
       expect(harness.session.hermesAuthMethod).toBe("api_key");
       expect(harness.session.credentialEnv).toBe("NOUS_API_KEY");
-      expect(harness.session.metadata).toMatchObject({ fromDockerfile: dockerfile });
+      expect(harness.session.metadata).toMatchObject({
+        fromDockerfile: dockerfile,
+      });
       expect(harness.onboardSpy).toHaveBeenCalledWith(
         expect.objectContaining({ fromDockerfile: dockerfile }),
       );
@@ -251,7 +249,11 @@ describe("rebuildSandbox flow: target credentials", () => {
 
   it("fails closed when a legacy matching session recovers Hermes without auth state", async () => {
     const harness = createRebuildFlowHarness({
-      sandboxEntry: { provider: null, model: null, hermesAuthMethod: undefined },
+      sandboxEntry: {
+        provider: null,
+        model: null,
+        hermesAuthMethod: undefined,
+      },
     });
     harness.session.provider = "hermes-provider";
     harness.session.model = "hermes-model";
@@ -290,7 +292,9 @@ describe("rebuildSandbox flow: target credentials", () => {
 
   it("aborts before backup/delete when the durable custom Dockerfile is missing", async () => {
     const harness = createRebuildFlowHarness({
-      sandboxEntry: { fromDockerfile: "/definitely/missing/NemoClaw.Dockerfile" },
+      sandboxEntry: {
+        fromDockerfile: "/definitely/missing/NemoClaw.Dockerfile",
+      },
     });
 
     await expect(

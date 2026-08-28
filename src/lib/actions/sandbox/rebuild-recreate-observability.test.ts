@@ -85,7 +85,6 @@ const recreateOptions: RebuildRecreateOnboardOpts = {
   dcodeAutoApprovalRequestedExplicitly: false,
   observabilityEnabled: true,
   observabilityRequestedExplicitly: true,
-  policyTier: "restricted",
   baseImageResolutionHint: null,
   rebuildGatewayAuthority: STANDALONE_GATEWAY_AUTHORITY,
 };
@@ -125,7 +124,6 @@ function makeInput(overrides: Partial<RebuildRecreatePhaseInput> = {}): RebuildR
       name: "alpha",
       agent: DCODE_AGENT,
       observabilityEnabled: true,
-      policyTier: "restricted",
     },
     sessionSnapshot: onboardSession.createSession({
       sandboxName: "alpha",
@@ -153,7 +151,6 @@ function makeInput(overrides: Partial<RebuildRecreatePhaseInput> = {}): RebuildR
     rebuildsHermesSandbox: false,
     hermesToolGateways: [],
     hasHermesToolGateways: false,
-    sessionPolicyPresets: ["observability-otlp-local"],
     credentialEnv: "NVIDIA_API_KEY",
     baseImagePreflight: { ok: true, imageRef: null, overrideEnvVar: null },
     recoveryRecreate: false,
@@ -400,7 +397,6 @@ describe("runRebuildRecreatePhase handoff", () => {
             name: "alpha",
             agent: "hermes",
             observabilityEnabled: true,
-            policyTier: "restricted",
           },
           rebuildAgent: "hermes",
           rebuildsHermesSandbox: true,

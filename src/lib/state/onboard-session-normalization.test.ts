@@ -67,41 +67,18 @@ describe("onboard session normalization", () => {
     ).toThrow(/saved APF selection is invalid/u);
   });
 
-  it("keeps recognized, absent, and legacy null policy authority values (#9833)", () => {
-    const external = createSession({ policyAuthority: "externally-managed" });
-    expect(normalizeSession(external)?.policyAuthority).toBe("externally-managed");
-
-    const absent = { ...external } as Partial<typeof external>;
-    delete absent.policyAuthority;
-    expect(
-      normalizeSession(absent as Parameters<typeof normalizeSession>[0])?.policyAuthority,
-    ).toBeNull();
-    expect(normalizeSession({ ...external, policyAuthority: null })?.policyAuthority).toBeNull();
-  });
-
-  it("refuses an invalid saved policy authority (#9833)", () => {
-    const external = createSession({ policyAuthority: "externally-managed" });
-    const malformed = { ...external, policyAuthority: "unspecified" };
-    expect(() => normalizeSession(malformed as Parameters<typeof normalizeSession>[0])).toThrow(
-      /saved policy authority is invalid/u,
-    );
-  });
-
-  it("clears NemoClaw preset attribution for external policy authority (#9833)", () => {
-    const external = createSession({
+  it("ignores legacy policy authority and preset shadows", () => {
+    const legacy = {
+      ...createSession(),
       policyAuthority: "externally-managed",
       policyPresets: ["npm"],
-    });
-    expect(external.policyPresets).toBeNull();
+    } as unknown as Parameters<typeof normalizeSession>[0];
 
-    const legacy = {
-      ...createSession({ policyAuthority: "nemoclaw-managed", policyPresets: ["npm"] }),
-      policyAuthority: "externally-managed" as const,
-    };
-    expect(normalizeSession(legacy)?.policyPresets).toBeNull();
-    expect(
-      filterSafeUpdates({ policyAuthority: "externally-managed", policyPresets: ["npm"] }),
-    ).toMatchObject({ policyAuthority: "externally-managed", policyPresets: null });
+    const normalized = normalizeSession(legacy)!;
+    expect(normalized).not.toHaveProperty("policyAuthority");
+    expect(normalized).not.toHaveProperty("policyPresets");
+    expect(filterSafeUpdates(legacy as never)).not.toHaveProperty("policyAuthority");
+    expect(filterSafeUpdates(legacy as never)).not.toHaveProperty("policyPresets");
   });
 
   it("normalizes old sessions without machine snapshots", () => {

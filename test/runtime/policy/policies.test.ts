@@ -56,7 +56,6 @@ describe("policies", () => {
     vi.spyOn(policyAuthorityModule, "inspectOpenShellSandboxIdentityFingerprint").mockReturnValue(
       SANDBOX_IDENTITY,
     );
-    vi.spyOn(registryForTest, "compareAndSetSandboxPolicyCreationReceipt").mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -174,9 +173,10 @@ const fs = require("node:fs");
 const registry = require(${REGISTRY_PATH});
 const policies = require(${POLICIES_PATH});
 ${managedRegistrationSource("test-sandbox")}
-const result = policies.applyPresets("test-sandbox", ["npm", "pypi"]);
+const result = policies.applyPresets("test-sandbox", ["github", "pypi"]);
 process.stdout.write("\n__RESULT__" + JSON.stringify({
   result,
+  applied: policies.getAppliedPresets("test-sandbox"),
   calls: fs.readFileSync(process.env.CALLS_PATH, "utf-8").trim().split("\n").filter(Boolean),
   policy: fs.readFileSync(process.env.POLICY_OUT, "utf-8"),
   registry: registry.getSandbox("test-sandbox"),
@@ -234,18 +234,19 @@ exit 1
           },
         });
 
-        expect(result.status).toBe(0);
+        expect(result.status, result.stderr).toBe(0);
         const payload = parseResultPayload(result.stdout);
         expect(payload.result).toBe(true);
         const policyGets = payload.calls.filter((call: string) => call.startsWith("policy get "));
-        expect(policyGets.some((call: string) => call.includes("--output json"))).toBe(true);
-        expect(policyGets.some((call: string) => !call.includes("--output json"))).toBe(true);
+        expect(policyGets.length).toBeGreaterThanOrEqual(2);
+        expect(policyGets.every((call: string) => !call.includes("--output json"))).toBe(true);
         expect(payload.calls.filter((call: string) => call.startsWith("policy set "))).toHaveLength(
           1,
         );
-        expect(payload.policy).toContain("npm_yarn:");
+        expect(payload.policy).toContain("github:");
         expect(payload.policy).toContain("pypi:");
-        expect(payload.registry.policies).toEqual(["npm", "pypi"]);
+        expect(payload.applied).toEqual(["github", "pypi"]);
+        expect(payload.registry).not.toHaveProperty("policies");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
@@ -263,6 +264,7 @@ ${managedRegistrationSource("hermes-sandbox", "hermes")}
 const result = policies.applyPresets("hermes-sandbox", ["discord"]);
 process.stdout.write("\n__RESULT__" + JSON.stringify({
   result,
+  applied: policies.getAppliedPresets("hermes-sandbox"),
   policy: fs.readFileSync(process.env.POLICY_OUT, "utf-8"),
   registry: registry.getSandbox("hermes-sandbox"),
 }));
@@ -336,8 +338,12 @@ exit 1
           method: "PATCH",
           path: "/api/v*/channels/*/messages/*",
         });
-        expect(mutationRules).not.toContainEqual({ method: "PATCH", path: "/**" });
-        expect(payload.registry.policies).toEqual(["discord"]);
+        expect(mutationRules).not.toContainEqual({
+          method: "PATCH",
+          path: "/**",
+        });
+        expect(payload.applied).toEqual(["discord"]);
+        expect(payload.registry).not.toHaveProperty("policies");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
@@ -355,6 +361,7 @@ ${managedRegistrationSource("hermes-sandbox", "hermes")}
 const result = policies.applyPresets("hermes-sandbox", ["wechat"]);
 process.stdout.write("\n__RESULT__" + JSON.stringify({
   result,
+  applied: policies.getAppliedPresets("hermes-sandbox"),
   policy: fs.readFileSync(process.env.POLICY_OUT, "utf-8"),
   registry: registry.getSandbox("hermes-sandbox"),
 }));
@@ -417,7 +424,8 @@ exit 1
         const binaries = wechatPolicy.binaries.map((entry: { path: string }) => entry.path);
         expect(binaries).toContain("/usr/bin/python3*");
         expect(binaries).toContain("/opt/hermes/.venv/bin/python");
-        expect(payload.registry.policies).toEqual(["wechat"]);
+        expect(payload.applied).toEqual(["wechat"]);
+        expect(payload.registry).not.toHaveProperty("policies");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
@@ -444,7 +452,7 @@ exit 1
       vi.stubEnv("NEMOCLAW_OPENSHELL_BIN", fakeOpenshell);
       try {
         try {
-          policies.applyPreset("test-sandbox", "npm");
+          policies.applyPreset("test-sandbox", "github");
         } catch {
           /* applyPreset may throw if sandbox not running — we only care about the log */
         }
@@ -715,7 +723,7 @@ exit 1
     // catch the real-world bug, spy on this process's mkdtempSync calls:
     // if the assertion fires before mkdtempSync, no nemoclaw-policy-* dir
     // should be requested.
-    it("applyPreset does not create temp dirs before the openshell resolvability check", () => {
+    it("returns false without creating temp dirs when OpenShell becomes unresolvable", () => {
       const policyTempPrefix = path.join(os.tmpdir(), "nemoclaw-policy-");
 
       const resolveSpy = vi
@@ -733,8 +741,8 @@ exit 1
       }) as never);
 
       try {
-        expect(() => policies.applyPreset("my-assistant", "npm")).toThrow(/__test_exit__/);
-        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(policies.applyPreset("my-assistant", "npm")).toBe(false);
+        expect(exitSpy).not.toHaveBeenCalled();
         // No `nemoclaw-policy-*` temp dir should have been created before
         // the resolvability check exited.
         expect(
@@ -950,7 +958,7 @@ exit 0
       }
     });
 
-    it("applies a well-formed custom preset and records it verbatim (#9406)", () => {
+    it("applies a well-formed custom preset without recording a registry shadow (#9406)", () => {
       let sandbox: Record<string, unknown> = managedSandboxEntry("my-assistant");
       registryModule.getSandbox = () => sandbox;
       registryModule.updateSandbox = (_name: string, updates: Record<string, unknown>) => {
@@ -969,14 +977,8 @@ exit 0
           { custom: { sourcePath: SOURCE_PATH } },
         );
         expect(result).toBe(true);
-        expect(addSpy).toHaveBeenCalledWith(
-          "my-assistant",
-          expect.objectContaining({
-            name: "slack-files-upload",
-            content: CUSTOM_CONTENT,
-            sourcePath: SOURCE_PATH,
-          }),
-        );
+        expect(addSpy).not.toHaveBeenCalled();
+        expect(policies.getAppliedPresets("my-assistant")).toContain("slack-files-upload");
       } finally {
         logSpy.mockRestore();
         errSpy.mockRestore();

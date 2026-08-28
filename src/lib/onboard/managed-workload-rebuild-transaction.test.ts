@@ -349,7 +349,10 @@ function transactionHarness(
   previousEntryOverrides: Partial<SandboxEntry> = {},
 ) {
   const events: string[] = [];
-  const oldEntry = { ...previousEntry(agent, providerId, platform), ...previousEntryOverrides };
+  const oldEntry = {
+    ...previousEntry(agent, providerId, platform),
+    ...previousEntryOverrides,
+  };
   let currentEntry = structuredClone(oldEntry);
   let providerPreparationCompleted = false;
   let ambiguousPersistenceReadback = false;
@@ -705,18 +708,6 @@ describe("managed workload rebuild transaction", () => {
     const harness = transactionHarness("openclaw", "mxc", null, "linux/amd64", {
       lifecycleGeneration,
       lifecycleLiveIdentityFingerprint: sandboxIdentityFingerprint,
-      policyAuthority: "nemoclaw-managed",
-      policyCreationReceipt: {
-        schemaVersion: 1,
-        origin: "sandbox-create",
-        gatewayName: "nemoclaw",
-        gatewayPort: 8080,
-        sandboxName: "rebuild-openclaw",
-        lifecycleGeneration,
-        sandboxIdentityFingerprint,
-        policyHash: "policy-old",
-        policyVersion: 1,
-      },
     });
 
     const result = await harness.run();
@@ -901,7 +892,9 @@ describe("managed workload rebuild transaction", () => {
   it("rolls back only after an ambiguous write is reconciled to exact old authority", async () => {
     const harness = transactionHarness("openclaw", "mxc", "registry-commit-before-persist");
 
-    await expect(harness.run()).rejects.toMatchObject({ phase: "registry-commit" });
+    await expect(harness.run()).rejects.toMatchObject({
+      phase: "registry-commit",
+    });
 
     expect(harness.currentEntry()).toEqual(harness.oldEntry);
     expect(harness.operations.rollback).toHaveBeenCalledOnce();

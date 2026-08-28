@@ -12,7 +12,10 @@ interface MockRegistryState {
   defaultSandbox: string | null;
 }
 
-const mockRegistryState: MockRegistryState = { sandboxes: {}, defaultSandbox: null };
+const mockRegistryState: MockRegistryState = {
+  sandboxes: {},
+  defaultSandbox: null,
+};
 
 vi.mock("./state/registry.js", () => ({
   listSandboxes: () => ({
@@ -65,23 +68,26 @@ import {
 import { recoverRegistryEntries } from "./registry-recovery-action.js";
 import { loadSession } from "./state/onboard-session.js";
 
-const gammaEntry = (policies: string[]): SandboxEntry => ({
+const gammaEntry = (_policies: string[]): SandboxEntry => ({
   name: "gamma",
   provider: "nvidia-prod",
   model: "nvidia/nemotron-3-super-120b-a12b",
   gpuEnabled: false,
-  policies,
 });
 
-const completedSession = (sandboxName: string, policyPresets: string[]) =>
+const completedSession = (sandboxName: string, _policyPresets: string[]) =>
   ({
     sandboxName,
     provider: "nvidia-prod",
     model: "nvidia/nemotron-3-super-120b-a12b",
-    policyPresets,
     nimContainer: null,
     steps: {
-      sandbox: { status: "complete", startedAt: null, completedAt: null, error: null },
+      sandbox: {
+        status: "complete",
+        startedAt: null,
+        completedAt: null,
+        error: null,
+      },
     },
   }) as never;
 
@@ -122,7 +128,6 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
       "beta",
       "gamma",
     ]);
-    expect(mockRegistryState.sandboxes.alpha?.policies).toEqual(["pypi"]);
     expect(mockRegistryState.defaultSandbox).toBe("gamma");
   });
 
@@ -135,7 +140,10 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
     };
     mockRegistryState.defaultSandbox = "gamma";
     vi.mocked(loadSession).mockReturnValue(completedSession("alpha", []));
-    vi.mocked(captureOpenshell).mockReturnValue({ output: "alpha Ready", status: 0 } as never);
+    vi.mocked(captureOpenshell).mockReturnValue({
+      output: "alpha Ready",
+      status: 0,
+    } as never);
 
     const result = await recoverRegistryEntries();
 
@@ -153,7 +161,6 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
       credentialEnv: "NVIDIA_API_KEY",
       preferredInferenceApi: null,
       gpuEnabled: false,
-      policies: [],
     };
     vi.mocked(loadSession).mockReturnValue({
       sandboxName: "alpha",
@@ -162,13 +169,20 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
       endpointUrl: "https://historical.example.test/v1",
       credentialEnv: "COMPATIBLE_API_KEY",
       preferredInferenceApi: "openai-completions",
-      policyPresets: [],
       nimContainer: null,
       steps: {
-        sandbox: { status: "complete", startedAt: null, completedAt: null, error: null },
+        sandbox: {
+          status: "complete",
+          startedAt: null,
+          completedAt: null,
+          error: null,
+        },
       },
     } as never);
-    vi.mocked(captureOpenshell).mockReturnValue({ output: "alpha Ready", status: 0 } as never);
+    vi.mocked(captureOpenshell).mockReturnValue({
+      output: "alpha Ready",
+      status: 0,
+    } as never);
 
     await recoverRegistryEntries({ requestedSandboxName: "missing-sandbox" });
 
@@ -207,13 +221,19 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
       sandboxName: "phantom",
       provider: "nvidia",
       model: "nemotron",
-      policyPresets: [],
       nimContainer: null,
       steps: {
-        sandbox: { status: "pending", startedAt: null, completedAt: null, error: null },
+        sandbox: {
+          status: "pending",
+          startedAt: null,
+          completedAt: null,
+          error: null,
+        },
       },
     } as never);
-    vi.mocked(getNamedGatewayLifecycleState).mockReturnValue({ state: "healthy_named" } as never);
+    vi.mocked(getNamedGatewayLifecycleState).mockReturnValue({
+      state: "healthy_named",
+    } as never);
     vi.mocked(captureOpenshell).mockReturnValue({
       output: "dcode-station Ready",
       status: 0,
@@ -237,9 +257,14 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
   });
 
   it("persists a requested live sandbox and makes it the default", async () => {
-    vi.mocked(captureOpenshell).mockReturnValue({ output: "alpha Ready", status: 0 } as never);
+    vi.mocked(captureOpenshell).mockReturnValue({
+      output: "alpha Ready",
+      status: 0,
+    } as never);
 
-    const result = await recoverRegistryEntries({ requestedSandboxName: "alpha" });
+    const result = await recoverRegistryEntries({
+      requestedSandboxName: "alpha",
+    });
 
     expect(recoverNamedGatewayRuntime).toHaveBeenCalledOnce();
     expect(getNamedGatewayLifecycleState).not.toHaveBeenCalled();
@@ -250,9 +275,14 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
   });
 
   it("keeps a missing requested sandbox absent while recovering other live entries", async () => {
-    vi.mocked(captureOpenshell).mockReturnValue({ output: "alpha Ready", status: 0 } as never);
+    vi.mocked(captureOpenshell).mockReturnValue({
+      output: "alpha Ready",
+      status: 0,
+    } as never);
 
-    const result = await recoverRegistryEntries({ requestedSandboxName: "beta" });
+    const result = await recoverRegistryEntries({
+      requestedSandboxName: "beta",
+    });
 
     expect(result.recoveredFromGateway).toBe(1);
     expect(result.sandboxes.map((sandbox) => sandbox.name)).toEqual(["alpha"]);
@@ -283,7 +313,11 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
     });
     await expect(
       runInferenceSet(
-        { provider: "nvidia-prod", model: "nvidia/model-b", sandboxName: "gamma" },
+        {
+          provider: "nvidia-prod",
+          model: "nvidia/model-b",
+          sandboxName: "gamma",
+        },
         deps,
       ),
     ).rejects.toMatchObject({
@@ -318,7 +352,9 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
     mockRegistryState.sandboxes.gamma = gammaEntry([]);
     mockRegistryState.defaultSandbox = "gamma";
 
-    const result = await recoverRegistryEntries({ requestedSandboxName: "hermes-station" });
+    const result = await recoverRegistryEntries({
+      requestedSandboxName: "hermes-station",
+    });
 
     expect(mockRegistryState.sandboxes["hermes-station"]).toBeUndefined();
     expect(result.recoveredFromGateway).toBe(0);
@@ -332,7 +368,9 @@ describe("recoverRegistryEntries seeded recovery paths", () => {
     // The unseeded #5714 `list` path reads the same list and must be scoped as
     // well, or a plain `nemoclaw list` advertises a sibling gateway's sandbox
     // that the next sandbox-scoped command cannot act on.
-    vi.mocked(getNamedGatewayLifecycleState).mockReturnValue({ state: "healthy_named" } as never);
+    vi.mocked(getNamedGatewayLifecycleState).mockReturnValue({
+      state: "healthy_named",
+    } as never);
     vi.mocked(captureOpenshell).mockImplementation(
       (args: string[]) =>
         ({

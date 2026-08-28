@@ -216,7 +216,11 @@ function wipeAndHardenLiveSandbox(
         "If the budget is exhausted, durable containment blocks sandbox mutations. " +
         `Run \`nemoclaw ${sandboxName} shields status\` for exact-generation recovery guidance.`,
     );
-    return { hardenedForDelete: false, hardeningFailed: true, timerProcessToken };
+    return {
+      hardenedForDelete: false,
+      hardeningFailed: true,
+      timerProcessToken,
+    };
   }
   return { hardenedForDelete: true, hardeningFailed: false, timerProcessToken };
 }
@@ -274,7 +278,9 @@ async function finalizeMcpDestroy(
   force: boolean,
 ): Promise<void> {
   try {
-    await finalizeMcpBridgesAfterSandboxDelete(sandboxName, preparation, { force });
+    await finalizeMcpBridgesAfterSandboxDelete(sandboxName, preparation, {
+      force,
+    });
   } catch (error) {
     const detail = redactDestroyError(error);
     console.error(
@@ -308,9 +314,9 @@ export async function executeSandboxDestroy({
       | { status: "changed"; subject?: string }
       | { status: "ambiguous"; detail: string; subject?: string }
       | { status: "probe-failed"; detail: string; subject?: string };
-    const pendingPolicyVerification = sandbox?.pendingPolicyVerification;
+    const pendingCreateVerification = sandbox?.pendingCreateVerification;
     const inspectPendingPolicyVerificationContinuity = (): IdentityContinuity => {
-      if (!pendingPolicyVerification) return { status: "match" };
+      if (!pendingCreateVerification) return { status: "match" };
       if (!getSandbox) {
         return {
           status: "probe-failed",
@@ -318,21 +324,24 @@ export async function executeSandboxDestroy({
           detail: "an exact registry reader is unavailable",
         };
       }
-      const readCurrentCheckpoint = () => getSandbox(sandboxName)?.pendingPolicyVerification;
+      const readCurrentCheckpoint = () => getSandbox(sandboxName)?.pendingCreateVerification;
       try {
-        if (!isDeepStrictEqual(readCurrentCheckpoint(), pendingPolicyVerification)) {
-          return { status: "changed", subject: "Pending policy verification authority" };
+        if (!isDeepStrictEqual(readCurrentCheckpoint(), pendingCreateVerification)) {
+          return {
+            status: "changed",
+            subject: "Pending policy verification authority",
+          };
         }
         const inspectIdentity =
           deps.inspectOpenShellSandboxIdentityFingerprint ??
           inspectOpenShellSandboxIdentityFingerprint;
         const liveFingerprint = inspectIdentity({
           sandboxName,
-          gatewayName: pendingPolicyVerification.gatewayName,
+          gatewayName: pendingCreateVerification.gatewayName,
         });
         if (
-          liveFingerprint !== pendingPolicyVerification.sandboxIdentityFingerprint ||
-          !isDeepStrictEqual(readCurrentCheckpoint(), pendingPolicyVerification)
+          liveFingerprint !== pendingCreateVerification.sandboxIdentityFingerprint ||
+          !isDeepStrictEqual(readCurrentCheckpoint(), pendingCreateVerification)
         ) {
           return {
             status: "changed",
@@ -356,7 +365,10 @@ export async function executeSandboxDestroy({
           portableContainerAuthority.revalidate();
           return { status: "match" };
         } catch (error) {
-          return { status: "probe-failed", detail: redactDestroyError(error) };
+          return {
+            status: "probe-failed",
+            detail: redactDestroyError(error),
+          };
         }
       }
       if (expectedContainerIdentity === undefined) return { status: "match" };
@@ -368,10 +380,16 @@ export async function executeSandboxDestroy({
         return { status: "match" };
       }
       if (verdict.status === "probe-failed") {
-        return { status: "probe-failed", detail: redactDestroyError(verdict.detail) };
+        return {
+          status: "probe-failed",
+          detail: redactDestroyError(verdict.detail),
+        };
       }
       if (verdict.status === "ambiguous") {
-        return { status: "ambiguous", detail: redactDestroyError(verdict.reason) };
+        return {
+          status: "ambiguous",
+          detail: redactDestroyError(verdict.reason),
+        };
       }
       return { status: "changed" };
     };
@@ -533,7 +551,10 @@ export async function executeSandboxDestroy({
       };
     }
     const detachProviders = (): DetachSandboxProvidersResult =>
-      runSandboxProviderPreDeleteCleanup(sandboxName, { runOpenshell, redact });
+      runSandboxProviderPreDeleteCleanup(sandboxName, {
+        runOpenshell,
+        redact,
+      });
     const preProviderContinuity = inspectIdentityContinuity();
     if (preProviderContinuity.status !== "match") {
       const mcpRecoveryFailure = await restoreMcpForAbort(hardened);
@@ -566,8 +587,8 @@ export async function executeSandboxDestroy({
         ` Managed inference cleanup and workspace wipe or hardening may already have run; inspect those resources before retrying.${detachedDetail}`,
       );
     }
-    const deleteArgs = pendingPolicyVerification
-      ? ["sandbox", "delete", "-g", pendingPolicyVerification.gatewayName, sandboxName]
+    const deleteArgs = pendingCreateVerification
+      ? ["sandbox", "delete", "-g", pendingCreateVerification.gatewayName, sandboxName]
       : ["sandbox", "delete", sandboxName];
     const deleteResult = runOpenshell(deleteArgs, {
       ignoreError: true,

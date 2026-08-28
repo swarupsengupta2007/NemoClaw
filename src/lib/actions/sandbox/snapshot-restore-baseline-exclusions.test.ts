@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import fs from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as f from "./snapshot-restore-test-fixture";
@@ -9,19 +10,7 @@ beforeEach(f.resetSnapshotRestoreMocks);
 afterEach(f.cleanupSnapshotRestoreMocks);
 
 describe("runSandboxSnapshot restore: baseline exclusions", () => {
-  it("uses the OpenClaw baseline in the shared fixture when the agent is absent", () => {
-    const openClawBaseline = {
-      agent: "openclaw",
-      policyPath: "/repo/nemoclaw-blueprint/policies/openclaw-sandbox.yaml",
-      content: "version: 1\nnetwork_policies: {}\n",
-    };
-
-    expect(f.resolveAgentBaselinePolicyMock(undefined)).toEqual(openClawBaseline);
-    expect(f.resolveAgentBaselinePolicyMock(null)).toEqual(openClawBaseline);
-    expect(f.resolveAgentBaselinePolicyMock("openclaw")).toEqual(openClawBaseline);
-  });
-
-  it("creates a clone with the source exclusions applied to its live policy (#7178)", async () => {
+  it("creates a clone from the exact live policy and ignores legacy exclusions (#7178)", async () => {
     const exclusion = {
       version: 1 as const,
       agent: "hermes",
@@ -30,8 +19,9 @@ describe("runSandboxSnapshot restore: baseline exclusions", () => {
       acknowledgedAt: "2026-07-19T00:00:00.000Z",
       appliedAgentVersion: "0.18.0",
     };
-    const cleanup = vi.fn(() => true);
     let registeredClone: f.SandboxRecord | null = null;
+    let policyContentDuringCreate: string | null = null;
+    let policyModeDuringCreate: number | null = null;
     f.registerSandboxMock.mockImplementation(
       (entry) => (registeredClone = entry as f.SandboxRecord),
     );
@@ -54,28 +44,26 @@ describe("runSandboxSnapshot restore: baseline exclusions", () => {
       }),
     );
     f.getLatestBackupMock.mockReturnValue({ ...f.latestBackupFixture });
-    f.prepareInitialSandboxCreatePolicyMock.mockReturnValue({
-      policyPath: "/tmp/snapshot-clone-policy.yaml",
-      appliedPresets: [],
-      cleanup,
+    f.streamSandboxCreateMock.mockImplementation(async (_command, args) => {
+      const policyPath = args[args.indexOf("--policy") + 1];
+      policyContentDuringCreate = fs.readFileSync(policyPath, "utf8");
+      policyModeDuringCreate = fs.statSync(policyPath).mode & 0o777;
+      return { status: 0, output: "", sawProgress: false, forcedReady: false };
     });
 
     const { runSandboxSnapshot } = await import("./snapshot");
     await runSandboxSnapshot("alpha", { kind: "restore", to: "beta" });
 
-    expect(f.resolveAgentBaselinePolicyMock).toHaveBeenCalledWith("hermes");
-    expect(f.prepareInitialSandboxCreatePolicyMock).toHaveBeenCalledWith(
-      "/repo/agents/hermes/policy-additions.yaml",
-      [],
-      { agentName: "hermes", sandboxName: "beta", baselineExclusions: [exclusion] },
+    expect(f.inspectPolicyRecoveryBoundaryMock).toHaveBeenCalledWith(
+      "alpha",
+      "capture the live policy for snapshot clone",
     );
-    const createArgs = f.streamSandboxCreateMock.mock.calls[0]?.[1] ?? [];
-    expect(createArgs[createArgs.indexOf("--policy") + 1]).toBe("/tmp/snapshot-clone-policy.yaml");
+    expect(policyContentDuringCreate).toBe(f.livePolicyDocument);
+    expect(policyModeDuringCreate).toBe(0o600);
     expect(f.registerSandboxMock).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "beta", baselineExclusions: [exclusion] }),
+      expect.not.objectContaining({ baselineExclusions: expect.anything() }),
       undefined,
       { pending: true },
     );
-    expect(cleanup).toHaveBeenCalledOnce();
-  });
+  }, 15_000);
 });

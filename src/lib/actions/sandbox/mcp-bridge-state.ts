@@ -6,11 +6,7 @@ import { recoverNamedGatewayRuntime } from "../../gateway-runtime-action";
 import type { McpBridgeEntry, SandboxEntry } from "../../state/registry";
 import * as registry from "../../state/registry";
 import { getSandboxTargetGatewayName } from "./gateway-target";
-import {
-  isAgentMcpAdapter,
-  MCP_BRIDGE_POLICY_SOURCE,
-  McpBridgeError,
-} from "./mcp-bridge-contracts";
+import { isAgentMcpAdapter, McpBridgeError } from "./mcp-bridge-contracts";
 import { validateSandboxName } from "./mcp-bridge-validation";
 
 export function nowIso(): string {
@@ -206,15 +202,6 @@ export function assertNoDerivedResourceCollision(
   providerName: string | undefined,
   policyName: string,
 ): void {
-  const conflictingCustomPolicy = sandbox.customPolicies?.find(
-    (policy) => policy.name === policyName && policy.sourcePath !== MCP_BRIDGE_POLICY_SOURCE,
-  );
-  if (conflictingCustomPolicy || sandbox.policies?.includes(policyName)) {
-    throw new McpBridgeError(
-      `Generated MCP policy name '${policyName}' conflicts with an existing non-MCP policy. Choose a different server name.`,
-      2,
-    );
-  }
   for (const entry of Object.values(bridgeState(sandbox))) {
     if (entry.server === server) continue;
     const providerCollision =

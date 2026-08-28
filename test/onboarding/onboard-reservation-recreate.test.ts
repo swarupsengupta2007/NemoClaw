@@ -272,8 +272,16 @@ const { createSandbox } = require(${onboardPath});
       const payload = trailingJsonPayload<{
         sandboxName: string | null;
         error?: string;
-        events: Array<{ kind: string; cmd?: string; name?: string; removed?: boolean }>;
-        retainedReservation: { reservationSessionId?: string; model?: string } | null;
+        events: Array<{
+          kind: string;
+          cmd?: string;
+          name?: string;
+          removed?: boolean;
+        }>;
+        retainedReservation: {
+          reservationSessionId?: string;
+          model?: string;
+        } | null;
       }>(result.stdout);
       assert.equal(payload.sandboxName, replaceBeforeCleanup ? null : "my-assistant");
       assert.match(
@@ -433,14 +441,14 @@ if (mode === "resume" && scenario === "foreign-reservation") {
   registry.save(data);
 }
 if (mode === "resume" && scenario === "changed-checkpoint") {
-  const requireCurrent = registry.requireCurrentPendingSandboxPolicyVerification;
+  const requireCurrent = registry.requireCurrentPendingSandboxCreateVerification;
   let reads = 0;
-  registry.requireCurrentPendingSandboxPolicyVerification = (reservation, checkpoint) => {
+  registry.requireCurrentPendingSandboxCreateVerification = (reservation, checkpoint) => {
     const current = requireCurrent(reservation, checkpoint);
     reads += 1;
     if (reads === 1) {
       const data = registry.load();
-      const changed = data.sandboxes["my-assistant"].pendingPolicyVerification;
+      const changed = data.sandboxes["my-assistant"].pendingCreateVerification;
       changed.policyVersion += 1;
       changed.policyCreationReceipt.policyVersion += 1;
       registry.save(data);
@@ -584,14 +592,14 @@ createArgs[16] = async () => {
         error: string;
         registryEntry: {
           pendingRouteReservation?: boolean;
-          pendingPolicyVerification?: unknown;
+          pendingCreateVerification?: unknown;
           lifecycleLiveIdentityFingerprint?: string;
         };
         journal: { phase: string; targetLiveIdentityFingerprint?: string };
       }>(first.stdout);
       assert.match(retained.error, /automatic sandbox cleanup was not safe/u);
       assert.equal(retained.registryEntry.pendingRouteReservation, true);
-      assert.ok(retained.registryEntry.pendingPolicyVerification);
+      assert.ok(retained.registryEntry.pendingCreateVerification);
       assert.match(
         retained.registryEntry.lifecycleLiveIdentityFingerprint ?? "",
         /^[0-9a-f]{64}$/u,
@@ -612,7 +620,7 @@ createArgs[16] = async () => {
         error: string | null;
         registryEntry: {
           pendingRouteReservation?: boolean;
-          pendingPolicyVerification?: unknown;
+          pendingCreateVerification?: unknown;
           policyAuthority?: string;
         };
       }>(second.stdout);
@@ -633,7 +641,7 @@ createArgs[16] = async () => {
       );
       assert.equal(recovered.sandboxName, resumes ? "my-assistant" : null);
       assert.equal(recovered.registryEntry.pendingRouteReservation, resumes ? undefined : true);
-      assert.equal(Boolean(recovered.registryEntry.pendingPolicyVerification), !resumes);
+      assert.equal(Boolean(recovered.registryEntry.pendingCreateVerification), !resumes);
       assert.equal(
         recovered.registryEntry.policyAuthority,
         resumes ? "nemoclaw-managed" : undefined,

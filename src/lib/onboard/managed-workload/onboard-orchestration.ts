@@ -358,7 +358,7 @@ export interface PrepareOnboardSandboxWorkloadLaunchInput {
   };
   readonly plan: {
     readonly intent: SandboxCreateIntent;
-    readonly policyAuthority: MaterializeSandboxCreatePlanInput["policyAuthority"];
+    readonly initialPolicyDelivery: MaterializeSandboxCreatePlanInput["initialPolicyDelivery"];
     readonly deferSandboxEffectsUntilPolicyVerification?: boolean;
     readonly rebindMessagingTokenDefs: () => Promise<readonly MessagingTokenDef[]>;
     readonly runProviderPreDeleteCleanup: MaterializeSandboxCreatePlanInput["runProviderPreDeleteCleanup"];
@@ -388,8 +388,7 @@ export interface PrepareOnboardSandboxWorkloadLaunchInput {
 
 export interface PreparedOnboardSandboxWorkloadLaunch {
   readonly initialSandboxPolicy: InitialSandboxPolicy;
-  readonly policyTier: string | null;
-  readonly policyAuthority: MaterializeSandboxCreatePlanInput["policyAuthority"];
+  readonly initialPolicyDelivery: MaterializeSandboxCreatePlanInput["initialPolicyDelivery"];
   readonly messagingProviders: string[];
   readonly gpuRoutePlan: SandboxCreateIntent["gpuRoutePlan"];
   readonly compatibilityPolicyPath: string | null;
@@ -434,7 +433,7 @@ export async function prepareOnboardSandboxWorkloadLaunch(
   const createPlan = input.dependencies.materializeSandboxCreatePlan({
     intent: input.plan.intent,
     fromRef,
-    policyAuthority: input.plan.policyAuthority,
+    initialPolicyDelivery: input.plan.initialPolicyDelivery,
     deferSandboxEffectsUntilPolicyVerification:
       input.plan.deferSandboxEffectsUntilPolicyVerification,
     messagingTokenDefs: [...messagingTokenDefs],
@@ -489,11 +488,17 @@ export async function prepareOnboardSandboxWorkloadLaunch(
     });
     launch = {
       ...managedLaunch,
-      prebuild: { createArgs: [...launchInput.createArgs], imageRef: null, imageId: null },
+      prebuild: {
+        createArgs: [...launchInput.createArgs],
+        imageRef: null,
+        imageId: null,
+      },
     };
   } else {
     const buildContext = requireLegacyBuildContext(legacyBuildContext);
-    input.dependencies.prepareSandboxBuildPatchConfig({ configuredMessagingChannels });
+    input.dependencies.prepareSandboxBuildPatchConfig({
+      configuredMessagingChannels,
+    });
     const patchInput = input.legacy.resolvePatchInput();
     const patch = await (input.dependencies.resolveSandboxBuildPatch ?? resolveSandboxBuildPatch)({
       // Build-context staging resolves managed-agent base-image provenance.
@@ -521,8 +526,7 @@ export async function prepareOnboardSandboxWorkloadLaunch(
 
   return {
     initialSandboxPolicy: createPlan.initialSandboxPolicy,
-    policyTier: createPlan.policyTier,
-    policyAuthority: createPlan.policyAuthority,
+    initialPolicyDelivery: createPlan.initialPolicyDelivery,
     messagingProviders: createPlan.messagingProviders,
     gpuRoutePlan: createPlan.gpuRoutePlan,
     compatibilityPolicyPath: createPlan.compatibilityPolicyPath,
@@ -540,14 +544,14 @@ export async function prepareOnboardSandboxWorkloadLaunch(
 export function prepareHermesPortableOnboardSandboxLaunch(input: {
   readonly intent: SandboxCreateIntent;
   readonly fromRef: string;
-  readonly policyAuthority: MaterializeSandboxCreatePlanInput["policyAuthority"];
+  readonly initialPolicyDelivery: MaterializeSandboxCreatePlanInput["initialPolicyDelivery"];
   readonly launchInput: Omit<SandboxCreateLaunchInput, "createArgs">;
   readonly gpuConfig: SandboxGpuConfig;
 }): PreparedOnboardSandboxWorkloadLaunch {
   const createPlan = materializeHermesPortableCreatePlan({
     intent: input.intent,
     fromRef: input.fromRef,
-    policyAuthority: input.policyAuthority,
+    initialPolicyDelivery: input.initialPolicyDelivery,
   });
   const launch = prepareSandboxCreateLaunch({
     ...input.launchInput,
@@ -562,7 +566,11 @@ export function prepareHermesPortableOnboardSandboxLaunch(input: {
     legacyBuildContext: null,
     launch: {
       ...launch,
-      prebuild: { createArgs: [...createPlan.createArgs], imageRef: null, imageId: null },
+      prebuild: {
+        createArgs: [...createPlan.createArgs],
+        imageRef: null,
+        imageId: null,
+      },
     },
   };
 }
@@ -594,7 +602,9 @@ export function resolveOnboardManagedBootstrapLaunch(input: {
     bootstrapIdentity: input.bootstrapIdentity,
     stateRoot: input.stateRoot,
     runtimeProvider,
-    authorityStore: runtimeProvider.bootstrap.createAuthorityStore({ stateRoot: input.stateRoot }),
+    authorityStore: runtimeProvider.bootstrap.createAuthorityStore({
+      stateRoot: input.stateRoot,
+    }),
     request: input.request,
     image: {
       repository: input.workload.source.contract.image,
@@ -616,7 +626,10 @@ export function resolveOnboardSandboxWorkloadReceipt(input: {
   readonly buildId: string;
   readonly extractBuiltImageRef: typeof import("../../build-context").extractBuiltImageRef;
   readonly resolveSandboxImageTagFromCreateOutput: typeof import("../../domain/sandbox/image-tag").resolveSandboxImageTagFromCreateOutput;
-}): { readonly resolvedImageTag: string; readonly workloadReceipt: SandboxWorkloadReceipt } {
+}): {
+  readonly resolvedImageTag: string;
+  readonly workloadReceipt: SandboxWorkloadReceipt;
+} {
   const output = `${input.firstCreateOutput}\n${input.createOutput}`;
   const resolvedImageTag =
     (input.workload.source.kind === "managed-image" ? input.workload.source.reference : null) ??

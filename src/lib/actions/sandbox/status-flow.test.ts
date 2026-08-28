@@ -109,7 +109,9 @@ describe("showSandboxStatus flow", () => {
   });
 
   it("preserves schema-4 OpenClaw status behavior (#9203)", async () => {
-    const harness = createStatusFlowHarness({ portableDisposition: { kind: "openclaw" } });
+    const harness = createStatusFlowHarness({
+      portableDisposition: { kind: "openclaw" },
+    });
 
     await expect(harness.showSandboxStatus("alpha")).resolves.toBeUndefined();
 
@@ -272,7 +274,10 @@ describe("showSandboxStatus flow", () => {
 
   it("reports zero SSH sessions as 'none' without connection-negative language (#7805)", async () => {
     const harness = createStatusFlowHarness();
-    harness.getActiveSandboxSessionsSpy.mockReturnValue({ detected: true, sessions: [] });
+    harness.getActiveSandboxSessionsSpy.mockReturnValue({
+      detected: true,
+      sessions: [],
+    });
 
     await expect(harness.showSandboxStatus("alpha")).resolves.toBeUndefined();
 
@@ -321,70 +326,15 @@ describe("showSandboxStatus flow", () => {
 
   it("omits SSH sessions when the active-session probe is unavailable (#7805)", async () => {
     const harness = createStatusFlowHarness();
-    harness.getActiveSandboxSessionsSpy.mockReturnValue({ detected: false, sessions: [] });
+    harness.getActiveSandboxSessionsSpy.mockReturnValue({
+      detected: false,
+      sessions: [],
+    });
 
     await expect(harness.showSandboxStatus("alpha")).resolves.toBeUndefined();
 
     const output = harness.logSpy.mock.calls.map((call) => String(call[0])).join("\n");
     expect(output).not.toMatch(/^\s*(?:Connected|SSH sessions):/m);
-  });
-
-  it("reports active baseline exclusions and their support impact (#7178)", async () => {
-    const harness = createStatusFlowHarness({
-      sandboxEntry: {
-        baselineExclusions: [
-          { version: 1, agent: "openclaw", key: "nous_research", digest: "digest" },
-        ],
-      },
-    });
-
-    await expect(harness.showSandboxStatus("alpha")).resolves.toBeUndefined();
-
-    const output = harness.logSpy.mock.calls.flat().join("\n");
-    expect(output).toContain("Baseline exclusions: nous_research");
-    expect(output).toContain("Support impact:");
-    expect(output).toContain("unsupported");
-    expect(output).toContain("policy restore <key>");
-  });
-
-  it("warns when a recorded exclusion is still present in the live policy (#7178)", async () => {
-    const harness = createStatusFlowHarness({
-      baselineExclusionStatus: "live-policy-mismatch",
-      sandboxEntry: {
-        baselineExclusions: [{ version: 1, agent: "openclaw", key: "pypi", digest: "digest" }],
-      },
-    });
-
-    await expect(harness.showSandboxStatus("alpha")).resolves.toBeUndefined();
-
-    const output = harness.logSpy.mock.calls.flat().join("\n");
-    expect(output).toContain("pypi: excluded key is present in live policy");
-  });
-
-  it("reports interrupted baseline policy repair and the exact reconciliation command (#7178)", async () => {
-    const harness = createStatusFlowHarness({
-      sandboxEntry: {
-        baselineExclusionTransition: {
-          id: "tx-1",
-          operation: "restore",
-          exclusion: {
-            version: 1,
-            agent: "openclaw",
-            key: "nous_research",
-            digest: "digest",
-          },
-          targetLiveDigest: "current-digest",
-          startedAt: "2026-07-19T00:00:00.000Z",
-        },
-      },
-    });
-
-    await expect(harness.showSandboxStatus("alpha")).resolves.toBeUndefined();
-
-    const output = harness.logSpy.mock.calls.flat().join("\n");
-    expect(output).toContain("Baseline policy repair required: interrupted restore");
-    expect(output).toContain("rebuild blocked");
-    expect(output).toContain("nemoclaw alpha policy restore nous_research");
   });
 
   it("omits serving-process status when the gateway is unavailable (#7003)", async () => {
@@ -402,7 +352,10 @@ describe("showSandboxStatus flow", () => {
 
   it.each([
     { label: "unreachable" as const, detail: "inference.local is unreachable" },
-    { label: "unhealthy" as const, detail: "inference.local returned HTTP 503" },
+    {
+      label: "unhealthy" as const,
+      detail: "inference.local returned HTTP 503",
+    },
   ])("reports an $label inference.local route and exits nonzero (#6192)", async (testCase) => {
     const harness = createStatusFlowHarness({
       inferenceHealth: {
@@ -565,7 +518,10 @@ describe("showSandboxStatus flow", () => {
   // removal) is identical to the registered case above, so only the claim
   // itself distinguishes a true answer from a false one.
   it("reports an unregistered sandbox as not registered when the live gateway also lacks it (#9425)", async () => {
-    const harness = createStatusFlowHarness({ lookupState: "missing", sandboxEntry: null });
+    const harness = createStatusFlowHarness({
+      lookupState: "missing",
+      sandboxEntry: null,
+    });
 
     await expect(harness.showSandboxStatus("alpha")).rejects.toThrow("process.exit(1)");
 
@@ -896,7 +852,10 @@ describe("showSandboxStatus flow", () => {
   ])("omits port forward guidance for $caseLabel (#8465)", async ({ chatUiUrl, sandboxEntry }) => {
     vi.stubEnv("SSH_CONNECTION", "203.0.113.9 51000 198.51.100.2 22");
     vi.stubEnv("CHAT_UI_URL", chatUiUrl);
-    const harness = createStatusFlowHarness({ gatewayRunning: true, sandboxEntry });
+    const harness = createStatusFlowHarness({
+      gatewayRunning: true,
+      sandboxEntry,
+    });
 
     await expect(harness.showSandboxStatus("alpha")).resolves.toBeUndefined();
 

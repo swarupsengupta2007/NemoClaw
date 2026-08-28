@@ -12,8 +12,7 @@ import type {
   ServingProcessHealth,
 } from "../../src/lib/actions/sandbox/status-snapshot";
 import type { ProviderHealthStatus } from "../../src/lib/inference/health";
-import type { BaselineExclusionRuntimeStatus } from "../../src/lib/policy/baseline-exclusion";
-import type { BaselineExclusionTransition, SandboxHostMount } from "../../src/lib/state/registry";
+import type { SandboxHostMount } from "../../src/lib/state/registry";
 
 type ShowSandboxStatus =
   (typeof import("../../src/lib/actions/sandbox/status"))["showSandboxStatus"];
@@ -51,7 +50,6 @@ const baseSandboxEntry = {
   name: "alpha",
   model: "nvidia/nemotron",
   provider: "ollama-local",
-  policies: ["npm", "telegram"],
   hostGpuDetected: true,
   gpuEnabled: true,
   sandboxGpuEnabled: true,
@@ -83,7 +81,6 @@ export type StatusFlowHarnessOptions = {
     | (() => PortableAgentReceiptDisposition | Error);
   registryEntry?: "present" | "missing";
   withMcpLifecycleLock?: WithMcpLifecycleLock;
-  baselineExclusionStatus?: BaselineExclusionRuntimeStatus;
   lookup?: SandboxGatewayState;
   lookupState?: "present" | "missing";
   gatewayRunning?: boolean;
@@ -95,8 +92,6 @@ export type StatusFlowHarnessOptions = {
         agent?: string | null;
         agentVersion?: string | null;
         dcodeAutoApprovalMode?: "disabled" | "thread-opt-in";
-        baselineExclusions?: Array<{ version: 1; agent: string; key: string; digest: string }>;
-        baselineExclusionTransition?: BaselineExclusionTransition;
         preferredInferenceApi?: string | null;
         compatibleEndpointReasoningEffort?: "low" | "medium" | "high" | null;
         hostMounts?: SandboxHostMount[];
@@ -261,7 +256,9 @@ export function createStatusFlowHarness(options: StatusFlowHarnessOptions = {}):
     .spyOn(statusProcessRecovery, "isSandboxGatewayRunningForStatus")
     .mockResolvedValue(options.gatewayRunning ?? false);
   vi.spyOn(resolve, "resolveOpenshell").mockReturnValue("/usr/bin/openshell");
-  vi.spyOn(agentRuntime, "getSessionAgent").mockReturnValue({ name: "openclaw" });
+  vi.spyOn(agentRuntime, "getSessionAgent").mockReturnValue({
+    name: "openclaw",
+  });
   vi.spyOn(agentRuntime, "getAgentDisplayName").mockReturnValue("OpenClaw");
   vi.spyOn(agentRuntime, "getGatewayCommand").mockReturnValue("openclaw daemon");
   vi.spyOn(nim, "nimStatus").mockReturnValue({
@@ -275,9 +272,6 @@ export function createStatusFlowHarness(options: StatusFlowHarnessOptions = {}):
     container: null,
   });
   vi.spyOn(nim, "shouldShowNimLine").mockReturnValue(true);
-  vi.spyOn(policy, "getBaselineExclusionRuntimeStatus").mockReturnValue(
-    options.baselineExclusionStatus ?? "excluded",
-  );
   const checkAgentVersionSpy = vi.spyOn(sandboxVersion, "checkAgentVersion").mockReturnValue(
     options.versionCheck ?? {
       sandboxVersion: "0.1.0",

@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { BaselineExclusionEntry } from "../state/registry";
 import type { SandboxHostMount } from "../state/registry/types";
-import type { SandboxPolicyAuthority } from "../adapters/openshell/policy-authority";
 import type { DockerGpuRoutePlan } from "./docker-gpu-route";
 import type { InitialSandboxPolicy } from "./initial-policy";
 import type { ManagedHermesStateVolumeMount } from "./managed-workload/hermes-state-volume";
@@ -22,6 +20,8 @@ export type SandboxCreateMessagingProviderRequest = {
   readonly channel: string | null;
 };
 
+export type InitialPolicyDelivery = "supplied" | "apf-interceptor";
+
 export type SandboxCreatePolicyRequest = {
   readonly basePolicyPath: string;
   readonly activeMessagingChannels: readonly string[];
@@ -32,7 +32,6 @@ export type SandboxCreatePolicyRequest = {
     readonly hostLocalInferenceRouteOnly?: true;
     readonly agentName?: string | null;
     readonly policyTier: string | null;
-    readonly baselineExclusions: readonly BaselineExclusionEntry[];
   };
 };
 
@@ -90,20 +89,17 @@ export type ResolveSandboxCreateIntentInput = {
   extraPlaceholderKeys?: readonly string[];
   agentName?: string | null;
   policyTier: string | null;
-  baselineExclusions?: readonly BaselineExclusionEntry[];
 };
 
 export type MaterializeSandboxCreatePlanInput = {
   intent: SandboxCreateIntent;
   fromRef: string;
-  policyAuthority: SandboxPolicyAuthority;
+  initialPolicyDelivery: InitialPolicyDelivery;
   /** Keep provider mutations and attachments behind the exact post-create policy gate. */
   deferSandboxEffectsUntilPolicyVerification?: boolean;
   managedStateMount?: ManagedHermesStateVolumeMount | null;
   messagingTokenDefs: MessagingTokenDef[];
-  runProviderPreDeleteCleanup(
-    revalidatePolicyRequirements?: (operation: string) => void,
-  ): void;
+  runProviderPreDeleteCleanup(revalidatePolicyRequirements?: (operation: string) => void): void;
   upsertMessagingProviders(
     tokenDefs: MessagingTokenDef[],
     options: {

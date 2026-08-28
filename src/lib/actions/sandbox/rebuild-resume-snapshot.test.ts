@@ -116,8 +116,18 @@ describe("rebuild resume snapshot repair", () => {
         .mockImplementation(resolveGatewayAuthority),
       vi.spyOn(gatewayRuntime, "recoverNamedGatewayRuntime").mockResolvedValue({
         recovered: true,
-        before: { state: "healthy_named", status: "", gatewayInfo: "", activeGateway: null },
-        after: { state: "healthy_named", status: "", gatewayInfo: "", activeGateway: null },
+        before: {
+          state: "healthy_named",
+          status: "",
+          gatewayInfo: "",
+          activeGateway: null,
+        },
+        after: {
+          state: "healthy_named",
+          status: "",
+          gatewayInfo: "",
+          activeGateway: null,
+        },
         attempted: false,
       }),
       vi.spyOn(sandboxList, "captureSandboxListWithGatewayRecovery").mockResolvedValue({
@@ -199,7 +209,6 @@ describe("rebuild resume snapshot repair", () => {
         manifest: {
           backupPath: "/tmp/nemoclaw-rebuild-backup",
           timestamp: "2026-06-01T00:00:00.000Z",
-          policyPresets: [],
         },
       } as never),
       vi

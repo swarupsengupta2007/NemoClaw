@@ -28,9 +28,9 @@ import {
 // (both default and `NEMOCLAW_OPENCLAW_OTEL=1` cases), this handler-level
 // contract test stays as the cheap reconciliation regression and the live
 // scenario takes over as the source-of-truth runtime gate.
-describe("handlePoliciesState — restricted resume reconciliation", () => {
-  it("forces setup reconciliation on restricted resume when suppressed presets are live", async () => {
-    const session = createSession({ policyPresets: [] });
+describe("handlePoliciesState — live suppressed-preset reconciliation", () => {
+  it("forces setup reconciliation when the live policy reports suppressed presets", async () => {
+    const session = createSession();
     const prepareResume = vi.fn((_sandboxName, _options) => ({
       policyPresets: [],
       recordedPolicyPresetsNeedReconcile: false,
@@ -40,18 +40,21 @@ describe("handlePoliciesState — restricted resume reconciliation", () => {
     const { deps, calls, setSession } = createDeps({
       preparePolicyPresetResumeSelection: prepareResume,
       arePolicyPresetsApplied: vi.fn(() => true),
+      getAppliedPolicyPresets: vi.fn(() => []),
       getActiveSandbox: vi.fn(() => ({
         messaging: { plan: makeMessagingPlan() },
-        policyTier: "restricted",
       })),
     });
     setSession(session);
 
-    await handlePoliciesState({ ...baseOptions(deps), resume: true });
+    await handlePoliciesState({
+      ...baseOptions(deps),
+      resume: true,
+    });
 
     expect(prepareResume).toHaveBeenCalledWith(
       "my-assistant",
-      expect.objectContaining({ tierName: "restricted" }),
+      expect.objectContaining({ tierName: null }),
     );
     expect(calls.skipped).not.toHaveBeenCalled();
     expect(calls.recordSkip).not.toHaveBeenCalled();

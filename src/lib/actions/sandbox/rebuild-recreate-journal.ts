@@ -73,7 +73,6 @@ export function fingerprintRebuildRecreateTargetIntent(
     | "toolDisclosure"
     | "dcodeAutoApprovalMode"
     | "observabilityEnabled"
-    | "policyTier"
   >,
 ): string {
   const hostMounts = (options.hostMounts ?? []).map(
@@ -106,7 +105,6 @@ export function fingerprintRebuildRecreateTargetIntent(
     toolDisclosure: options.toolDisclosure,
     dcodeAutoApprovalMode: options.dcodeAutoApprovalMode,
     observabilityEnabled: options.observabilityEnabled,
-    policyTier: options.policyTier,
   });
 }
 
@@ -180,7 +178,10 @@ export function openRebuildRecreateJournal(
       ...checkpoint,
       machineState: current.machine.state,
       updatedAt: new Date().toISOString(),
-      sandboxIdentity: decisionSelected({ name: target.sandboxName, agent: agentName }),
+      sandboxIdentity: decisionSelected({
+        name: target.sandboxName,
+        agent: agentName,
+      }),
       gatewayAuthority: decisionSelected(gatewayAuthority),
     };
     beginSandboxRecreateTransaction(current, {

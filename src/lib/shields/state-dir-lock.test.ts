@@ -67,7 +67,12 @@ function createExec(
               stderr: "",
             };
           case "cat":
-            return { status: 0, signal: null, stdout: JSON.stringify(PLAN), stderr: "" };
+            return {
+              status: 0,
+              signal: null,
+              stdout: JSON.stringify(PLAN),
+              stderr: "",
+            };
         }
         const pythonIndex = cmd.indexOf("python3");
         const action = cmd[pythonIndex + 3];
@@ -205,13 +210,20 @@ describe("recursive state-dir lock host wiring", () => {
   });
 
   it("hands the manifest plan to an injected startup helper (#8006)", () => {
-    const startupPlan: AgentStateLockPlan = { ...PLAN, readOnlyRoots: ["agents", "skills"] };
+    const startupPlan: AgentStateLockPlan = {
+      ...PLAN,
+      readOnlyRoots: ["agents", "skills"],
+    };
     let rawOutput = "";
     let spawnError: Error | undefined;
     const issues = restoreStateDirStartupAccess(
       {
         run: (cmd, input) => {
-          const result = spawnSync(cmd[0]!, cmd.slice(1), {
+          const effectiveCommand =
+            process.platform === "darwin" && cmd[0] === "timeout"
+              ? cmd.slice(cmd.indexOf("python3"))
+              : cmd;
+          const result = spawnSync(effectiveCommand[0]!, effectiveCommand.slice(1), {
             encoding: "utf-8",
             input,
             timeout: 15_000,
@@ -314,7 +326,12 @@ describe("recursive state-dir lock host wiring", () => {
       run: (cmd) =>
         cmd[0] === "test"
           ? { status: 0, signal: null, stdout: "", stderr: "" }
-          : { status: 0, signal: null, stdout: JSON.stringify(reordered), stderr: "" },
+          : {
+              status: 0,
+              signal: null,
+              stdout: JSON.stringify(reordered),
+              stderr: "",
+            },
     };
 
     expect(stateLockPlanCompatibilityIssues(privileged, expected, true)).toEqual([]);
@@ -327,7 +344,12 @@ describe("recursive state-dir lock host wiring", () => {
           case "test":
             return { status: 0, signal: null, stdout: "", stderr: "" };
           case "cat":
-            return { status: 0, signal: null, stdout: JSON.stringify(PLAN), stderr: "" };
+            return {
+              status: 0,
+              signal: null,
+              stdout: JSON.stringify(PLAN),
+              stderr: "",
+            };
         }
         return {
           status: 0,

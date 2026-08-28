@@ -72,7 +72,6 @@ function prepareVerifiedCreate(
   const checkpoint = {
     schemaVersion: 1 as const,
     state: "verified-create" as const,
-    policyAuthority: "nemoclaw-managed" as const,
     observedPolicyAuthority: "owner-unknown" as const,
     gatewayName: route.gatewayName,
     gatewayPort: route.gatewayPort,
@@ -84,13 +83,12 @@ function prepareVerifiedCreate(
     policyVersion: policyCreationReceipt.policyVersion,
     policyCreationReceipt,
   };
-  registry.recordPendingSandboxPolicyVerification(reservation, checkpoint);
+  registry.recordPendingSandboxCreateVerification(reservation, checkpoint);
   return {
     checkpoint,
     registration: {
       lifecycleGeneration: LIFECYCLE_GENERATION,
       lifecycleLiveIdentityFingerprint: SANDBOX_IDENTITY_FINGERPRINT,
-      policyAuthority: "nemoclaw-managed" as const,
       policyCreationReceipt,
     },
     reservation,
@@ -121,7 +119,10 @@ describe("registry host-local inference authority", () => {
       JSON.stringify({
         defaultSandbox: "alpha",
         sandboxes: {
-          alpha: { name: "alpha", hostLocalInferenceReceipt: '{"providerId": "mxc"}\n' },
+          alpha: {
+            name: "alpha",
+            hostLocalInferenceReceipt: '{"providerId": "mxc"}\n',
+          },
         },
       }),
     );
@@ -305,7 +306,7 @@ describe("registry host-local inference authority", () => {
         hostLocalInferenceProvenance: undefined,
       }),
     ).toBe(false);
-    expect(registry.updateSandbox("llama-stable", { policies: ["baseline"] })).toBe(true);
+    expect(registry.updateSandbox("llama-stable", { observabilityEnabled: true })).toBe(true);
     expect(registry.getSandbox("llama-stable")).toMatchObject(route);
   });
 

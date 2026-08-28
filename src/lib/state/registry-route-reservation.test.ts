@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { serializedHostLocalInferenceReceipt } from "../../../test/helpers/host-local-inference-receipt";
 import type { InferenceSelection } from "../inference/selection";
 import type { SandboxInferenceRouteReservationDisposition } from "./registry/route-reservation";
-import type { PendingSandboxPolicyVerification, SandboxEntry } from "./registry/types";
+import type { PendingSandboxCreateVerification, SandboxEntry } from "./registry/types";
 function ownedReservation(disposition: SandboxInferenceRouteReservationDisposition) {
   expect(disposition.kind).toBe("owned");
   return (disposition as Extract<typeof disposition, { kind: "owned" }>).reservation;
@@ -42,7 +42,7 @@ const LIVE_IDENTITY_FINGERPRINT = "a".repeat(64);
 function managedCheckpoint(
   overrides: Partial<
     Pick<
-      PendingSandboxPolicyVerification,
+      PendingSandboxCreateVerification,
       | "gatewayPort"
       | "lifecycleGeneration"
       | "sandboxIdentityFingerprint"
@@ -51,8 +51,12 @@ function managedCheckpoint(
       | "policyVersion"
     >
   > = {},
-): PendingSandboxPolicyVerification {
-  const boundary = {
+): PendingSandboxCreateVerification {
+  return {
+    schemaVersion: 1,
+    state: "verified-create",
+    gatewayName: EXACT_ROUTE_AUTHORITY.gatewayName,
+    sandboxName: EXACT_ROUTE_AUTHORITY.sandboxName,
     gatewayPort: 8080,
     lifecycleGeneration: LIFECYCLE_GENERATION,
     sandboxIdentityFingerprint: LIVE_IDENTITY_FINGERPRINT,
@@ -61,37 +65,15 @@ function managedCheckpoint(
     policyVersion: 1,
     ...overrides,
   };
-  return {
-    schemaVersion: 1,
-    state: "verified-create",
-    policyAuthority: "nemoclaw-managed",
-    observedPolicyAuthority: "owner-unknown",
-    gatewayName: EXACT_ROUTE_AUTHORITY.gatewayName,
-    sandboxName: EXACT_ROUTE_AUTHORITY.sandboxName,
-    ...boundary,
-    policyCreationReceipt: {
-      schemaVersion: 1,
-      origin: "sandbox-create",
-      gatewayName: EXACT_ROUTE_AUTHORITY.gatewayName,
-      gatewayPort: boundary.gatewayPort,
-      sandboxName: EXACT_ROUTE_AUTHORITY.sandboxName,
-      lifecycleGeneration: boundary.lifecycleGeneration,
-      sandboxIdentityFingerprint: boundary.sandboxIdentityFingerprint,
-      policyHash: boundary.policyHash,
-      policyVersion: boundary.policyVersion,
-    },
-  };
 }
 function externalCheckpoint(
   overrides: Partial<
-    Pick<PendingSandboxPolicyVerification, "policyHash" | "policyVersion" | "route">
+    Pick<PendingSandboxCreateVerification, "policyHash" | "policyVersion" | "route">
   > = {},
-): PendingSandboxPolicyVerification {
+): PendingSandboxCreateVerification {
   return {
     schemaVersion: 1,
     state: "verified-create",
-    policyAuthority: "externally-managed",
-    observedPolicyAuthority: "externally-managed",
     gatewayName: EXACT_ROUTE_AUTHORITY.gatewayName,
     gatewayPort: 8080,
     sandboxName: EXACT_ROUTE_AUTHORITY.sandboxName,
@@ -129,7 +111,6 @@ function createdSandboxRegistrationInput(
       reference: null,
       shared: false as const,
     },
-    appliedPolicies: [],
     plannedMessagingState: undefined,
     hermesToolGateways: [],
     hermesDashboardState: { enabled: false, config: null },
@@ -171,7 +152,7 @@ function reserveQualifiedCreate(registry: typeof import("./registry")) {
   );
   return { route, create };
 }
-function completedEntry(checkpoint: PendingSandboxPolicyVerification): SandboxEntry {
+function completedEntry(checkpoint: PendingSandboxCreateVerification): SandboxEntry {
   return {
     name: EXACT_ROUTE_AUTHORITY.sandboxName,
     ...EXACT_ROUTE_SELECTION,
@@ -181,10 +162,6 @@ function completedEntry(checkpoint: PendingSandboxPolicyVerification): SandboxEn
     gatewayPort: checkpoint.gatewayPort,
     lifecycleGeneration: checkpoint.lifecycleGeneration,
     lifecycleLiveIdentityFingerprint: checkpoint.sandboxIdentityFingerprint,
-    policyAuthority: checkpoint.policyAuthority,
-    ...(checkpoint.policyAuthority === "nemoclaw-managed"
-      ? { policyCreationReceipt: checkpoint.policyCreationReceipt }
-      : {}),
   };
 }
 describe("sandbox inference route reservation", () => {
@@ -499,7 +476,6 @@ describe("sandbox inference route reservation", () => {
           reference: null,
           shared: false,
         },
-        appliedPolicies: [],
         plannedMessagingState: undefined,
         hermesToolGateways: [],
         hermesDashboardState: { enabled: false, config: null },
@@ -924,7 +900,7 @@ describe("sandbox inference route reservation", () => {
       const registry = await import("./registry");
       const { route, create } = reserveQualifiedCreate(registry);
       const checkpoint = managedCheckpoint();
-      registry.recordPendingSandboxPolicyVerification(create, checkpoint);
+      registry.recordPendingSandboxCreateVerification(create, checkpoint);
 
       const registered = registry.registerSandbox(completedEntry(checkpoint), route, {
         verifiedCreate: { reservation: create, checkpoint },
@@ -937,7 +913,7 @@ describe("sandbox inference route reservation", () => {
         agent: "hermes",
       });
       expect(registered.pendingRouteReservation).toBeUndefined();
-      expect(registered.pendingPolicyVerification).toBeUndefined();
+      expect(registered.pendingCreateVerification).toBeUndefined();
       expect(registry.getSandbox("alpha")).toEqual(registered);
     } finally {
       await fs.rm(home, { recursive: true, force: true });
@@ -953,12 +929,12 @@ describe("sandbox inference route reservation", () => {
       const { create } = reserveQualifiedCreate(registry);
       const checkpoint = managedCheckpoint();
 
-      const pending = registry.recordPendingSandboxPolicyVerification(create, checkpoint);
+      const pending = registry.recordPendingSandboxCreateVerification(create, checkpoint);
 
       expect(pending).toMatchObject({
         pendingRouteReservation: true,
         reservationSessionId: "session-owner",
-        pendingPolicyVerification: checkpoint,
+        pendingCreateVerification: checkpoint,
         lifecycleGeneration: LIFECYCLE_GENERATION,
         lifecycleLiveIdentityFingerprint: LIVE_IDENTITY_FINGERPRINT,
       });
@@ -970,7 +946,7 @@ describe("sandbox inference route reservation", () => {
       );
       expect(registry.finalizeSandboxRouteReservation("alpha", "session-owner")).toBe(false);
       expect(registry.finalizePendingSandboxRegistration("alpha")).toBe(false);
-      expect(registry.recordPendingSandboxPolicyVerification(create, checkpoint)).toEqual(pending);
+      expect(registry.recordPendingSandboxCreateVerification(create, checkpoint)).toEqual(pending);
       expect(
         registry.reserveSandboxInferenceRoute("alpha", {
           ...EXACT_ROUTE_SELECTION,
@@ -1005,34 +981,34 @@ describe("sandbox inference route reservation", () => {
         policyHash: "sha256:policy-2",
         policyVersion: 2,
       });
-      const initialEntry = registry.recordPendingSandboxPolicyVerification(create, initial);
+      const initialEntry = registry.recordPendingSandboxCreateVerification(create, initial);
       const admittedCheckpoint = ownedReservation(
         registry.classifySandboxInferenceRouteReservation(EXACT_ROUTE_AUTHORITY, initialEntry),
       );
 
-      const rotated = registry.recordPendingSandboxPolicyVerification(create, replacement, {
+      const rotated = registry.recordPendingSandboxCreateVerification(create, replacement, {
         expected: initial,
       });
-      expect(rotated.pendingPolicyVerification).toEqual(replacement);
+      expect(rotated.pendingCreateVerification).toEqual(replacement);
       expect(registry.isCurrentSandboxInferenceRouteReservation(route, rotated)).toBe(true);
       expect(registry.isCurrentSandboxInferenceRouteReservation(admittedCheckpoint, rotated)).toBe(
         false,
       );
       expect(() =>
-        registry.requireCurrentPendingSandboxPolicyVerification(create, initial),
+        registry.requireCurrentPendingSandboxCreateVerification(create, initial),
       ).toThrow(/verified checkpoint changed/u);
       expect(
-        registry.recordPendingSandboxPolicyVerification(create, replacement, {
+        registry.recordPendingSandboxCreateVerification(create, replacement, {
           expected: initial,
         }),
       ).toEqual(rotated);
       expect(() =>
-        registry.recordPendingSandboxPolicyVerification(create, initial, {
+        registry.recordPendingSandboxCreateVerification(create, initial, {
           expected: initial,
         }),
       ).toThrow(/without exact authority/u);
       expect(() =>
-        registry.recordPendingSandboxPolicyVerification(
+        registry.recordPendingSandboxCreateVerification(
           {
             ...create,
             authority: { ...create.authority, sessionId: "another-session" },
@@ -1057,7 +1033,7 @@ describe("sandbox inference route reservation", () => {
       expect(() => registry.registerSandbox(completedEntry(checkpoint), route)).toThrow(
         /verified policy checkpoint/u,
       );
-      registry.recordPendingSandboxPolicyVerification(create, checkpoint);
+      registry.recordPendingSandboxCreateVerification(create, checkpoint);
       registry.removeSandbox("alpha");
       expect(() =>
         registry.registerSandbox(completedEntry(checkpoint), route, {
@@ -1077,7 +1053,7 @@ describe("sandbox inference route reservation", () => {
       const registry = await import("./registry");
       const { route, create } = reserveQualifiedCreate(registry);
       const checkpoint = managedCheckpoint();
-      registry.recordPendingSandboxPolicyVerification(create, checkpoint);
+      registry.recordPendingSandboxCreateVerification(create, checkpoint);
 
       expect(() =>
         registry.registerSandbox(
@@ -1102,7 +1078,7 @@ describe("sandbox inference route reservation", () => {
       const registry = await import("./registry");
       const { route, create } = reserveQualifiedCreate(registry);
       const checkpoint = externalCheckpoint();
-      registry.recordPendingSandboxPolicyVerification(create, checkpoint);
+      registry.recordPendingSandboxCreateVerification(create, checkpoint);
 
       expect(() =>
         registry.registerSandbox(completedEntry(checkpoint), route, {
@@ -1192,12 +1168,12 @@ describe("sandbox inference route reservation", () => {
           reservationSessionId: "another-session",
         }),
       ).toThrow(/belongs to another onboarding session/u);
-      registry.recordPendingSandboxPolicyVerification(create, managedCheckpoint());
+      registry.recordPendingSandboxCreateVerification(create, managedCheckpoint());
       expect(registry.getSandbox("alpha")).toMatchObject({
         pendingRouteReservation: true,
         reservationSessionId: EXACT_ROUTE_AUTHORITY.sessionId,
         model: EXACT_ROUTE_SELECTION.model,
-        pendingPolicyVerification: managedCheckpoint(),
+        pendingCreateVerification: managedCheckpoint(),
       });
     } finally {
       await fs.rm(home, { recursive: true, force: true });
@@ -1243,9 +1219,6 @@ describe("sandbox inference route reservation qualification (#9203)", () => {
     const disposition = classifySandboxInferenceRouteReservation(EXACT_ROUTE_AUTHORITY, {
       ...EXACT_QUALIFIED_ROUTE_RESERVATION,
       dashboardPort: 8080,
-      policies: ["github"],
-      policyPresetsFinalized: true,
-      policyTier: "personal",
       webSearchEnabled: false,
       webSearchProvider: null,
     });
@@ -1268,7 +1241,7 @@ describe("sandbox inference route reservation qualification (#9203)", () => {
       gatewayPort: checkpoint.gatewayPort,
       lifecycleGeneration: checkpoint.lifecycleGeneration,
       lifecycleLiveIdentityFingerprint: checkpoint.sandboxIdentityFingerprint,
-      pendingPolicyVerification: checkpoint,
+      pendingCreateVerification: checkpoint,
     };
 
     expect(classifySandboxInferenceRouteReservation(EXACT_ROUTE_AUTHORITY, pending).kind).toBe(
@@ -1312,7 +1285,14 @@ describe("sandbox inference route reservation qualification (#9203)", () => {
     ["agent", { agent: "hermes" }],
     [
       "workload",
-      { workload: { schemaVersion: 1, kind: "legacy-dockerfile", reference: null, shared: false } },
+      {
+        workload: {
+          schemaVersion: 1,
+          kind: "legacy-dockerfile",
+          reference: null,
+          shared: false,
+        },
+      },
     ],
     ["lifecycle", { lifecycleGeneration: "11111111-1111-4111-8111-111111111111" }],
   ])(
@@ -1322,7 +1302,6 @@ describe("sandbox inference route reservation qualification (#9203)", () => {
         await import("./registry/route-reservation");
       const entry = {
         ...EXACT_QUALIFIED_ROUTE_RESERVATION,
-        policies: ["github"],
         ...updates,
       } as Parameters<typeof classifySandboxInferenceRouteReservation>[1];
 
