@@ -353,35 +353,35 @@ export function applyGeneratedPolicy(
   target: McpBridgeTargetValidation,
   options: { bindCredential?: boolean } = {},
 ): void {
-  const content = generatedPolicyContent(
-    entry,
-    target,
-    isAgentMcpAdapter(entry.adapter) ? entry.adapter : "mcporter",
-    options.bindCredential !== false,
-  );
-  const state = policies.getPresetContentGatewayState(
-    sandboxName,
-    content,
-    buildMcpBridgePolicyKey(entry.server),
-  );
+  const adapter = isAgentMcpAdapter(entry.adapter) ? entry.adapter : "mcporter";
+  const bindCredential = options.bindCredential !== false;
+  const content = generatedPolicyContent(entry, target, adapter, bindCredential);
+  const key = buildMcpBridgePolicyKey(entry.server);
+  const state = policies.getPresetContentGatewayState(sandboxName, content, key);
   if (state === "match") return;
+  let expectedExistingNetworkPolicyContent: string | null = null;
   if (state !== "absent") {
-    throw new McpBridgeError(
-      `Generated MCP policy '${entry.policyName}' is unreachable or drifted; refusing to replace its live key.`,
-    );
+    const capabilityContent = bindCredential
+      ? generatedPolicyContent(entry, target, adapter, false)
+      : undefined;
+    if (
+      !capabilityContent ||
+      policies.getPresetContentGatewayState(sandboxName, capabilityContent, key) !== "match"
+    ) {
+      throw new McpBridgeError(
+        `Generated MCP policy '${entry.policyName}' is unreachable or drifted; refusing to replace its live key.`,
+      );
+    }
+    // MCP add first installs this exact credential-free capability policy.
+    // Upgrade only that byte-derived policy through the policy layer's live
+    // content CAS; any other value at the reserved key remains foreign drift.
+    expectedExistingNetworkPolicyContent = capabilityContent;
   }
   const applied = policies.applyPresetContent(sandboxName, entry.policyName, content, {
-    expectedExistingNetworkPolicyContent: null,
+    expectedExistingNetworkPolicyContent,
     nonFatal: true,
   });
-  if (
-    !applied ||
-    policies.getPresetContentGatewayState(
-      sandboxName,
-      content,
-      buildMcpBridgePolicyKey(entry.server),
-    ) !== "match"
-  ) {
+  if (!applied || policies.getPresetContentGatewayState(sandboxName, content, key) !== "match") {
     throw new McpBridgeError(`Failed to activate generated MCP policy '${entry.policyName}'.`);
   }
 }
@@ -510,12 +510,21 @@ export function removeGeneratedPolicy(
     if (options.bestEffort) return;
     throw error;
   }
-  const state = policies.getPresetContentGatewayState(
-    sandboxName,
-    content,
-    buildMcpBridgePolicyKey(entry.server),
-  );
+  const key = buildMcpBridgePolicyKey(entry.server);
+  let state = policies.getPresetContentGatewayState(sandboxName, content, key);
   if (state === "absent") return;
+  if (state === "drift" && entry.addState) {
+    const capabilityContent = generatedPolicyContent(
+      entry,
+      recordedTarget(entry),
+      isAgentMcpAdapter(entry.adapter) ? entry.adapter : "mcporter",
+      false,
+    );
+    if (policies.getPresetContentGatewayState(sandboxName, capabilityContent, key) === "match") {
+      content = capabilityContent;
+      state = "match";
+    }
+  }
   if (state !== "match") {
     if (options.bestEffort) return;
     throw new McpBridgeError(
@@ -525,11 +534,7 @@ export function removeGeneratedPolicy(
   const removed = policies.removePolicyContent(sandboxName, entry.policyName, content, {
     nonFatal: true,
   });
-  const after = policies.getPresetContentGatewayState(
-    sandboxName,
-    content,
-    buildMcpBridgePolicyKey(entry.server),
-  );
+  const after = policies.getPresetContentGatewayState(sandboxName, content, key);
   if (!removed || after !== "absent") {
     if (options.bestEffort) return;
     throw new McpBridgeError(`Failed to remove generated MCP policy '${entry.policyName}'.`);

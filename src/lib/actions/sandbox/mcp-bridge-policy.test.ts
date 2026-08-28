@@ -80,6 +80,22 @@ describe("MCP OpenShell policy", () => {
     expect(apply).not.toHaveBeenCalled();
   });
 
+  it("upgrades only the exact credential-free add policy", () => {
+    const entry = bridge({ addState: "preflighted" });
+    vi.spyOn(policies, "getPresetContentGatewayState")
+      .mockReturnValueOnce("drift")
+      .mockReturnValueOnce("match")
+      .mockReturnValueOnce("match");
+    const apply = vi.spyOn(policies, "applyPresetContent").mockReturnValue(true);
+
+    applyGeneratedPolicy("alpha", entry, { addresses: ["8.8.8.8"] });
+
+    expect(apply).toHaveBeenCalledOnce();
+    const options = apply.mock.calls[0]?.[3];
+    expect(options?.expectedExistingNetworkPolicyContent).toContain("mcp_bridge_github");
+    expect(options?.expectedExistingNetworkPolicyContent).not.toContain("credential_binding");
+  });
+
   it("removes only the exact live rule and verifies absence", () => {
     const entry = bridge();
     vi.spyOn(policies, "getPresetContentGatewayState")
@@ -103,6 +119,21 @@ describe("MCP OpenShell policy", () => {
 
     expect(() => removeGeneratedPolicy("alpha", bridge())).toThrow(/drifted/);
     expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("removes an exact credential-free policy from an incomplete add", () => {
+    const entry = bridge({ addState: "preflighted" });
+    vi.spyOn(policies, "getPresetContentGatewayState")
+      .mockReturnValueOnce("drift")
+      .mockReturnValueOnce("match")
+      .mockReturnValueOnce("absent");
+    const remove = vi.spyOn(policies, "removePolicyContent").mockReturnValue(true);
+
+    removeGeneratedPolicy("alpha", entry);
+
+    expect(remove).toHaveBeenCalledOnce();
+    expect(remove.mock.calls[0]?.[2]).toContain("mcp_bridge_github");
+    expect(remove.mock.calls[0]?.[2]).not.toContain("credential_binding");
   });
 
   it("derives canonical ownership from committed bridge intent and live policy", () => {
