@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import YAML from "yaml";
 
 import * as openshellRuntimeModule from "../../adapters/openshell/runtime";
 import {
@@ -14,6 +15,38 @@ import {
 } from "./policy-verification";
 
 const POLICY = "version: 1\nnetwork_policies:\n  github:\n    endpoints: []\n";
+const NATIVE_GPU_POLICY = `version: 1
+filesystem_policy:
+  include_workdir: true
+  read_only:
+    - /usr
+    - /lib
+    - /etc
+    - /app
+    - /var/log
+    - /dev/urandom
+  read_write:
+    - /tmp
+network_policies:
+  github:
+    endpoints: []
+`;
+const ENRICHED_NATIVE_GPU_POLICY = NATIVE_GPU_POLICY.replace(
+  "  read_write:\n    - /tmp\n",
+  "  read_write:\n    - /tmp\n    - /proc\n    - /dev/nvidiactl\n    - /dev/nvidia0\n",
+);
+const PROXY_ONLY_NATIVE_GPU_POLICY = NATIVE_GPU_POLICY.replace(
+  "    - /dev/urandom\n",
+  "    - /dev/urandom\n    - /proc\n",
+);
+const COMPATIBILITY_GPU_POLICY = NATIVE_GPU_POLICY.replace(
+  "  read_write:\n    - /tmp\n",
+  "  read_write:\n    - /tmp\n    - /proc\n",
+);
+const ENRICHED_COMPATIBILITY_GPU_POLICY = COMPATIBILITY_GPU_POLICY.replace(
+  "    - /proc\n",
+  "    - /proc\n    - /dev/nvidiactl\n    - /dev/nvidia0\n",
+);
 const INPUT = {
   sandboxName: "alpha",
   gatewayName: "nemoclaw",
@@ -94,6 +127,60 @@ describe("created sandbox live policy verification", () => {
     expect(verifyCreatedSandboxInitialPolicy(INPUT, deps())).toEqual({
       policyIdentity: { hash: "sha256:effective", activeVersion: 4 },
     });
+  });
+
+  it.each([
+    {
+      route: "native" as const,
+      requiredPolicy: NATIVE_GPU_POLICY,
+      livePolicy: ENRICHED_NATIVE_GPU_POLICY,
+    },
+    {
+      route: "native" as const,
+      requiredPolicy: NATIVE_GPU_POLICY,
+      livePolicy: PROXY_ONLY_NATIVE_GPU_POLICY,
+    },
+    {
+      route: "compatibility" as const,
+      requiredPolicy: COMPATIBILITY_GPU_POLICY,
+      livePolicy: ENRICHED_COMPATIBILITY_GPU_POLICY,
+    },
+  ])(
+    "accepts the reviewed $route GPU enrichment during live create verification (#10509)",
+    ({ route, requiredPolicy, livePolicy }) => {
+      const liveDocument = YAML.parse(livePolicy) as Record<string, unknown>;
+      vi.spyOn(openshellRuntimeModule, "captureResolvedOpenshell")
+        .mockReturnValueOnce(gatewayInfo())
+        .mockReturnValueOnce(metadata({ policy: liveDocument }))
+        .mockReturnValueOnce(metadata({ policy: liveDocument }))
+        .mockReturnValueOnce(capture(livePolicy));
+
+      expect(
+        verifyCreatedSandboxInitialPolicy(
+          { ...INPUT, route },
+          { ...deps(), readFile: vi.fn(() => requiredPolicy) as never },
+        ),
+      ).toEqual({
+        policyIdentity: { hash: "sha256:effective", activeVersion: 4 },
+      });
+    },
+  );
+
+  it("rejects an arbitrary filesystem addition during GPU create verification (#10509)", () => {
+    const livePolicy = ENRICHED_COMPATIBILITY_GPU_POLICY.replace("/dev/nvidia0", "/home");
+    const liveDocument = YAML.parse(livePolicy) as Record<string, unknown>;
+    vi.spyOn(openshellRuntimeModule, "captureResolvedOpenshell")
+      .mockReturnValueOnce(gatewayInfo())
+      .mockReturnValueOnce(metadata({ policy: liveDocument }))
+      .mockReturnValueOnce(metadata({ policy: liveDocument }))
+      .mockReturnValueOnce(capture(livePolicy));
+
+    expect(() =>
+      verifyCreatedSandboxInitialPolicy(
+        { ...INPUT, route: "compatibility" },
+        { ...deps(), readFile: vi.fn(() => COMPATIBILITY_GPU_POLICY) as never },
+      ),
+    ).toThrow(/filesystem_policy|live base policy does not match/u);
   });
 
   it("accepts an APF-selected live policy when it contains the required policy", () => {

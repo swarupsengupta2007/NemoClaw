@@ -17,7 +17,7 @@ import { parseOpenShellPolicy } from "../../policy/merge";
 import { normalizePendingSandboxCreateVerification } from "../../state/registry-normalization";
 import type { PendingSandboxCreateVerification } from "../../state/registry/types";
 import type { SelectedDockerGpuRoute } from "../docker-gpu-route";
-import { isOpenShellNativeGpuBaselineEnrichment } from "../sandbox-gpu-route-policy";
+import { isOpenShellGpuBaselineEnrichment } from "../sandbox-gpu-route-policy";
 import type { VerifiedSandboxPolicyBoundary, VerifiedSandboxPolicyRegistration } from "../types";
 
 export interface CreatedSandboxPolicyVerificationInput {
@@ -154,6 +154,7 @@ function stableLiveObservation(
   input: CreatedSandboxPolicyVerificationInput,
   deps: CreatedSandboxPolicyVerificationDeps,
   requiredPolicy: ReturnType<typeof parseOpenShellPolicy>["policy"],
+  allowGpuBaselineEnrichment = false,
 ): VerifiedSandboxPolicyRegistration {
   const operation = input.operation ?? "verify sandbox creation";
   assertOpenShellGatewayPortBinding({
@@ -164,12 +165,24 @@ function stableLiveObservation(
     sandboxName: input.sandboxName,
     gatewayName: input.gatewayName,
   });
-  assertObservedPolicyRequirements({
-    inspection: before,
-    requiredPolicy,
-    operation,
-    sandboxName: input.sandboxName,
-  });
+  const assertRequirements = (
+    inspection: ReturnType<typeof inspectSandboxPolicyAuthority>,
+  ): void => {
+    if (
+      allowGpuBaselineEnrichment &&
+      input.route !== "none" &&
+      isOpenShellGpuBaselineEnrichment(requiredPolicy, inspection.effectivePolicy, input.route)
+    ) {
+      return;
+    }
+    assertObservedPolicyRequirements({
+      inspection,
+      requiredPolicy,
+      operation,
+      sandboxName: input.sandboxName,
+    });
+  };
+  assertRequirements(before);
   waitForCreatedSandboxPolicyReadiness(input, before.policyIdentity.activeVersion, deps);
   const after = inspectSandboxPolicyAuthority({
     sandboxName: input.sandboxName,
@@ -181,12 +194,7 @@ function stableLiveObservation(
   ) {
     refusal(operation, "the live sandbox policy changed during verification");
   }
-  assertObservedPolicyRequirements({
-    inspection: after,
-    requiredPolicy,
-    operation,
-    sandboxName: input.sandboxName,
-  });
+  assertRequirements(after);
   return { policyIdentity: { ...after.policyIdentity } };
 }
 
@@ -196,7 +204,7 @@ export function verifyCreatedSandboxInitialPolicy(
   deps: CreatedSandboxPolicyVerificationDeps = {},
 ): VerifiedSandboxPolicyRegistration {
   const requiredPolicy = readRequiredPolicy(input, deps);
-  const registration = stableLiveObservation(input, deps, requiredPolicy);
+  const registration = stableLiveObservation(input, deps, requiredPolicy, true);
   let livePolicy: ReturnType<typeof parseOpenShellPolicy>["policy"];
   try {
     livePolicy = parseOpenShellPolicy(
@@ -211,7 +219,8 @@ export function verifyCreatedSandboxInitialPolicy(
   if (
     !isDeepStrictEqual(requiredPolicy, livePolicy) &&
     !(
-      input.route === "native" && isOpenShellNativeGpuBaselineEnrichment(requiredPolicy, livePolicy)
+      input.route !== "none" &&
+      isOpenShellGpuBaselineEnrichment(requiredPolicy, livePolicy, input.route)
     )
   ) {
     refusal(
