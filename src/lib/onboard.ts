@@ -790,11 +790,7 @@ const {
 
 const { summarizeCurlFailure, summarizeProbeFailure } = httpProbe;
 
-const selectOnboardAgent = createOnboardAgentSelector({
-  isNonInteractive,
-  note,
-  prompt,
-});
+const selectOnboardAgent = createOnboardAgentSelector({ isNonInteractive, note, prompt });
 
 const { getTransportRecoveryMessage } = validationRecovery;
 
@@ -907,11 +903,7 @@ type MessagingTokenDef = import("./onboard/messaging-prep").MessagingTokenDef;
 
 type EndpointValidationResult =
   | { ok: true; api: string | null; retry?: undefined }
-  | {
-      ok: false;
-      retry: "credential" | "selection" | "retry" | "model";
-      api?: undefined;
-    };
+  | { ok: false; retry: "credential" | "selection" | "retry" | "model"; api?: undefined };
 
 const verifyDirectSandboxGpu = sandboxGpuPreflight.createDirectSandboxGpuVerifier({
   runOpenshell,
@@ -961,13 +953,7 @@ const {
   configureWebSearch,
   verifyWebSearchInsideSandbox,
   webSearchProviderForConfig,
-} = createWebSearchFlowHelpers({
-  prompt,
-  note,
-  isNonInteractive,
-  cliName,
-  runCaptureOpenshell,
-});
+} = createWebSearchFlowHelpers({ prompt, note, isNonInteractive, cliName, runCaptureOpenshell });
 
 const {
   hasResponsesToolCall,
@@ -1688,9 +1674,7 @@ const createSandboxWithBaseImageResolution =
 const { createSandbox, createSandboxWithTemporaryManagedRuntime } =
   agentOnboard.createHermesApiPortScopedSandboxEntryPoints({
     createBaseImageResolutionContext: () =>
-      baseImageResolutionFlow.createBaseImageResolutionContext({
-        fresh: false,
-      }),
+      baseImageResolutionFlow.createBaseImageResolutionContext({ fresh: false }),
     createSandboxWithBaseImageResolution,
     resolvePortableRuntimeContext: () => {
       const authority = sandboxGpuCreateFlow.resolveExportedPortableRuntimeAuthority(
@@ -1955,11 +1939,7 @@ async function handleNimLocalSelection(
   });
 
   console.log("  Waiting for NIM to become healthy...");
-  if (
-    !nim.waitForNimHealth(undefined, undefined, {
-      container: nimContainerNameLocal,
-    })
-  ) {
+  if (!nim.waitForNimHealth(undefined, undefined, { container: nimContainerNameLocal })) {
     nim.stopNimContainerByNameOrThrow(nimContainerNameLocal);
     console.error("  NIM failed to start. Falling back to cloud API.");
     applyCloudFallbackSelection(state, REMOTE_PROVIDER_CONFIG.build);
@@ -3284,12 +3264,7 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
             stageSandboxCredentialProviders,
             promptValidatedSandboxName,
             selectResourceProfileForSandbox: () =>
-              selectResourceProfileForSandbox({
-                isNonInteractive,
-                note,
-                prompt,
-                promptOrDefault,
-              }),
+              selectResourceProfileForSandbox({ isNonInteractive, note, prompt, promptOrDefault }),
             listRegistrySandboxes: registry.listSandboxes,
             planRegisteredExtraProviders: (gatewayName) =>
               planRegisteredExtraProviders(gatewayName, { runOpenshell }),
@@ -3351,12 +3326,7 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
         agentSetupDeps: {
           handleAgentSetup: agentOnboard.handleAgentSetup,
           agentSetupContext: (revalidatePolicyRequirements) => ({
-            ...{
-              step,
-              runCaptureOpenshell,
-              captureOpenshell,
-              revalidatePolicyRequirements,
-            },
+            ...{ step, runCaptureOpenshell, captureOpenshell, revalidatePolicyRequirements },
             openshellShellCommand,
             openshellBinary: getOpenshellBinary(),
             buildSandboxConfigSyncScript,
@@ -3452,9 +3422,7 @@ async function runOnboard(opts: OnboardOptions = {}): Promise<void> {
                   return parseInt(result.trim(), 10) || 0;
                 },
                 captureForwardList: () =>
-                  runCaptureOpenshell(["forward", "list"], {
-                    ignoreError: true,
-                  }) || null,
+                  runCaptureOpenshell(["forward", "list"], { ignoreError: true }) || null,
                 getMessagingChannels: () => liveFinalFlowContext.selectedMessagingChannels || [],
                 providerExistsInGateway: (providerName: string) =>
                   providerExistsInGateway(providerName),

@@ -36,8 +36,8 @@ function transitionState(): Record<string, unknown> {
   const name = fs
     .readdirSync(stateDir())
     .find((candidate) => candidate.startsWith("shields-transition-openclaw-"));
-  if (!name) throw new Error("Shields transition is missing");
-  return JSON.parse(fs.readFileSync(path.join(stateDir(), name), "utf-8")) as Record<
+  expect(name).toBeTypeOf("string");
+  return JSON.parse(fs.readFileSync(path.join(stateDir(), name ?? ""), "utf-8")) as Record<
     string,
     unknown
   >;

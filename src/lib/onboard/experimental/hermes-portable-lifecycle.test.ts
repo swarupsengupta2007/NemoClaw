@@ -316,11 +316,7 @@ function lifecycleDeps(
   const captureOpenShell = vi.fn((args: readonly string[]) => {
     const sandboxExecOutput = args.includes("python3") ? "200\n" : "";
     const responses = {
-      "policy:get": {
-        status: 0,
-        stdout: options.livePolicy ?? POLICY,
-        stderr: "",
-      },
+      "policy:get": { status: 0, stdout: options.livePolicy ?? POLICY, stderr: "" },
       "sandbox:list": {
         status: 0,
         stdout: sandboxListJson(SANDBOX_ID, sandboxPhase()),
@@ -369,10 +365,7 @@ function lifecycleDeps(
           XDG_CONFIG_HOME: receipt.runtimeAuthority.configHome,
           XDG_RUNTIME_DIR: receipt.runtimeAuthority.runtimeDir,
         },
-        captureSocketAuthority: () => ({
-          ...receipt.socketAuthority,
-          inode: "102",
-        }),
+        captureSocketAuthority: () => ({ ...receipt.socketAuthority, inode: "102" }),
         captureOpenShellExecutableAuthority: () => receipt.openshellExecutableAuthority,
         capturePodmanExecutableAuthority: () => receipt.podmanExecutableAuthority,
       },
@@ -410,9 +403,7 @@ describe("Hermes portable lifecycle", () => {
   it("migrates an identical same-path schema-5 copy only under both probe fences (#10423)", async () => {
     const receipt = activeReceipt(stateDir);
     const copiedPolicy = `${receipt.policy.sourcePath}.copy`;
-    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), {
-      mode: 0o600,
-    });
+    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), { mode: 0o600 });
     fs.renameSync(copiedPolicy, receipt.policy.sourcePath);
     const fixture = lifecycleDeps(receipt);
 
@@ -517,9 +508,7 @@ describe("Hermes portable lifecycle", () => {
   it("rejects policy generation replacement during schema-6 publication (#10423)", async () => {
     const receipt = activeReceipt(stateDir);
     const copiedPolicy = `${receipt.policy.sourcePath}.copy`;
-    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), {
-      mode: 0o600,
-    });
+    fs.writeFileSync(copiedPolicy, fs.readFileSync(receipt.policy.sourcePath), { mode: 0o600 });
     fs.renameSync(copiedPolicy, receipt.policy.sourcePath);
     const fixture = lifecycleDeps(receipt);
     const publishWithReplacement: typeof publishHermesPortableSuccessorReceipt = (
@@ -719,19 +708,11 @@ describe("Hermes portable lifecycle", () => {
                 security: { rootless: true },
                 idMappings: {
                   uidmap: [
-                    {
-                      container_id: 0,
-                      host_id: receipt.runtimeAuthority.uid,
-                      size: 1,
-                    },
+                    { container_id: 0, host_id: receipt.runtimeAuthority.uid, size: 1 },
                     { container_id: 1, host_id: 100000, size: 65536 },
                   ],
                   gidmap: [
-                    {
-                      container_id: 0,
-                      host_id: receipt.runtimeAuthority.uid,
-                      size: 1,
-                    },
+                    { container_id: 0, host_id: receipt.runtimeAuthority.uid, size: 1 },
                     { container_id: 1, host_id: 100000, size: 65536 },
                   ],
                 },

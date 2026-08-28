@@ -139,10 +139,7 @@ function replaceTimerDuringRoute({
     const marker = JSON.parse(fs.readFileSync(timerPath, "utf-8"));
     fs.writeFileSync(
       timerPath,
-      JSON.stringify({
-        ...marker,
-        timerProcessStartIdentity: "replacement-timer-start",
-      }),
+      JSON.stringify({ ...marker, timerProcessStartIdentity: "replacement-timer-start" }),
     );
     return { ok: true, attempts: 1, httpStatus: 200 };
   });
@@ -916,10 +913,7 @@ describe("legacy Hermes shields compatibility", () => {
           events.push("audit");
         });
 
-        shields.shieldsDown(sandbox.name, {
-          timeout: "not-a-duration",
-          throwOnError: true,
-        });
+        shields.shieldsDown(sandbox.name, { timeout: "not-a-duration", throwOnError: true });
 
         expect(
           transitionSpy.mock.calls.map(([input]) => ({
@@ -936,10 +930,7 @@ describe("legacy Hermes shields compatibility", () => {
         expect(JSON.parse(fs.readFileSync(transitionPath, "utf-8")).phase).toBe("active");
         expect(
           JSON.parse(fs.readFileSync(path.join(stateDir, `shields-${sandbox.name}.json`), "utf-8")),
-        ).toMatchObject({
-          shieldsDown: true,
-          shieldsPolicySnapshotPath: snapshotPath,
-        });
+        ).toMatchObject({ shieldsDown: true, shieldsPolicySnapshotPath: snapshotPath });
 
         expect(events).toContain(event);
 
@@ -1112,11 +1103,7 @@ describe("legacy Hermes shields compatibility", () => {
             forwardPolicy,
           }),
         );
-        arrangeFailure({
-          forwardPolicyPath: forwardPolicy.path,
-          routeSpy,
-          timerPath,
-        });
+        arrangeFailure({ forwardPolicyPath: forwardPolicy.path, routeSpy, timerPath });
         lifecycleGateSpy.mockReturnValue(false);
 
         expect(() => shields.shieldsDown(sandbox.name, { throwOnError: true })).toThrow(
@@ -1502,10 +1489,7 @@ describe("legacy Hermes shields compatibility", () => {
     });
 
     it("fails closed when managed Docker registry lifecycle authority is incomplete", () => {
-      registrySpy.mockReturnValue({
-        ...sandbox,
-        lifecycleGeneration: undefined,
-      });
+      registrySpy.mockReturnValue({ ...sandbox, lifecycleGeneration: undefined });
 
       expect(() => shields.lockAgentConfig(sandbox.name, target, false, false)).toThrow(
         /registry authority has no lifecycle generation/u,

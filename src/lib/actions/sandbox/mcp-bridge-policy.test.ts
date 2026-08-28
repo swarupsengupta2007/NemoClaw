@@ -198,8 +198,9 @@ describe("MCP OpenShell policy", () => {
     expect(content).toContain("alpha-mcp-bound-provider");
   });
 
-  it("rejects missing or padded credential provider names", () => {
-    for (const providerName of ["", " provider "]) {
+  it.each(["", " provider "])(
+    "rejects the invalid credential provider name %j",
+    (providerName) => {
       expect(() =>
         buildMcpBridgePolicyYaml(
           "github",
@@ -209,6 +210,6 @@ describe("MCP OpenShell policy", () => {
           providerName,
         ),
       ).toThrow(/requires an exact provider name/);
-    }
-  });
+    },
+  );
 });

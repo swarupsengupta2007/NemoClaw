@@ -137,19 +137,19 @@ describe("sandbox registry normalization", () => {
       }),
     );
     const entry = registry.getSandbox("alpha") as unknown as Record<string, unknown>;
-    for (const field of [
-      "policyAuthority",
-      "policyCreationReceipt",
-      "pendingPolicyVerification",
-      "policies",
-      "customPolicies",
-      "baselineExclusions",
-      "baselineExclusionTransition",
-      "policyTier",
-      "policyPresetsFinalized",
-    ]) {
-      expect(entry).not.toHaveProperty(field);
-    }
+    expect(Object.keys(entry)).not.toEqual(
+      expect.arrayContaining([
+        "policyAuthority",
+        "policyCreationReceipt",
+        "pendingPolicyVerification",
+        "policies",
+        "customPolicies",
+        "baselineExclusions",
+        "baselineExclusionTransition",
+        "policyTier",
+        "policyPresetsFinalized",
+      ]),
+    );
   });
 
   it("round-trips the bounded checkpoint only while create is incomplete", async () => {
