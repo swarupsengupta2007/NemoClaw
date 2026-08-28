@@ -52,9 +52,7 @@ export function pendingSandboxPolicyVerificationForBoundary(
     sandboxName: boundary.sandboxName,
     lifecycleGeneration: boundary.lifecycleGeneration,
     sandboxIdentityFingerprint: boundary.lifecycleLiveIdentityFingerprint,
-    ...(boundary.createAttemptNonce
-      ? { createAttemptNonce: boundary.createAttemptNonce }
-      : {}),
+    ...(boundary.createAttemptNonce ? { createAttemptNonce: boundary.createAttemptNonce } : {}),
     route: boundary.route,
     policyHash: boundary.registration.policyIdentity.hash,
     policyVersion: boundary.registration.policyIdentity.activeVersion,
@@ -77,9 +75,7 @@ export function verifiedSandboxPolicyBoundaryFromPendingCheckpoint(
     gatewayPort: checkpoint.gatewayPort,
     lifecycleGeneration: checkpoint.lifecycleGeneration,
     lifecycleLiveIdentityFingerprint: checkpoint.sandboxIdentityFingerprint,
-    ...(checkpoint.createAttemptNonce
-      ? { createAttemptNonce: checkpoint.createAttemptNonce }
-      : {}),
+    ...(checkpoint.createAttemptNonce ? { createAttemptNonce: checkpoint.createAttemptNonce } : {}),
     route: checkpoint.route,
     registration: {
       policyIdentity: {
