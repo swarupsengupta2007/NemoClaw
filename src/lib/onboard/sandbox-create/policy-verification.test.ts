@@ -103,6 +103,7 @@ describe("created sandbox live policy verification", () => {
   it("round-trips only the bounded incomplete-create identity checkpoint", () => {
     const boundary = {
       ...INPUT,
+      createAttemptNonce: "c".repeat(62),
       registration: {
         policyIdentity: { hash: "sha256:effective", activeVersion: 4 },
       },
@@ -111,6 +112,7 @@ describe("created sandbox live policy verification", () => {
     const checkpoint = pendingSandboxPolicyVerificationForBoundary(boundary);
     expect(checkpoint).not.toHaveProperty("policyAuthority");
     expect(checkpoint).not.toHaveProperty("policyCreationReceipt");
+    expect(checkpoint.createAttemptNonce).toBe("c".repeat(62));
     expect(verifiedSandboxPolicyBoundaryFromPendingCheckpoint(checkpoint)).toEqual({
       ...boundary,
       policySourcePath: undefined,

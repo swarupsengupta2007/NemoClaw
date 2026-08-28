@@ -12,6 +12,7 @@ const PENDING_CREATE_VERIFICATION_KEYS = new Set([
   "sandboxName",
   "lifecycleGeneration",
   "sandboxIdentityFingerprint",
+  "createAttemptNonce",
   "route",
   "policyHash",
   "policyVersion",
@@ -42,6 +43,9 @@ export function normalizePendingSandboxCreateVerification(
     value.lifecycleGeneration.length === 0 ||
     typeof value.sandboxIdentityFingerprint !== "string" ||
     !SHA256_DIGEST_PATTERN.test(value.sandboxIdentityFingerprint) ||
+    (value.createAttemptNonce !== undefined &&
+      (typeof value.createAttemptNonce !== "string" ||
+        !/^[0-9a-f]{62}$/u.test(value.createAttemptNonce))) ||
     (value.route !== "none" && value.route !== "native" && value.route !== "compatibility") ||
     typeof value.policyHash !== "string" ||
     value.policyHash.length === 0 ||
@@ -60,6 +64,7 @@ export function normalizePendingSandboxCreateVerification(
     sandboxName: value.sandboxName,
     lifecycleGeneration: value.lifecycleGeneration,
     sandboxIdentityFingerprint: value.sandboxIdentityFingerprint,
+    ...(value.createAttemptNonce ? { createAttemptNonce: value.createAttemptNonce } : {}),
     route: value.route,
     policyHash: value.policyHash,
     policyVersion: Number(value.policyVersion),

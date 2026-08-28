@@ -46,6 +46,7 @@ const checkpoint: PendingSandboxCreateVerification = {
   sandboxName: "alpha",
   lifecycleGeneration: "123e4567-e89b-42d3-a456-426614174983",
   sandboxIdentityFingerprint: "a".repeat(64),
+  createAttemptNonce: "c".repeat(62),
   route: "none",
   policyHash: "sha256:observed-live-policy",
   policyVersion: 7,
@@ -172,6 +173,15 @@ describe("sandbox registry normalization", () => {
       normalizePendingSandboxCreateVerification({
         ...checkpoint,
         policyVersion: 0,
+      }),
+    ).toThrow(/invalid pending create verification/);
+  });
+
+  it("fails closed for a malformed create-attempt nonce", () => {
+    expect(() =>
+      normalizePendingSandboxCreateVerification({
+        ...checkpoint,
+        createAttemptNonce: "not-a-nonce",
       }),
     ).toThrow(/invalid pending create verification/);
   });
